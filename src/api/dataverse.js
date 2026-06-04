@@ -14,8 +14,8 @@ const DV_HEADERS = {
 
 // ─── Activity type definitions (shared across create form and browse) ─────────
 // Maps to the three native Dynamics activity entities used in this app.
-// tooltip: old QuickNotes terminology shown as a hover hint only.
-export const QUICKNOTE_TYPES = [
+// tooltip: legacy QuickNotes terminology shown as a hover hint only.
+export const ACTIVITY_TYPES = [
   {
     id: 'phonecall',
     label: 'Phone Call',
@@ -120,7 +120,7 @@ export async function findContactByEmail(msalInstance, email) {
   return data?.value?.[0] ?? null
 }
 
-// ─── Quicknote creation ───────────────────────────────────────────────────────
+// ─── Activity creation ──────────────────────────────────────────────────────────
 // Resolve attendees to Dynamics contacts (parallel)
 export async function resolveAttendees(msalInstance, attendees) {
   return Promise.all(
@@ -179,8 +179,8 @@ function buildParties(typeId, currentUserId, attendees) {
   return parties
 }
 
-export async function createQuickNote(msalInstance, { type, accountId, date, note, attendees, currentUserId }) {
-  const typeConfig = QUICKNOTE_TYPES.find((t) => t.id === type)
+export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId }) {
+  const typeConfig = ACTIVITY_TYPES.find((t) => t.id === type)
   if (!typeConfig) throw new Error(`Unknown activity type: ${type}`)
 
   const dateStr = new Date(date).toISOString()
@@ -302,7 +302,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
     base.push(`createdon lt ${d.toISOString()}`)
   }
 
-  const typeConfig = activityType ? QUICKNOTE_TYPES.find((t) => t.id === activityType) : null
+  const typeConfig = activityType ? ACTIVITY_TYPES.find((t) => t.id === activityType) : null
   const fetches = []
 
   const wantCalls = !typeConfig || typeConfig.entity === 'phonecalls'

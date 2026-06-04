@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import AuthGuard from './components/AuthGuard'
-import QuickNoteForm from './components/QuickNoteForm'
+import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
 
 const TABS = [
-  { id: 'new', label: '+ New Note' },
+  { id: 'new', label: '+ New Activity' },
   { id: 'browse', label: '📋 Browse' },
 ]
 
@@ -23,7 +23,7 @@ export default function App() {
       <nav className="tab-nav">
         <div className="tab-brand">
           <span className="tab-brand-icon">⚡</span>
-          <span className="tab-brand-name">Quicknotes</span>
+          <span className="tab-brand-name">Activities</span>
         </div>
         <div className="tabs">
           {TABS.map((t) => (
@@ -44,7 +44,7 @@ export default function App() {
           {(currentUserId) => (
             <>
               {activeTab === 'new' && (
-                <QuickNoteForm
+                <ActivityForm
                   currentUserId={currentUserId}
                   onNoteCreated={handleNoteCreated}
                 />

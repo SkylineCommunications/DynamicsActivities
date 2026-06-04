@@ -9,13 +9,13 @@ import {
   noteDate,
   getDynamicsUrl,
   deleteActivity,
-  QUICKNOTE_TYPES,
+  ACTIVITY_TYPES,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 
-// Derive icon and CSS class maps from QUICKNOTE_TYPES
-const TYPE_ICONS = Object.fromEntries(QUICKNOTE_TYPES.map((t) => [t.label, t.icon]))
-const TYPE_CLASSES = Object.fromEntries(QUICKNOTE_TYPES.map((t) => [t.label, t.cssClass]))
+// Derive icon and CSS class maps from ACTIVITY_TYPES
+const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.icon]))
+const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cssClass]))
 
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= '📞'
@@ -23,7 +23,7 @@ TYPE_ICONS['Meeting'] ??= '📅'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 
-const FILTER_TYPES = [{ value: '', label: 'All' }, ...QUICKNOTE_TYPES.map((t) => ({ value: t.id, label: t.label }))]
+const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
 
 function fmtDate(d) {
   if (!d) return ''
@@ -112,7 +112,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
       </div>
 
       {note.subject && <div className="note-subject">{note.subject}</div>}
-      {accountName && <div className="note-account">🏢 {accountName}</div>}
+      {accountName && <div className="note-account">🏢 Regarding: {accountName}</div>}
 
       {attendees.length > 0 && (
         <div className="note-attendees">
@@ -175,7 +175,7 @@ export default function NotesList({ refreshKey }) {
       <div className="filter-panel">
         <div className="filter-row">
           <div className="filter-field">
-            <label className="filter-label">Account</label>
+            <label className="filter-label">Regarding</label>
             <AutocompletePicker
               searchFn={(q) => searchAccounts(instance, q)}
               getKey={(a) => a.accountid}
