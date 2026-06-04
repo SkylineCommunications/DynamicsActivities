@@ -212,6 +212,38 @@ const PARTY_EXPAND = (prefix) =>
 
 const BASE_SELECT = 'activityid,subject,description,createdon,scheduledend,scheduledstart,actualend,_regardingobjectid_value'
 
+/**
+ * Fetch IDs of all entities related to an account that activities might be filed against.
+ * Covers the four relationship paths from the dataverse-api skill:
+ *   1. Direct (handled by caller — accountId itself)
+ *   2. Via opportunity  (_parentaccountid_value)
+ *   3. Via contact      (_parentcustomerid_value)
+ *   4. Via lead         (_parentaccountid_value)
+ * Returns an array of GUID strings (does NOT include accountId itself).
+ */
+async function getAccountRelatedEntityIds(msalInstance, accountId) {
+  const [opportunitiesData, contactsData, leadsData] = await Promise.all([
+    dvFetch(
+      msalInstance,
+      `/opportunities?$filter=_parentaccountid_value eq ${accountId}&$select=opportunityid`,
+    ).catch(() => null),
+    dvFetch(
+      msalInstance,
+      `/contacts?$filter=_parentcustomerid_value eq ${accountId}&$select=contactid`,
+    ).catch(() => null),
+    dvFetch(
+      msalInstance,
+      `/leads?$filter=_parentaccountid_value eq ${accountId}&$select=leadid`,
+    ).catch(() => null),
+  ])
+
+  const ids = []
+  for (const opp of opportunitiesData?.value ?? []) ids.push(opp.opportunityid)
+  for (const c of contactsData?.value ?? []) ids.push(c.contactid)
+  for (const lead of leadsData?.value ?? []) ids.push(lead.leadid)
+  return ids
+}
+
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
 const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email' }
 
@@ -245,7 +277,15 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   if (!accountId && !contactId && !activityType && !dateFrom && !dateTo) return []
 
   const base = []
-  if (accountId) base.push(`_regardingobjectid_value eq ${accountId}`)
+
+  if (accountId) {
+    // Fetch IDs of all related entities (opportunities, etc.) so their activities are included
+    const relatedIds = await getAccountRelatedEntityIds(msalInstance, accountId)
+    const allIds = [accountId, ...relatedIds]
+    const regardingFilter = allIds.map((id) => `_regardingobjectid_value eq ${id}`).join(' or ')
+    base.push(allIds.length > 1 ? `(${regardingFilter})` : regardingFilter)
+  }
+
   if (dateFrom) base.push(`createdon ge ${new Date(dateFrom).toISOString()}`)
   if (dateTo) {
     const d = new Date(dateTo)
