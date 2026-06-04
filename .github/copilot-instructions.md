@@ -1,0 +1,103 @@
+# Copilot Instructions — QuicknotesDynamics
+
+## What This App Is
+
+A React + Vite SPA that replaces a Power App for logging customer interactions. It stores notes as native Dynamics 365 Activities and is deployed on DataMiner at:
+
+```
+https://solutionsdma-skyline.on.dataminer.services/public/DynamicsQuickNotes/
+```
+
+Runs inside a DataMiner iframe. All auth uses popup flows — redirect flows do not work in iframes.
+
+---
+
+## Stack
+
+- React 18 + Vite 5, static build only
+- `@azure/msal-browser` + `@azure/msal-react` for Entra popup auth
+- Dataverse Web API v9.2 for all data
+- Microsoft Graph API v1.0 for calendar events (attendee prefill)
+- Skyline dark design system (CSS custom properties, Inter font)
+
+---
+
+## Build Commands
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Dev server — uses `.env` |
+| `npm run build` | Production build → `dist-dataminer/` — uses `.env.dataminer` |
+| `npm run build:local` | Local build → `dist/` — uses `.env` |
+
+**Always run `npm run build` (not `build:local`) before deploying.**
+
+---
+
+## Environment Variables
+
+`.env` — local dev, client `acd01a7c-7c83-4977-a98d-ade9e82ae6e8`
+`.env.dataminer` — DataMiner deployment, client `31b6b722-e159-43bd-a53b-1a450bf5b38c`
+
+Key variables:
+```
+VITE_DATAVERSE_URL=https://skyline365-qa.crm4.dynamics.com/
+VITE_CLIENT_ID=...
+VITE_TENANT_ID=5f175691-8d1c-4932-b7c8-ce990839ac40
+VITE_REDIRECT_URI=...
+```
+
+---
+
+## Data Model
+
+**No custom Dynamics fields.** All data lives in native Dynamics 365 activity entities:
+
+| Type | Entity table | `_entityType` value |
+|---|---|---|
+| Phone Call | `phonecalls` | `phonecalls` |
+| Appointment | `appointments` | `appointments` |
+| Email | `emails` | `emails` |
+
+`createQuickNote` writes to the correct entity table — no `category` field, no custom columns.
+
+---
+
+## Known Dataverse Constraints
+
+- **`$expand` + `$top` on the same query causes HTTP 400 (`0x80060888`)**. Use `Prefer: odata.maxpagesize=100` instead of `$top` when expanding activity parties.
+- Activity party skip masks: phonecalls/emails skip 1+9 (sender+owner), appointments skip 7+9 (organizer+owner).
+- `noteDate()` falls back: `scheduledstart || scheduledend || actualend || createdon`.
+
+---
+
+## Auth Pattern
+
+Popup-only. Never use `loginRedirect` (breaks inside DataMiner iframe).
+
+```js
+// Initial login
+instance.loginPopup(loginRequest)
+
+// Token acquisition
+msalInstance.acquireTokenSilent(request)
+  .catch(() => msalInstance.acquireTokenPopup(request))
+```
+
+Call `handleRedirectPromise()` at startup for resilience, but the primary flow is popup.
+
+---
+
+## Key Source Files
+
+| File | Purpose |
+|---|---|
+| `src/api/dataverse.js` | All Dataverse ops — auth, search, create, delete |
+| `src/api/graph.js` | Graph calendar fetch for attendee prefill |
+| `src/components/AuthGuard.jsx` | Popup login, WhoAmI, render-prop auth gate |
+| `src/components/QuickNoteForm.jsx` | Note creation (3 types, account/attendee pickers, calendar fill) |
+| `src/components/NotesList.jsx` | Browse view — lazy server-side OData filters |
+| `src/components/AutocompletePicker.jsx` | Debounced autocomplete with clearOnPick support |
+| `src/components/CalendarPicker.jsx` | Graph calendar modal (60d past + 30d future, no all-day) |
+| `src/styles/main.css` | Skyline design system CSS variables + component styles |
+| `public/web.config` | IIS SPA rewrite rule for DataMiner/IIS hosting |
