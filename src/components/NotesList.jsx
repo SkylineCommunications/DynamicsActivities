@@ -182,6 +182,7 @@ export default function NotesList({ refreshKey }) {
               getLabel={(a) => a.name}
               value={account}
               onChange={setAccount}
+              onEnter={runSearch}
               placeholder="Search account…"
               minChars={2}
             />
@@ -195,6 +196,7 @@ export default function NotesList({ refreshKey }) {
               getSublabel={(c) => c.emailaddress1}
               value={attendee}
               onChange={setAttendee}
+              onEnter={runSearch}
               placeholder="Search contact…"
               minChars={2}
             />
@@ -224,6 +226,7 @@ export default function NotesList({ refreshKey }) {
               className="input"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
             />
           </div>
           <div className="filter-field filter-field-date">
@@ -233,6 +236,7 @@ export default function NotesList({ refreshKey }) {
               className="input"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
             />
           </div>
           <button

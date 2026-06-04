@@ -81,11 +81,20 @@ export async function whoAmI(msalInstance) {
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
   const q = encodeURIComponent(query.trim())
-  const data = await dvFetch(
-    msalInstance,
-    `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`,
-  )
-  return data?.value ?? []
+  // Return startswith matches first, then any contains matches, merged and deduped
+  const [startsWith, contains] = await Promise.all([
+    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name&$orderby=name asc`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc`).catch(() => null),
+  ])
+  const seen = new Set()
+  const results = []
+  for (const item of [...(startsWith?.value ?? []), ...(contains?.value ?? [])]) {
+    if (!seen.has(item.accountid)) {
+      seen.add(item.accountid)
+      results.push(item)
+    }
+  }
+  return results
 }
 
 // ─── Contacts ────────────────────────────────────────────────────────────────
