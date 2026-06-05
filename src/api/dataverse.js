@@ -290,7 +290,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   if (accountId) {
     // Fetch IDs of all related entities (opportunities, etc.) so their activities are included
     const relatedIds = await getAccountRelatedEntityIds(msalInstance, accountId)
-    const allIds = [accountId, ...relatedIds]
+    const allIds = Array.from(new Set([accountId, ...relatedIds])).slice(0, 50)
     const regardingFilter = allIds.map((id) => `_regardingobjectid_value eq ${id}`).join(' or ')
     base.push(allIds.length > 1 ? `(${regardingFilter})` : regardingFilter)
   }
