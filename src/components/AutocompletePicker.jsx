@@ -25,6 +25,7 @@ export default function AutocompletePicker({
   onEnter,
   placeholder = 'Search…',
   clearOnPick = false,
+  autoSelectSingle = false,
   minChars = 2,
   debounce = 300,
 }) {
@@ -62,9 +63,13 @@ export default function AutocompletePicker({
       setLoading(true)
       try {
         const res = await searchFn(q.trim())
-        setResults(res)
-        setActiveIndex(-1)
-        setOpen(res.length > 0)
+        if (res.length === 1 && autoSelectSingle) {
+          pick(res[0])
+        } else {
+          setResults(res)
+          setActiveIndex(-1)
+          setOpen(res.length > 0)
+        }
       } finally {
         setLoading(false)
       }

@@ -136,6 +136,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
             value={account}
             onChange={setAccount}
             placeholder="Type to search accounts…"
+            autoSelectSingle
           />
         </div>
 
@@ -167,6 +168,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
             onChange={handleAttendeeSelected}
             placeholder="Search Dynamics contacts to add…"
             clearOnPick
+            autoSelectSingle
           />
           {attendees.some((a) => !a.contactId) && (
             <p className="hint-text hint-warning">

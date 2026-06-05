@@ -185,6 +185,7 @@ export default function NotesList({ refreshKey }) {
               onEnter={runSearch}
               placeholder="Search account…"
               minChars={2}
+              autoSelectSingle
             />
           </div>
           <div className="filter-field">
@@ -199,6 +200,7 @@ export default function NotesList({ refreshKey }) {
               onEnter={runSearch}
               placeholder="Search contact…"
               minChars={2}
+              autoSelectSingle
             />
           </div>
         </div>
