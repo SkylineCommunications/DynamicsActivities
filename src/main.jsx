@@ -2,16 +2,42 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { PublicClientApplication } from '@azure/msal-browser'
 import { MsalProvider } from '@azure/msal-react'
-import { msalConfig } from './authConfig'
+import { msalConfig, msalConfigValid } from './authConfig'
 import App from './App'
 import './styles/main.css'
 
-const msalInstance = new PublicClientApplication(msalConfig)
+const root = ReactDOM.createRoot(document.getElementById('root'))
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <MsalProvider instance={msalInstance}>
-      <App />
-    </MsalProvider>
-  </React.StrictMode>,
-)
+if (!msalConfigValid) {
+  root.render(
+    <React.StrictMode>
+      <div className="app">
+        <div className="auth-screen">
+          <div className="auth-card">
+            <div className="auth-icon">⚠️</div>
+            <h2>Configuration Missing</h2>
+            <p>
+              Required environment variables are not set. Please ensure the
+              following are configured:
+            </p>
+            <ul>
+              <li><code>VITE_CLIENT_ID</code></li>
+              <li><code>VITE_TENANT_ID</code></li>
+              <li><code>VITE_DATAVERSE_URL</code></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </React.StrictMode>,
+  )
+} else {
+  const msalInstance = new PublicClientApplication(msalConfig)
+
+  root.render(
+    <React.StrictMode>
+      <MsalProvider instance={msalInstance}>
+        <App />
+      </MsalProvider>
+    </React.StrictMode>,
+  )
+}

@@ -1,9 +1,14 @@
 const dataverseUrl = (import.meta.env.VITE_DATAVERSE_URL || '').replace(/\/$/, '')
 
+const clientId = import.meta.env.VITE_CLIENT_ID || ''
+const tenantId = import.meta.env.VITE_TENANT_ID || ''
+
+export const msalConfigValid = !!(clientId && tenantId && dataverseUrl)
+
 export const msalConfig = {
   auth: {
-    clientId: import.meta.env.VITE_CLIENT_ID,
-    authority: `https://login.microsoftonline.com/${import.meta.env.VITE_TENANT_ID}`,
+    clientId,
+    authority: `https://login.microsoftonline.com/${tenantId}`,
     redirectUri: import.meta.env.VITE_REDIRECT_URI || window.location.origin,
     navigateToLoginRequestUrl: false,
   },
