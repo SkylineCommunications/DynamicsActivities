@@ -80,11 +80,11 @@ export async function whoAmI(msalInstance) {
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
-  const q = encodeURIComponent(query.trim())
+  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
-    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name&$orderby=name asc`).catch(() => null),
-    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
   ])
   const seen = new Set()
   const results = []
