@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { searchAccounts, searchContacts, resolveAttendees, createQuickNote, QUICKNOTE_TYPES } from '../api/dataverse'
+import { searchAccounts, searchContacts, resolveAttendees, createActivity, ACTIVITY_TYPES } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
 
@@ -18,7 +18,7 @@ function AttendeeChip({ attendee, onRemove }) {
   )
 }
 
-export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
+export default function ActivityForm({ currentUserId, onNoteCreated }) {
   const { instance } = useMsal()
 
   const [type, setType] = useState('phonecall')
@@ -37,6 +37,9 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
 
   const charsLeft = NOTE_LIMIT - note.length
   const canSubmit = account && note.trim().length > 0 && !submitting
+
+  const dateLabel = type === 'appointment' ? 'Start Time' : 'Due Date'
+  const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
 
   // ─── Search functions for pickers ──────────────────────────────────────────
   function searchAccountsFn(q) { return searchAccounts(instance, q) }
@@ -70,7 +73,7 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
     setSubmitting(true)
     setError(null)
     try {
-      await createQuickNote(instance, {
+      await createActivity(instance, {
         type,
         accountId: account.accountid,
         date,
@@ -99,7 +102,7 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
 
         {/* Interaction type */}
         <div className="type-selector">
-          {QUICKNOTE_TYPES.map((t) => (
+          {ACTIVITY_TYPES.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -133,12 +136,13 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
             value={account}
             onChange={setAccount}
             placeholder="Type to search accounts…"
+            autoSelectSingle
           />
         </div>
 
         {/* Date */}
         <div className="field">
-          <label className="field-label">Date &amp; time</label>
+          <label className="field-label">{dateLabel}</label>
           <input
             type="datetime-local"
             className="input"
@@ -149,7 +153,7 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
 
         {/* Attendees */}
         <div className="field">
-          <label className="field-label">Attendees <span className="optional">(optional)</span></label>
+          <label className="field-label">{attendeesLabel} <span className="optional">(optional)</span></label>
           <div className="chip-list">
             {attendees.map((a, i) => (
               <AttendeeChip key={i} attendee={a} onRemove={() => removeAttendee(i)} />
@@ -164,6 +168,7 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
             onChange={handleAttendeeSelected}
             placeholder="Search Dynamics contacts to add…"
             clearOnPick
+            autoSelectSingle
           />
           {attendees.some((a) => !a.contactId) && (
             <p className="hint-text hint-warning">
@@ -175,7 +180,7 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
         {/* Note */}
         <div className="field">
           <label className="field-label">
-            Note <span className="required">*</span>
+            Description <span className="required">*</span>
           </label>
           <textarea
             className={`textarea ${charsLeft < 50 ? 'near-limit' : ''}`}
@@ -192,11 +197,11 @@ export default function QuickNoteForm({ currentUserId, onNoteCreated }) {
 
         {/* Errors / success */}
         {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">✓ Note saved to Dynamics</div>}
+        {success && <div className="alert alert-success">✓ Activity saved</div>}
 
         {/* Submit */}
         <button type="submit" className="btn-primary" disabled={!canSubmit}>
-          {submitting ? 'Saving…' : 'Create Note'}
+          {submitting ? 'Saving…' : 'Save'}
         </button>
       </form>
 

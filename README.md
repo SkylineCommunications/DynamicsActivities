@@ -100,7 +100,7 @@ src/
     graph.js         # Graph calendar fetch for attendee prefill
   components/
     AuthGuard.jsx    # Popup login, WhoAmI, render-prop auth gate
-    QuickNoteForm.jsx# Note creation form (3 types, pickers, calendar fill)
+    ActivityForm.jsx # Activity creation form (3 types, pickers, calendar fill)
     NotesList.jsx    # Browse view with lazy server-side OData filters
     AutocompletePicker.jsx
     CalendarPicker.jsx

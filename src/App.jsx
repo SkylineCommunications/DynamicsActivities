@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import AuthGuard from './components/AuthGuard'
-import QuickNoteForm from './components/QuickNoteForm'
+import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
 
 const TABS = [
-  { id: 'new', label: '+ New Note' },
+  { id: 'new', label: '+ New Activity' },
   { id: 'browse', label: '📋 Browse' },
 ]
 
@@ -44,7 +44,7 @@ export default function App() {
           {(currentUserId) => (
             <>
               {activeTab === 'new' && (
-                <QuickNoteForm
+                <ActivityForm
                   currentUserId={currentUserId}
                   onNoteCreated={handleNoteCreated}
                 />
