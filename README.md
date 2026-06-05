@@ -1,4 +1,4 @@
-# QuicknotesDynamics
+# DynamicsActivities
 
 A React + Vite SPA for quickly logging customer interactions as native **Dynamics 365 Activities**, deployed on Skyline DataMiner.
 
@@ -75,12 +75,12 @@ npm run dev
 Deploy the contents of `dist-dataminer/` to the DataMiner server under:
 
 ```
-C:\Skyline DataMiner\Webpages\public\DynamicsQuickNotes\
+C:\Skyline DataMiner\Webpages\public\DynamicsActivities\
 ```
 
 The included `public/web.config` configures IIS URL rewriting for SPA routing.
 
-Live URL: `https://solutionsdma-skyline.on.dataminer.services/public/DynamicsQuickNotes/`
+Live URL: `https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/`
 
 ---
 
@@ -100,7 +100,7 @@ src/
     graph.js         # Graph calendar fetch for attendee prefill
   components/
     AuthGuard.jsx    # Popup login, WhoAmI, render-prop auth gate
-    QuickNoteForm.jsx# Note creation form (3 types, pickers, calendar fill)
+    ActivityForm.jsx # Activity creation form (3 types, pickers, calendar fill)
     NotesList.jsx    # Browse view with lazy server-side OData filters
     AutocompletePicker.jsx
     CalendarPicker.jsx
