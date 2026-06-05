@@ -308,7 +308,8 @@ input[type="datetime-local"].input::-webkit-calendar-picker-indicator {
   transition: background 0.1s;
 }
 
-.dropdown li:hover { background: var(--clr-accent-dim); }
+.dropdown li:hover,
+.dropdown li.active { background: var(--clr-accent-dim); }
 
 .dropdown-sub {
   font-size: var(--fs-xs);

@@ -14,8 +14,8 @@ const DV_HEADERS = {
 
 // ─── Activity type definitions (shared across create form and browse) ─────────
 // Maps to the three native Dynamics activity entities used in this app.
-// tooltip: old QuickNotes terminology shown as a hover hint only.
-export const QUICKNOTE_TYPES = [
+// tooltip: legacy QuickNotes terminology shown as a hover hint only.
+export const ACTIVITY_TYPES = [
   {
     id: 'phonecall',
     label: 'Phone Call',
@@ -80,12 +80,21 @@ export async function whoAmI(msalInstance) {
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
-  const q = encodeURIComponent(query.trim())
-  const data = await dvFetch(
-    msalInstance,
-    `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`,
-  )
-  return data?.value ?? []
+  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+  // Return startswith matches first, then any contains matches, merged and deduped
+  const [startsWith, contains] = await Promise.all([
+    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
+  ])
+  const seen = new Set()
+  const results = []
+  for (const item of [...(startsWith?.value ?? []), ...(contains?.value ?? [])]) {
+    if (!seen.has(item.accountid)) {
+      seen.add(item.accountid)
+      results.push(item)
+    }
+  }
+  return results
 }
 
 // ─── Contacts ────────────────────────────────────────────────────────────────
@@ -111,7 +120,7 @@ export async function findContactByEmail(msalInstance, email) {
   return data?.value?.[0] ?? null
 }
 
-// ─── Quicknote creation ───────────────────────────────────────────────────────
+// ─── Activity creation ──────────────────────────────────────────────────────────
 // Resolve attendees to Dynamics contacts (parallel)
 export async function resolveAttendees(msalInstance, attendees) {
   return Promise.all(
@@ -170,8 +179,8 @@ function buildParties(typeId, currentUserId, attendees) {
   return parties
 }
 
-export async function createQuickNote(msalInstance, { type, accountId, date, note, attendees, currentUserId }) {
-  const typeConfig = QUICKNOTE_TYPES.find((t) => t.id === type)
+export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId }) {
+  const typeConfig = ACTIVITY_TYPES.find((t) => t.id === type)
   if (!typeConfig) throw new Error(`Unknown activity type: ${type}`)
 
   const dateStr = new Date(date).toISOString()
@@ -212,6 +221,38 @@ const PARTY_EXPAND = (prefix) =>
 
 const BASE_SELECT = 'activityid,subject,description,createdon,scheduledend,scheduledstart,actualend,_regardingobjectid_value'
 
+/**
+ * Fetch IDs of all entities related to an account that activities might be filed against.
+ * Covers the four relationship paths from the dataverse-api skill:
+ *   1. Direct (handled by caller — accountId itself)
+ *   2. Via opportunity  (_parentaccountid_value)
+ *   3. Via contact      (_parentcustomerid_value)
+ *   4. Via lead         (_parentaccountid_value)
+ * Returns an array of GUID strings (does NOT include accountId itself).
+ */
+async function getAccountRelatedEntityIds(msalInstance, accountId) {
+  const [opportunitiesData, contactsData, leadsData] = await Promise.all([
+    dvFetch(
+      msalInstance,
+      `/opportunities?$filter=_parentaccountid_value eq ${accountId}&$select=opportunityid&$top=50`,
+    ).catch(() => null),
+    dvFetch(
+      msalInstance,
+      `/contacts?$filter=_parentcustomerid_value eq ${accountId}&$select=contactid&$top=50`,
+    ).catch(() => null),
+    dvFetch(
+      msalInstance,
+      `/leads?$filter=_parentaccountid_value eq ${accountId}&$select=leadid&$top=50`,
+    ).catch(() => null),
+  ])
+
+  const ids = []
+  for (const opp of opportunitiesData?.value ?? []) ids.push(opp.opportunityid)
+  for (const c of contactsData?.value ?? []) ids.push(c.contactid)
+  for (const lead of leadsData?.value ?? []) ids.push(lead.leadid)
+  return ids
+}
+
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
 const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email' }
 
@@ -245,7 +286,15 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   if (!accountId && !contactId && !activityType && !dateFrom && !dateTo) return []
 
   const base = []
-  if (accountId) base.push(`_regardingobjectid_value eq ${accountId}`)
+
+  if (accountId) {
+    // Fetch IDs of all related entities (opportunities, etc.) so their activities are included
+    const relatedIds = await getAccountRelatedEntityIds(msalInstance, accountId)
+    const allIds = Array.from(new Set([accountId, ...relatedIds])).slice(0, 50)
+    const regardingFilter = allIds.map((id) => `_regardingobjectid_value eq ${id}`).join(' or ')
+    base.push(allIds.length > 1 ? `(${regardingFilter})` : regardingFilter)
+  }
+
   if (dateFrom) base.push(`createdon ge ${new Date(dateFrom).toISOString()}`)
   if (dateTo) {
     const d = new Date(dateTo)
@@ -253,7 +302,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
     base.push(`createdon lt ${d.toISOString()}`)
   }
 
-  const typeConfig = activityType ? QUICKNOTE_TYPES.find((t) => t.id === activityType) : null
+  const typeConfig = activityType ? ACTIVITY_TYPES.find((t) => t.id === activityType) : null
   const fetches = []
 
   const wantCalls = !typeConfig || typeConfig.entity === 'phonecalls'

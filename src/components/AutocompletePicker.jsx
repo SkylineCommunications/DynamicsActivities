@@ -22,8 +22,10 @@ export default function AutocompletePicker({
   getSublabel,
   value,
   onChange,
+  onEnter,
   placeholder = 'Search…',
   clearOnPick = false,
+  autoSelectSingle = false,
   minChars = 2,
   debounce = 300,
 }) {
@@ -31,7 +33,9 @@ export default function AutocompletePicker({
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const timer = useRef(null)
+  const listRef = useRef(null)
 
   // Sync input label when value is set externally
   useEffect(() => {
@@ -39,13 +43,6 @@ export default function AutocompletePicker({
       setQuery(value ? getLabel(value) : '')
     }
   }, [value])
-
-  // Auto-select when exactly one result remains
-  useEffect(() => {
-    if (results.length === 1 && query.trim().length >= minChars) {
-      pick(results[0])
-    }
-  }, [results])
 
   function handleInput(e) {
     const q = e.target.value
@@ -66,8 +63,13 @@ export default function AutocompletePicker({
       setLoading(true)
       try {
         const res = await searchFn(q.trim())
-        setResults(res)
-        setOpen(res.length > 0)
+        if (res.length === 1 && autoSelectSingle) {
+          pick(res[0])
+        } else {
+          setResults(res)
+          setActiveIndex(-1)
+          setOpen(res.length > 0)
+        }
       } finally {
         setLoading(false)
       }
@@ -79,6 +81,43 @@ export default function AutocompletePicker({
     setQuery(clearOnPick ? '' : getLabel(item))
     setOpen(false)
     setResults([])
+    setActiveIndex(-1)
+  }
+
+  function handleKeyDown(e) {
+    if (!open) {
+      if (e.key === 'Enter' && onEnter) onEnter()
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex((i) => {
+        const next = Math.min(i + 1, results.length - 1)
+        scrollItemIntoView(next)
+        return next
+      })
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((i) => {
+        const next = Math.max(i - 1, 0)
+        scrollItemIntoView(next)
+        return next
+      })
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (activeIndex >= 0 && activeIndex < results.length) {
+        pick(results[activeIndex])
+      }
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+      setActiveIndex(-1)
+    }
+  }
+
+  function scrollItemIntoView(index) {
+    if (!listRef.current) return
+    const item = listRef.current.children[index]
+    if (item) item.scrollIntoView({ block: 'nearest' })
   }
 
   return (
@@ -88,15 +127,21 @@ export default function AutocompletePicker({
         placeholder={placeholder}
         value={query}
         onChange={handleInput}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => setTimeout(() => { setOpen(false); setActiveIndex(-1) }, 150)}
         onFocus={() => results.length > 0 && setOpen(true)}
+        onKeyDown={handleKeyDown}
         autoComplete="off"
       />
       {loading && <span className="search-loading">…</span>}
       {open && (
-        <ul className="dropdown">
-          {results.map((item) => (
-            <li key={getKey(item)} onMouseDown={() => pick(item)}>
+        <ul className="dropdown" ref={listRef}>
+          {results.map((item, i) => (
+            <li
+              key={getKey(item)}
+              className={i === activeIndex ? 'active' : ''}
+              onMouseDown={() => pick(item)}
+              onMouseEnter={() => setActiveIndex(i)}
+            >
               <span>{getLabel(item)}</span>
               {getSublabel && getSublabel(item) && (
                 <span className="dropdown-sub">{getSublabel(item)}</span>

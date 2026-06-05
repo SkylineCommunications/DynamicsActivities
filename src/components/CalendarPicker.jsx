@@ -45,13 +45,6 @@ export default function CalendarPicker({ onSelect, onClose }) {
     })
   }, [events, search])
 
-  // Auto-select when search narrows to exactly one result
-  useEffect(() => {
-    if (filtered.length === 1 && search.trim()) {
-      onSelect(filtered[0])
-    }
-  }, [filtered])
-
   // Group into upcoming vs past
   const now = new Date()
   const upcoming = filtered.filter((e) => e.start && e.start >= now)
