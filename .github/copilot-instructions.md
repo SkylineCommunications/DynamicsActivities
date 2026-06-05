@@ -1,11 +1,11 @@
-# Copilot Instructions — QuicknotesDynamics
+# Copilot Instructions — DynamicsActivities
 
 ## What This App Is
 
 A React + Vite SPA that replaces a Power App for logging customer interactions. It stores notes as native Dynamics 365 Activities and is deployed on DataMiner at:
 
 ```
-https://solutionsdma-skyline.on.dataminer.services/public/DynamicsQuickNotes/
+https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/
 ```
 
 Runs inside a DataMiner iframe. All auth uses popup flows — redirect flows do not work in iframes.

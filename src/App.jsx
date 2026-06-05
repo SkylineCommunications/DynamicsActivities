@@ -23,7 +23,7 @@ export default function App() {
       <nav className="tab-nav">
         <div className="tab-brand">
           <span className="tab-brand-icon">⚡</span>
-          <span className="tab-brand-name">Quicknotes</span>
+          <span className="tab-brand-name">Activities</span>
         </div>
         <div className="tabs">
           {TABS.map((t) => (
