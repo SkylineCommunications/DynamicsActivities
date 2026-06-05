@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-dataminer/
+dataminer-dist/
 .env
 .env.dataminer
 *.local
