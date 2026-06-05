@@ -28,6 +28,11 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_CLIENT_ID: ${{ secrets.VITE_CLIENT_ID }}
+          VITE_TENANT_ID: ${{ secrets.VITE_TENANT_ID }}
+          VITE_DATAVERSE_URL: ${{ secrets.VITE_DATAVERSE_URL }}
+          VITE_REDIRECT_URI: ${{ vars.VITE_REDIRECT_URI }}
 
       - name: Copy build output to dataminer-dist
         run: |
