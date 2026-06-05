@@ -234,15 +234,15 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   const [opportunitiesData, contactsData, leadsData] = await Promise.all([
     dvFetch(
       msalInstance,
-      `/opportunities?$filter=_parentaccountid_value eq ${accountId}&$select=opportunityid`,
+      `/opportunities?$filter=_parentaccountid_value eq ${accountId}&$select=opportunityid&$top=50`,
     ).catch(() => null),
     dvFetch(
       msalInstance,
-      `/contacts?$filter=_parentcustomerid_value eq ${accountId}&$select=contactid`,
+      `/contacts?$filter=_parentcustomerid_value eq ${accountId}&$select=contactid&$top=50`,
     ).catch(() => null),
     dvFetch(
       msalInstance,
-      `/leads?$filter=_parentaccountid_value eq ${accountId}&$select=leadid`,
+      `/leads?$filter=_parentaccountid_value eq ${accountId}&$select=leadid&$top=50`,
     ).catch(() => null),
   ])
 
