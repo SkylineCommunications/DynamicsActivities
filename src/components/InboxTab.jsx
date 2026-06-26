@@ -46,9 +46,13 @@ function splitRecipients(message) {
   if (message.from?.email) {
     participants.push({ role: 'From', name: message.from.name || message.from.email, email: message.from.email })
   }
-  for (const recipient of [...(message.toRecipients ?? []), ...(message.ccRecipients ?? [])]) {
+  for (const recipient of message.toRecipients ?? []) {
     if (!recipient.email) continue
     participants.push({ role: 'To', name: recipient.name || recipient.email, email: recipient.email })
+  }
+  for (const recipient of message.ccRecipients ?? []) {
+    if (!recipient.email) continue
+    participants.push({ role: 'CC', name: recipient.name || recipient.email, email: recipient.email })
   }
   const seen = new Set()
   return participants.filter((p) => {
