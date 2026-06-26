@@ -65,10 +65,10 @@ export default function CalendarPicker({ onSelect, onClose }) {
           <span className="calendar-item-subject">{ev.subject}</span>
           <span className="calendar-item-date">{fmtEventDate(ev.start)}</span>
         </div>
-        {ev.location && <div className="calendar-item-meta"><span className="icon icon-sm">location_on</span> {ev.location}</div>}
+        {ev.location && <div className="calendar-item-meta"><span className="icon icon-sm" aria-hidden="true">location_on</span> {ev.location}</div>}
         {ev.attendees.length > 0 && (
           <div className="calendar-item-meta">
-            <span className="icon icon-sm">group</span>{' '}
+            <span className="icon icon-sm" aria-hidden="true">group</span>{' '}
             {shownAttendees.map((a) => a.name || a.email).join(', ')}
             {extraCount > 0 && <span className="calendar-item-extra"> +{extraCount} more</span>}
           </div>
