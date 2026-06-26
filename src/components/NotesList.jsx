@@ -10,6 +10,7 @@ import {
   getDynamicsUrl,
   deleteActivity,
   ACTIVITY_TYPES,
+  ESCALATION_STATUSES,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 
@@ -20,8 +21,10 @@ const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cs
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= 'contact_phone'
 TYPE_ICONS['Meeting'] ??= 'calendar_today'
+TYPE_ICONS['Escalation'] ??= 'warning'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
+TYPE_CLASSES['Escalation'] ??= 'type-escalation'
 
 const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
 
@@ -113,6 +116,21 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
 
       {note.subject && <div className="note-subject">{note.subject}</div>}
       {accountName && <div className="note-account"><span className="icon icon-sm">business_center</span> Regarding: {accountName}</div>}
+
+      {/* Escalation status badge */}
+      {note._entityType === 'slc_escalations' && note.slc_status && (
+        <div className="note-escalation-status">
+          <span className={`escalation-badge ${(ESCALATION_STATUSES.find((s) => s.value === note.slc_status) || {}).cssClass || ''}`}>
+            {(ESCALATION_STATUSES.find((s) => s.value === note.slc_status) || {}).label || `Status ${note.slc_status}`}
+          </span>
+          {note.slc_startdate && (
+            <span className="escalation-start">Started: {fmtDate(note.slc_startdate)}</span>
+          )}
+          {note.slc_resolveddate && (
+            <span className="escalation-resolved">Resolved: {fmtDate(note.slc_resolveddate)}</span>
+          )}
+        </div>
+      )}
 
       {attendees.length > 0 && (
         <div className="note-attendees">

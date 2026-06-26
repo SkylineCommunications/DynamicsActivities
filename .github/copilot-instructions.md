@@ -51,15 +51,29 @@ VITE_REDIRECT_URI=...
 
 ## Data Model
 
-**No custom Dynamics fields.** All data lives in native Dynamics 365 activity entities:
+**Native Dynamics 365 activity entities plus one custom activity:**
 
 | Type | Entity table | `_entityType` value |
 |---|---|---|
 | Phone Call | `phonecalls` | `phonecalls` |
 | Appointment | `appointments` | `appointments` |
 | Email | `emails` | `emails` |
+| Escalation | `slc_escalations` | `slc_escalations` |
 
-`createQuickNote` writes to the correct entity table — no `category` field, no custom columns.
+`createActivity` writes to the correct entity table based on type.
+
+### Escalation entity (`slc_escalation`)
+
+- Custom Activity entity (extends `activitypointer`, PK `activityid`)
+- Entity set: `slc_escalations`
+- Custom columns: `slc_startdate` (Date), `slc_resolveddate` (Date), `slc_status` (OptionSet: 1=open, 2=in-progress, 3=resolved, 4=cancelled)
+- Linked via `regardingobjectid` → Account
+
+### Business rules
+
+1. **Max ONE active escalation per account** — An account cannot have more than one escalation with `slc_status` of 1 (open) or 2 (in-progress). Enforced client-side in `createActivity()` before POST.
+2. **Linking notes to active escalation** — When an account has an active escalation, non-escalation notes (phonecall/appointment/email) can be linked to it by setting `regardingobjectid_slc_escalation@odata.bind` to `/slc_escalations({activityid})`. This makes the note appear in the escalation's timeline.
+3. **Auto-link default** — The UI auto-checks "Link to escalation" when an active escalation is detected for the selected account. Users can uncheck to link directly to the account instead.
 
 ---
 

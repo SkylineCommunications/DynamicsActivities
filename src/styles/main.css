@@ -730,6 +730,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .type-call { background: color-mix(in srgb, var(--palette-color2) 20%, transparent); color: var(--palette-color2); }
 .type-appt { background: color-mix(in srgb, var(--palette-color4) 20%, transparent); color: var(--palette-color4); }
 .type-email { background: color-mix(in srgb, var(--palette-color3) 20%, transparent); color: var(--palette-color3); }
+.type-escalation { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
 
 .note-card-header-right {
   display: flex;
@@ -811,6 +812,95 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 }
 
 .show-more { font-size: 12px; color: var(--hyperlink); cursor: pointer; }
+
+/* ─── Escalation form fields ────────────────────────────────────────────────── */
+.escalation-status-selector {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.status-btn {
+  padding: 0 10px;
+  height: 28px;
+  border: 1px solid var(--color5);
+  background: var(--color2);
+  border-radius: var(--radius-full);
+  font-family: 'InterVariable', Inter, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--color10);
+  display: inline-flex;
+  align-items: center;
+}
+
+.status-btn:hover { border-color: var(--focus-color); color: var(--color12); }
+.status-btn.active { border-color: currentColor; }
+.status-btn.status-open.active { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); border-color: var(--error); }
+.status-btn.status-inprogress.active { background: color-mix(in srgb, var(--major) 15%, transparent); color: var(--major); border-color: var(--major); }
+.status-btn.status-resolved.active { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); border-color: var(--success); }
+.status-btn.status-cancelled.active { background: var(--color4); color: var(--color9); border-color: var(--color6); }
+
+/* ─── Escalation display in notes list ──────────────────────────────────────── */
+.note-escalation-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.escalation-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.escalation-badge.status-open { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
+.escalation-badge.status-inprogress { background: color-mix(in srgb, var(--major) 15%, transparent); color: var(--major); }
+.escalation-badge.status-resolved { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.escalation-badge.status-cancelled { background: var(--color4); color: var(--color9); }
+
+.escalation-start, .escalation-resolved {
+  font-size: 12px;
+  color: var(--color10);
+}
+
+/* ─── Escalation link banner ────────────────────────────────────────────────── */
+.escalation-link-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--major) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--major) 30%, transparent);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--color12);
+}
+
+.escalation-link-banner .icon { color: var(--major); }
+
+.escalation-link-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color11);
+}
+
+.escalation-link-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--focus-color);
+  cursor: pointer;
+}
 
 /* ─── Empty / loading states ─────────────────────────────────────────────────── */
 .loading-text { color: var(--color10); font-size: 14px; padding: 16px 0; }

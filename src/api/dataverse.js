@@ -43,7 +43,41 @@ export const ACTIVITY_TYPES = [
     cssClass: 'type-email',
     tooltip: 'Previously known as: Email / Chat',
   },
+  {
+    id: 'escalation',
+    label: 'Escalation',
+    icon: '🚨',
+    iconLigature: 'warning',
+    entity: 'slc_escalations',
+    cssClass: 'type-escalation',
+    tooltip: 'Account escalation status update',
+  },
 ]
+
+// Escalation status OptionSet values
+export const ESCALATION_STATUSES = [
+  { value: 1, label: 'Open', cssClass: 'status-open' },
+  { value: 2, label: 'In Progress', cssClass: 'status-inprogress' },
+  { value: 3, label: 'Resolved', cssClass: 'status-resolved' },
+  { value: 4, label: 'Cancelled', cssClass: 'status-cancelled' },
+]
+
+// ─── Escalation helpers ──────────────────────────────────────────────────────
+
+/**
+ * Fetch the active escalation (open or in-progress) for an account.
+ * Returns the single active escalation record or null.
+ * Business rule: an account can have at most ONE escalation that is open (1) or in-progress (2).
+ */
+export async function getActiveEscalation(msalInstance, accountId) {
+  if (!accountId) return null
+  const filter = `_regardingobjectid_value eq ${accountId} and (slc_status eq 1 or slc_status eq 2)`
+  const data = await dvFetch(
+    msalInstance,
+    `/slc_escalations?$filter=${filter}&$select=activityid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
+  ).catch(() => null)
+  return data?.value?.[0] ?? null
+}
 
 // ─── Token helper ────────────────────────────────────────────────────────────
 export async function getDvToken(msalInstance) {
@@ -182,19 +216,46 @@ function buildParties(typeId, currentUserId, attendees) {
   return parties
 }
 
-export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId }) {
+export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId, escalationStatus, escalationStartDate, linkToEscalationId }) {
   const typeConfig = ACTIVITY_TYPES.find((t) => t.id === type)
   if (!typeConfig) throw new Error(`Unknown activity type: ${type}`)
 
   const dateStr = new Date(date).toISOString()
   const endStr = new Date(new Date(date).getTime() + 30 * 60 * 1000).toISOString()
+
+  // Escalation uses a different payload structure
+  if (type === 'escalation') {
+    // Business rule: max one active (open/in-progress) escalation per account
+    const existing = await getActiveEscalation(msalInstance, accountId)
+    if (existing && (escalationStatus === 1 || escalationStatus === 2)) {
+      throw new Error('This account already has an active escalation. Resolve or cancel it before creating a new one.')
+    }
+    const body = {
+      description: note,
+      subject: 'Account Escalation',
+      slc_status: escalationStatus || 1,
+      slc_startdate: escalationStartDate ? new Date(escalationStartDate).toISOString() : dateStr,
+      'regardingobjectid_account@odata.bind': `/accounts(${accountId})`,
+    }
+    return dvFetch(msalInstance, '/slc_escalations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { Prefer: 'return=representation' },
+    })
+  }
+
   const parties = buildParties(type, currentUserId, attendees)
+
+  // If linking to an escalation, set regardingobjectid to the escalation instead of the account
+  const regardingBind = linkToEscalationId
+    ? { 'regardingobjectid_slc_escalation@odata.bind': `/slc_escalations(${linkToEscalationId})` }
+    : { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
 
   const base = {
     description: note,
     subject: typeConfig.label,
     scheduledend: dateStr,
-    'regardingobjectid_account@odata.bind': `/accounts(${accountId})`,
+    ...regardingBind,
   }
 
   let entity, body
@@ -257,7 +318,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
-const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email' }
+const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation' }
 
 export function getDynamicsUrl(entityType, activityid) {
   const etn = ENTITY_SINGULAR[entityType] || entityType
@@ -278,6 +339,19 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
     `/${entity}?$select=${BASE_SELECT}${filterStr}${expandOrTop}&$orderby=createdon desc`,
   )
   return (data?.value ?? []).map((r) => ({ ...r, _entityType: entity }))
+}
+
+// Escalations have custom columns and no activity parties — fetch with extended select
+const ESCALATION_SELECT = `${BASE_SELECT},slc_startdate,slc_resolveddate,slc_status`
+
+async function fetchEscalations(msalInstance, filterClauses) {
+  const filterStr = filterClauses.length ? `&$filter=${filterClauses.join(' and ')}` : ''
+  const data = await dvFetch(
+    msalInstance,
+    `/slc_escalations?$select=${ESCALATION_SELECT}${filterStr}&$orderby=createdon desc`,
+    { headers: { Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue",odata.maxpagesize=100' } },
+  )
+  return (data?.value ?? []).map((r) => ({ ...r, _entityType: 'slc_escalations' }))
 }
 
 /**
@@ -311,6 +385,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   const wantCalls = !typeConfig || typeConfig.entity === 'phonecalls'
   const wantAppts = !typeConfig || typeConfig.entity === 'appointments'
   const wantEmails = !typeConfig || typeConfig.entity === 'emails'
+  const wantEscalations = !typeConfig || typeConfig.entity === 'slc_escalations'
 
   if (wantCalls) {
     const clauses = [...base]
@@ -330,6 +405,11 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
     fetches.push(fetchFiltered(msalInstance, 'emails', 'email', clauses))
   }
 
+  if (wantEscalations) {
+    const clauses = [...base]
+    fetches.push(fetchEscalations(msalInstance, clauses))
+  }
+
   const results = await Promise.all(fetches)
   const all = results.flat()
   all.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
@@ -338,6 +418,9 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
 
 // Normalise activity party records into a flat attendee list
 export function extractAttendees(note) {
+  // Escalations have no activity parties
+  if (note._entityType === 'slc_escalations') return []
+
   let key, skipMasks
   if (note._entityType === 'phonecalls') {
     key = 'phonecall_activity_parties'
@@ -371,9 +454,11 @@ export function extractAttendees(note) {
 export function noteTypeLabel(note) {
   if (note._entityType === 'phonecalls') return 'Phone Call'
   if (note._entityType === 'emails') return 'Email'
+  if (note._entityType === 'slc_escalations') return 'Escalation'
   return 'Appointment'
 }
 
 export function noteDate(note) {
+  if (note._entityType === 'slc_escalations') return note.slc_startdate || note.createdon
   return note.scheduledstart || note.scheduledend || note.actualend || note.createdon
 }
