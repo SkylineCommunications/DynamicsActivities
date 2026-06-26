@@ -1,0 +1,89 @@
+# Catalog-based deployment flow
+# - Trigger on merged PRs into main
+# - Build frontend + DataMiner package
+# - Publish to DataMiner Catalog (DMA can auto-update from Catalog)
+
+name: Build and Publish DMAPP to Catalog on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish_to_catalog:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate DataMiner Secret Token
+        run: |
+          if [[ -z "${{ secrets.DATAMINER_TOKEN }}" ]]; then
+            echo "Error: DATAMINER_TOKEN is not set. Catalog publish not possible."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Build web app (dist-dataminer)
+        run: npm run build
+        env:
+          VITE_CLIENT_ID: ${{ secrets.VITE_CLIENT_ID }}
+          VITE_TENANT_ID: ${{ secrets.VITE_TENANT_ID }}
+          VITE_DATAVERSE_URL: ${{ secrets.VITE_DATAVERSE_URL }}
+          VITE_REDIRECT_URI: ${{ vars.VITE_REDIRECT_URI }}
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Mono
+        run: |
+          sudo apt update
+          sudo apt install -y mono-complete
+
+      - name: Publish prerelease to Catalog
+        if: github.ref_type != 'tag'
+        env:
+          DATAMINER_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
+        shell: pwsh
+        run: |
+          dotnet publish "DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj" `
+            -p:Version="0.0.${{ github.run_number }}" `
+            -p:VersionComment="Automated publish after PR merge #${{ github.event.pull_request.number || 0 }}" `
+            -p:CatalogPublishKeyName="DATAMINER_TOKEN" `
+            -p:CatalogDefaultDownloadKeyName="DATAMINER_TOKEN" `
+            -c Release
+
+      - name: Publish release to Catalog from tag
+        if: github.ref_type == 'tag'
+        env:
+          DATAMINER_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
+        shell: pwsh
+        run: |
+          dotnet publish "DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj" `
+            -p:Version="${{ github.ref_name }}" `
+            -p:VersionComment="Release ${{ github.ref_name }}" `
+            -p:CatalogPublishKeyName="DATAMINER_TOKEN" `
+            -p:CatalogDefaultDownloadKeyName="DATAMINER_TOKEN" `
+            -c Release
+
+      - name: Summary
+        run: |
+          echo "Package published to DataMiner Catalog."
+          echo "Ensure the target DMA is configured to install/update from Catalog for item ID b6dc92d4-401e-42fd-b7bd-87d1ff562420."
