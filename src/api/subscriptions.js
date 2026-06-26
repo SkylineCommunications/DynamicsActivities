@@ -53,7 +53,13 @@ export async function deleteSubscription(msalInstance, id) {
   return apiFetch(msalInstance, `/subscriptions/${id}`, { method: 'DELETE' })
 }
 
-/** Fetch read status for a list of activity IDs. Returns array of read activity IDs. */
+/** Send a test email for a subscription to the authenticated user's inbox. */
+export async function sendTestEmail(msalInstance, sub) {
+  return apiFetch(msalInstance, '/test-email', {
+    method: 'POST',
+    body: JSON.stringify(sub),
+  })
+}
 export async function getReadStatus(msalInstance, activityIds) {
   if (!activityIds?.length) return []
   const ids = activityIds.join(',')

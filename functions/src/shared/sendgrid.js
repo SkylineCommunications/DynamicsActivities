@@ -12,6 +12,23 @@ if (SENDGRID_CONFIGURED) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 }
 
+/**
+ * When SENDGRID_TEST_EMAIL is set, ALL outbound emails are redirected to that
+ * address and the original recipient is shown only in the subject prefix.
+ * Set this during local/staging testing to prevent emailing real users.
+ */
+const TEST_EMAIL = process.env.SENDGRID_TEST_EMAIL?.trim() || null
+
+function resolveRecipient(email, name, subject) {
+  if (TEST_EMAIL) {
+    return {
+      to: { email: TEST_EMAIL, name: `[TEST] ${name}` },
+      subject: `[TEST → ${email}] ${subject}`,
+    }
+  }
+  return { to: { email, name }, subject }
+}
+
 const FROM = {
   email: process.env.SENDGRID_FROM_EMAIL,
   name: process.env.SENDGRID_FROM_NAME || 'Skyline Activities',
@@ -130,8 +147,10 @@ export async function sendInstantEmail(toEmail, toName, activities, sub, tokenFo
     console.log(`[sendgrid] No API key — skipping instant email to ${toEmail}. Subject: ${subject}`)
     return
   }
-  await sgMail.send({ to: { email: toEmail, name: toName }, from: FROM, subject, html })
-  console.log(`[sendgrid] Instant email sent to ${toEmail} — ${subject}`)
+  const { to, subject: resolvedSubject } = resolveRecipient(toEmail, toName, subject)
+  if (TEST_EMAIL) console.log(`[sendgrid] TEST MODE — redirecting to ${TEST_EMAIL}`)
+  await sgMail.send({ to, from: FROM, subject: resolvedSubject, html })
+  console.log(`[sendgrid] Instant email sent to ${to.email} — ${resolvedSubject}`)
 }
 
 /**
@@ -167,6 +186,8 @@ export async function sendDigestEmail(toEmail, toName, activities, sub, summaryT
     console.log(`[sendgrid] No API key — skipping digest email to ${toEmail}. Subject: ${subject}`)
     return
   }
-  await sgMail.send({ to: { email: toEmail, name: toName }, from: FROM, subject, html })
-  console.log(`[sendgrid] Digest email sent to ${toEmail} — ${subject}`)
+  const { to, subject: resolvedSubject } = resolveRecipient(toEmail, toName, subject)
+  if (TEST_EMAIL) console.log(`[sendgrid] TEST MODE — redirecting to ${TEST_EMAIL}`)
+  await sgMail.send({ to, from: FROM, subject: resolvedSubject, html })
+  console.log(`[sendgrid] Digest email sent to ${to.email} — ${resolvedSubject}`)
 }

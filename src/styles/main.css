@@ -1804,6 +1804,16 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 .sub-last-sent { font-size: 11px; color: var(--color10); }
 
+.sub-test-ok  { font-size: 11px; color: var(--success); font-weight: 500; }
+.sub-test-err { font-size: 11px; color: var(--error); }
+
+.btn-test {
+  color: var(--focus-color);
+  border-color: var(--color5);
+  background: transparent;
+}
+.btn-test:hover { background: color-mix(in srgb, var(--focus-color) 10%, transparent); border-color: var(--focus-color); }
+
 /* Subscription form */
 .subscription-form {
   background: var(--color2);

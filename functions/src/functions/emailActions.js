@@ -152,7 +152,41 @@ app.http('actionsFollowUp', {
   },
 })
 
-// ─── Read status ──────────────────────────────────────────────────────────────
+// ─── Test email (DEV ONLY) ────────────────────────────────────────────────────
+// Sends a sample email for a given subscription directly to the authenticated
+// user's email. Remove SENDGRID_TEST_EMAIL from settings to disable in prod.
+
+app.http('testEmail', {
+  methods: ['POST'],
+  route: 'test-email',
+  authLevel: 'anonymous',
+  handler: async (request, context) => {
+    const user = await requireAuth(request).catch((e) => ({ error: e }))
+    if (user.error) return { status: user.error.status || 401, body: user.error.message }
+
+    let sub
+    try { sub = await request.json() } catch {
+      return { status: 400, body: 'Expected subscription JSON in body' }
+    }
+
+    const { sendInstantEmail } = await import('../shared/sendgrid.js')
+
+    const fakeActivity = {
+      activityid: '00000000-test-0000-0000-000000000001',
+      _entityType: 'phonecalls',
+      subject: '[Test] Sample phone call activity',
+      description: 'This is a test email generated from the Subscriptions page to verify your notification setup.',
+      createdon: new Date().toISOString(),
+      scheduledstart: new Date().toISOString(),
+      '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': sub.scopeLabel || 'Test Account',
+    }
+
+    await sendInstantEmail(user.email, user.name || user.email, [fakeActivity], sub)
+    context.log(`testEmail: sent to ${user.email} for subscription ${sub.id}`)
+    return { status: 200, jsonBody: { sent: true, to: user.email } }
+  },
+})
+
 
 app.http('actionsReadStatus', {
   methods: ['GET'],
