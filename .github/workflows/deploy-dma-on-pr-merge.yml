@@ -88,23 +88,21 @@ jobs:
           $output = dataminer-catalog-upload --path-to-artifact "${{ steps.find_dmapp.outputs.dmapp_path }}" 2>&1
           $output | ForEach-Object { Write-Host $_ }
 
-          $artifactMatch = [regex]::Match(($output -join "`n"), '"artifactId":"([0-9a-fA-F-]{36})"')
+          $artifactMatch = [regex]::Match(($output -join "`n"), "([a-zA-Z0-9]+/[0-9a-fA-F-]{36})")
           if (-not $artifactMatch.Success) {
             throw "Could not determine artifact-id from catalog-upload output."
           }
 
           $artifactId = $artifactMatch.Groups[1].Value
-          "artifact_id=$artifactId" >> $env:GITHUB_OUTPUT
+          "id=$artifactId" >> $env:GITHUB_OUTPUT
           Write-Host "Captured artifact-id: $artifactId"
 
       - name: Deploy volatile artifact to DMA
         shell: pwsh
-        env:
-          DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
-          DATAMINER_DEPLOY_SYSTEM_TOKEN: ${{ secrets.DATAMINER_SYSTEM_TOKEN }}
         run: |
-          Write-Host "Deploying with CoordinationId: ${{ secrets.DATAMINER_SYSTEM_TOKEN }}"
-          dataminer-package-deploy from-volatile --artifact-id "${{ steps.upload_volatile.outputs.artifact_id }}" --dm-system-token "${{ secrets.DATAMINER_SYSTEM_TOKEN }}"
+          Write-Host "Deploying artifact: ${{ steps.upload_volatile.outputs.id }}"
+          dataminer-package-deploy from-volatile --artifact-id "${{ steps.upload_volatile.outputs.id }}" --dm-system-token "${{ secrets.DATAMINER_SYSTEM_TOKEN }}"
+          Write-Host "Deployment complete."
 
       - name: Summary
         run: |
