@@ -11,6 +11,7 @@
 import { app } from '@azure/functions'
 import crypto from 'crypto'
 import { requireAuth } from '../shared/auth.js'
+import { withCors, preflight } from '../shared/cors.js'
 import { markRead, getReadStatus, createFollowUp } from '../shared/tables.js'
 
 const SPA_BASE = (process.env.SPA_BASE_URL || '').replace(/\/$/, '')
@@ -63,13 +64,18 @@ ${showReturnLink ? `<a href="${SPA_BASE}">Return to Activities →</a>` : ''}
 </div></body></html>`
 }
 
+// ─── CORS preflight ───────────────────────────────────────────────────────────
+preflight('actionsMarkReadPreflight', 'actions/mark-read')
+preflight('actionsFollowUpPreflight', 'actions/follow-up')
+preflight('actionsReadStatusPreflight', 'actions/read-status')
+
 // ─── Mark as read ─────────────────────────────────────────────────────────────
 
 app.http('actionsMarkRead', {
   methods: ['GET', 'POST'],
   route: 'actions/mark-read',
   authLevel: 'anonymous',
-  handler: async (request, context) => {
+  handler: withCors(async (request, context) => {
     const url = new URL(request.url)
     const tokenParam = url.searchParams.get('token')
     const idParam = url.searchParams.get('id')
@@ -117,7 +123,7 @@ app.http('actionsFollowUp', {
   methods: ['POST'],
   route: 'actions/follow-up',
   authLevel: 'anonymous',
-  handler: async (request, context) => {
+  handler: withCors(async (request, context) => {
     const url = new URL(request.url)
     const tokenParam = url.searchParams.get('token')
 
@@ -157,7 +163,7 @@ app.http('actionsReadStatus', {
   methods: ['GET'],
   route: 'actions/read-status',
   authLevel: 'anonymous',
-  handler: async (request) => {
+  handler: withCors(async (request) => {
     const user = await requireAuth(request).catch((e) => ({ error: e }))
     if (user.error) return { status: user.error.status || 401, body: user.error.message }
 
@@ -167,6 +173,6 @@ app.http('actionsReadStatus', {
 
     const readIds = await getReadStatus(user.userId, ids)
     return { status: 200, jsonBody: readIds }
-  },
+  }),
 })
 
