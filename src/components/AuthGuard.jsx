@@ -69,11 +69,11 @@ export default function AuthGuard({ children }) {
     return (
       <div className="auth-screen">
         <div className="auth-card">
-          <div className="auth-icon"><span className="icon icon-lg">lock</span></div>
+          <div className="auth-icon"><span className="icon icon-lg" aria-hidden="true">lock</span></div>
           <h2>Sign in required</h2>
           <p>Sign in with your Microsoft account to continue.</p>
           <button className="btn-primary" onClick={handleLogin}>
-            <span className="icon icon-sm">login</span> Sign in
+            <span className="icon icon-sm" aria-hidden="true">login</span> Sign in
           </button>
         </div>
       </div>
