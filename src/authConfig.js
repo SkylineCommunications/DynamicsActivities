@@ -20,7 +20,7 @@ export const msalConfig = {
 
 // Scopes for initial login (Graph)
 export const loginRequest = {
-  scopes: ['User.Read', 'Calendars.Read'],
+  scopes: ['User.Read', 'Calendars.Read', 'Mail.Read', 'Mail.Read.Shared'],
 }
 
 // Scopes for Dataverse token
@@ -30,5 +30,9 @@ export const dataverseRequest = {
 
 // Scopes for Graph calendar
 export const graphRequest = {
-  scopes: ['https://graph.microsoft.com/Calendars.Read'],
+  scopes: [
+    'https://graph.microsoft.com/Calendars.Read',
+    'https://graph.microsoft.com/Mail.Read',
+    'https://graph.microsoft.com/Mail.Read.Shared',
+  ],
 }
