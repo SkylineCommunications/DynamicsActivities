@@ -197,9 +197,9 @@ Both apps live in subscription `327a6575-94e4-4d02-bb5d-9a88d68f58b9`, resource 
 
 Storage accounts: `dmactstordev7gqnlq` (dev) · `dmactstorprod7gqnlq` (prod)
 
-Secrets are stored in Key Vault:
-- Dev: `kv-dynamics-748` (subscription `a476a434-...`)
-- Prod: `kv-dynamics-114` (subscription `327a6575-...`)
+Secrets are stored in Key Vault (both in subscription `327a6575-...`):
+- Dev: `kv-dynamics-748`
+- Prod: `kv-dynamics-114`
 
 ---
 
@@ -211,12 +211,34 @@ The `.github/workflows/deploy-functions.yml` workflow deploys automatically:
 - **On push to `main`** when files under `functions/` change → deploys to **prod**
 - **Manual dispatch** → choose `dev` or `prod`
 
-Required GitHub Actions setup (Settings → Environments):
+#### GitHub Actions setup status
 
-| Environment | Secret: `AZURE_CREDENTIALS` | Variable: `FUNC_APP_NAME` |
+| What | Status | Notes |
 |---|---|---|
-| `dev` | Service principal JSON for subscription `327a6575-...` | `dmact-func-dev-7gqnlq` |
-| `prod` | Service principal JSON for subscription `327a6575-...` | `dmact-func-prod-7gqnlq` |
+| Environment `prod` | ✅ created | — |
+| Environment `dev` | ✅ created | — |
+| `FUNC_APP_NAME` var (prod) | ✅ set | `dmact-func-prod-7gqnlq` |
+| `FUNC_APP_NAME` var (dev) | ✅ set | `dmact-func-dev-7gqnlq` |
+| `VITE_FUNCTIONS_BASE_URL` repo var | ✅ set | `https://dmact-func-prod-7gqnlq.azurewebsites.net/api` |
+| `AZURE_CREDENTIALS` secret (prod) | ❌ **TODO** | See below |
+| `AZURE_CREDENTIALS` secret (dev) | ❌ **TODO** | See below |
+
+#### ⚠️ TODO: Add AZURE_CREDENTIALS to both environments
+
+Create a service principal and add its JSON as `AZURE_CREDENTIALS` in **both** GitHub environments (Settings → Environments → `prod` / `dev` → Secrets):
+
+```powershell
+az account set --subscription 327a6575-94e4-4d02-bb5d-9a88d68f58b9
+
+az ad sp create-for-rbac `
+  --name "github-dmact-deploy" `
+  --role contributor `
+  --scopes /subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities `
+  --sdk-auth
+```
+
+Copy the full JSON output and add it as secret `AZURE_CREDENTIALS` on both the `prod` and `dev` environments at:
+[https://github.com/SkylineCommunications/DynamicsActivities/settings/environments](https://github.com/SkylineCommunications/DynamicsActivities/settings/environments)
 
 ### Via Azure CLI
 
