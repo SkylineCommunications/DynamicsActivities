@@ -96,10 +96,13 @@ jobs:
         env:
           DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
         run: |
-          Write-Host "Uploading DynamicsActivitiesPackage v1.0.0 to Catalog..."
-          $uploadOutput = dataminer-catalog-upload --path-to-artifact "${{ steps.find_dmapp.outputs.dmapp_path }}" 2>&1
+          Write-Host "Uploading DynamicsActivitiesPackage v${{ steps.version.outputs.number }} to Catalog with registration..."
+          $uploadOutput = dataminer-catalog-upload with-registration `
+            --path-to-artifact "${{ steps.find_dmapp.outputs.dmapp_path }}" `
+            --artifact-version "${{ steps.version.outputs.number }}" `
+            --dm-catalog-token "$env:DATAMINER_CATALOG_TOKEN" 2>&1
           $uploadOutput | ForEach-Object { Write-Host $_ }
-          Write-Host "Package uploaded to Catalog."
+          Write-Host "Package registered and uploaded to Catalog."
 
       - name: Deploy package from Catalog
         shell: pwsh
