@@ -2,31 +2,98 @@
 
 Azure Functions backend for the DynamicsActivities notification and subscription system.
 
-## Prerequisites
+---
 
-- Node.js 20+
-- [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local)
-- [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite) (local Azure Storage emulator)
-- An Azure subscription with:
-  - Azure Function App (Node 20, Consumption or Premium)
-  - Azure Storage Account
-  - SendGrid API key
-  - Azure OpenAI resource with a GPT-4o deployment
+## Local Testing Dependencies
+
+### 1. Node.js 20 (exact — v18 or v20 only)
+
+Azure Functions Core Tools v4 is **incompatible with Node 24+**. You must use Node 18 or 20.
+
+Use [fnm](https://github.com/Schniz/fnm) to manage versions on Windows:
+
+```powershell
+winget install Schniz.fnm
+
+# Add to your PowerShell profile ($PROFILE):
+fnm env --use-on-cd | Out-String | Invoke-Expression
+
+# Then reload and install Node 20:
+. $PROFILE
+fnm install 20
+fnm use 20
+node --version   # must show v20.x
+```
+
+### 2. Azure Functions Core Tools v4
+
+```powershell
+npm install -g azure-functions-core-tools@4 --unsafe-perm true
+func --version   # must show 4.x
+```
+
+### 3. Azurite (local Azure Storage emulator)
+
+Required for timer triggers (digest functions) and Azure Table Storage (subscriptions, read receipts, etc.).
+
+```powershell
+npm install -g azurite
+
+# Start before running func start:
+azurite --silent --location C:\azurite
+```
+
+Or use the [VS Code Azurite extension](https://marketplace.visualstudio.com/items?itemName=Azurite.azurite) and click **Start Azurite** in the status bar.
+
+### 4. `local.settings.json`
+
+```powershell
+cd functions
+copy local.settings.json.example local.settings.json
+```
+
+Fill in all `<placeholder>` values — see the [Environment Variables](#environment-variables) table below.
+`AzureWebJobsStorage` and `AZURE_STORAGE_CONNECTION_STRING` should stay as `UseDevelopmentStorage=true` (Azurite handles these).
+
+> ⚠️ **Never commit `local.settings.json`** — it contains secrets and is already in `.gitignore`.
 
 ---
 
-## Local Setup
+## Local Setup (full sequence)
 
-```bash
+```powershell
+# 1. Switch to Node 20
+fnm use 20
+
+# 2. Start Azurite in a separate terminal
+azurite --silent --location C:\azurite
+
+# 3. Install dependencies and start functions
 cd functions
-cp local.settings.json.example local.settings.json
-# Fill in all placeholder values in local.settings.json
-
 npm install
 func start
 ```
 
+Expected output — all HTTP endpoints listed + timer triggers registered:
+```
+Functions:
+    subscriptionsGet:    [GET]    http://localhost:7071/api/subscriptions
+    subscriptionsPost:   [POST]   http://localhost:7071/api/subscriptions
+    subscriptionsPut:    [PUT]    http://localhost:7071/api/subscriptions/{id}
+    subscriptionsDelete: [DELETE] http://localhost:7071/api/subscriptions/{id}
+    notifyWebhook:       [POST]   http://localhost:7071/api/notify
+    testEmail:           [POST]   http://localhost:7071/api/test-email
+    actionsMarkRead:     [GET,POST] http://localhost:7071/api/actions/mark-read
+    actionsReadStatus:   [GET]    http://localhost:7071/api/actions/read-status
+    digestDaily:         timerTrigger
+    digestWeekly:        timerTrigger
+    digestMonthly:       timerTrigger
+```
+
+The frontend dev server (`npm run dev` from the repo root) points to `http://localhost:7071/api` via `VITE_FUNCTIONS_BASE_URL` in `.env`.
+
 ---
+
 
 ## Environment Variables
 
