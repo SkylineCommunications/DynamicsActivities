@@ -297,11 +297,12 @@ export default function NotesList({ refreshKey, initialAccount }) {
           <div className="filter-field">
             <label className="filter-label">Type</label>
             <div className="filter-type-btns">
-              <button
-                type="button"
-                className={`filter-type-btn ${selectedTypes.size === 0 ? 'active' : ''}`}
-                onClick={() => setSelectedTypes(new Set())}
-              >
+<button
+  type="button"
+  className={`filter-type-btn ${selectedTypes.size === 0 ? 'active' : ''}`}
+  aria-pressed={selectedTypes.size === 0}
+  onClick={() => setSelectedTypes(new Set())}
+>
                 All
               </button>
               {ACTIVITY_TYPES.map((t) => (
