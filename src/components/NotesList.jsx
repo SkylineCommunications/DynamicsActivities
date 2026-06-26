@@ -22,9 +22,11 @@ const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cs
 TYPE_ICONS['Call'] ??= 'contact_phone'
 TYPE_ICONS['Meeting'] ??= 'calendar_today'
 TYPE_ICONS['Escalation'] ??= 'warning'
+TYPE_ICONS['Lead'] ??= 'trending_up'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 TYPE_CLASSES['Escalation'] ??= 'type-escalation'
+TYPE_CLASSES['Lead'] ??= 'type-lead'
 
 const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
 
@@ -41,11 +43,14 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
   const attendees = extractAttendees(note)
-  const accountName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
+  const accountName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
+    || ''
   const rawPreview = note.notetext || note.description || ''
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const recordId = note.activityid || note.annotationid
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
+  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads'
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -87,7 +92,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
               Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
             </a>
           )}
-          {confirmDelete ? (
+          {!isReadOnly && (confirmDelete ? (
             <>
               <button
                 type="button"
@@ -114,7 +119,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
             >
               <span className="icon icon-sm">delete</span>
             </button>
-          )}
+          ))}
         </div>
       </div>
 
@@ -142,6 +147,18 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
           )}
           {note.slc_resolveddate && (
             <span className="escalation-resolved">Resolved: {fmtDate(note.slc_resolveddate)}</span>
+          )}
+        </div>
+      )}
+
+      {/* Lead status info */}
+      {note._entityType === 'leads' && (
+        <div className="note-lead-status">
+          <span className={`lead-badge ${note.statecode === 0 ? 'lead-open' : note.statecode === 1 ? 'lead-qualified' : 'lead-disqualified'}`}>
+            {note['statuscode@OData.Community.Display.V1.FormattedValue'] || (note.statecode === 0 ? 'Open' : note.statecode === 1 ? 'Qualified' : 'Disqualified')}
+          </span>
+          {note.schedulefollowup_prospect && (
+            <span className="lead-followup">Follow-up: {fmtDate(note.schedulefollowup_prospect)}</span>
           )}
         </div>
       )}

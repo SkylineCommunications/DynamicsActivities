@@ -766,6 +766,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .type-email { background: color-mix(in srgb, var(--palette-color3) 20%, transparent); color: var(--palette-color3); }
 .type-escalation { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
 .type-note { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
+.type-lead { background: color-mix(in srgb, var(--palette-color1) 20%, transparent); color: var(--palette-color1); }
 
 .note-card-header-right {
   display: flex;
@@ -899,6 +900,32 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .escalation-badge.status-resolved { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
 
 .escalation-start, .escalation-resolved {
+  font-size: 12px;
+  color: var(--color10);
+}
+
+/* ─── Lead status in browse ────────────────────────────────────────────────── */
+.note-lead-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lead-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lead-badge.lead-open { background: color-mix(in srgb, var(--palette-color1) 15%, transparent); color: var(--palette-color1); }
+.lead-badge.lead-qualified { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.lead-badge.lead-disqualified { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
+
+.lead-followup {
   font-size: 12px;
   color: var(--color10);
 }

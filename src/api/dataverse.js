@@ -579,7 +579,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
-const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation', annotations: 'annotation' }
+const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation', annotations: 'annotation', leads: 'lead' }
 
 export function getDynamicsUrl(entityType, activityid) {
   const etn = ENTITY_SINGULAR[entityType] || entityType
@@ -636,6 +636,23 @@ async function fetchEscalations(msalInstance, filterClauses) {
     { headers: { Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue",odata.maxpagesize=100' } },
   )
   return (data?.value ?? []).map((r) => ({ ...r, _entityType: 'slc_escalations' }))
+}
+
+// Leads (BD)
+const LEAD_SELECT = 'leadid,subject,description,statuscode,statecode,createdon,_parentaccountid_value,schedulefollowup_prospect'
+
+async function fetchLeads(msalInstance, filterClauses) {
+  const filterStr = filterClauses.length ? `&$filter=${filterClauses.join(' and ')}` : ''
+  const data = await dvFetch(
+    msalInstance,
+    `/leads?$select=${LEAD_SELECT}${filterStr}&$orderby=createdon desc&$top=50`,
+    { headers: { Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"' } },
+  ).catch(() => ({ value: [] }))
+  return (data?.value ?? []).map((r) => ({
+    ...r,
+    activityid: r.leadid,
+    _entityType: 'leads',
+  }))
 }
 
 // Annotations (notes)
@@ -696,6 +713,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   const wantAppts = !typeConfig || typeConfig.entity === 'appointments'
   const wantEmails = !typeConfig || typeConfig.entity === 'emails'
   const wantEscalations = !typeConfig || typeConfig.entity === 'slc_escalations'
+  const wantLeads = !typeConfig || typeConfig.entity === 'leads'
   const wantAnnotations = !typeConfig || typeConfig.entity === 'annotations'
 
   if (wantCalls) {
@@ -719,6 +737,12 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   if (wantEscalations) {
     const clauses = [...escalationBase]
     fetches.push(fetchEscalations(msalInstance, clauses))
+  }
+
+  if (wantLeads && accountId) {
+    const leadClauses = [`_parentaccountid_value eq ${accountId}`]
+    addCreatedOnDateFilters(leadClauses, dateFrom, dateTo)
+    fetches.push(fetchLeads(msalInstance, leadClauses))
   }
 
   if (wantAnnotations) {
@@ -774,11 +798,13 @@ export function noteTypeLabel(note) {
   if (note._entityType === 'phonecalls') return 'Phone Call'
   if (note._entityType === 'emails') return 'Email'
   if (note._entityType === 'slc_escalations') return 'Escalation'
+  if (note._entityType === 'leads') return 'Lead'
   if (note._entityType === 'annotations') return 'Note'
   return 'Appointment'
 }
 
 export function noteDate(note) {
   if (note._entityType === 'slc_escalations') return note.slc_startdate || note.createdon
+  if (note._entityType === 'leads') return note.createdon
   return note.scheduledstart || note.scheduledend || note.actualend || note.createdon
 }
