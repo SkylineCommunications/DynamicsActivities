@@ -12,20 +12,7 @@ if (SENDGRID_CONFIGURED) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 }
 
-/**
- * When SENDGRID_TEST_EMAIL is set, ALL outbound emails are redirected to that
- * address and the original recipient is shown only in the subject prefix.
- * Set this during local/staging testing to prevent emailing real users.
- */
-const TEST_EMAIL = process.env.SENDGRID_TEST_EMAIL?.trim() || null
-
 function resolveRecipient(email, name, subject) {
-  if (TEST_EMAIL) {
-    return {
-      to: { email: TEST_EMAIL, name: `[TEST] ${name}` },
-      subject: `[TEST → ${email}] ${subject}`,
-    }
-  }
   return { to: { email, name }, subject }
 }
 

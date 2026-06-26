@@ -14,7 +14,6 @@
     "SENDGRID_API_KEY": "<sendgrid-api-key>",
     "SENDGRID_FROM_EMAIL": "notifications@example.com",
     "SENDGRID_FROM_NAME": "Skyline Activities",
-    "SENDGRID_TEST_EMAIL": "<your-email — all emails redirect here during local dev>",
 
     "AZURE_OPENAI_ENDPOINT": "https://<resource>.openai.azure.com/",
     "AZURE_OPENAI_KEY": "<azure-openai-key>",

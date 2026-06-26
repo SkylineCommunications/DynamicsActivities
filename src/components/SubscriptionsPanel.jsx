@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { getSubscriptions, deleteSubscription, sendTestEmail } from '../api/subscriptions'
+import { getSubscriptions, deleteSubscription } from '../api/subscriptions'
 import SubscriptionForm from './SubscriptionForm'
 
 const FREQ_LABELS = {
@@ -25,30 +25,14 @@ function fmtDate(d) {
   })
 }
 
-function SubscriptionCard({ sub, onEdit, onDelete, onTest }) {
+function SubscriptionCard({ sub, onEdit, onDelete }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState(null)
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return }
     setDeleting(true)
     await onDelete(sub.id)
-  }
-
-  async function handleTest() {
-    setTesting(true)
-    setTestResult(null)
-    try {
-      await onTest(sub)
-      setTestResult('sent')
-    } catch (e) {
-      setTestResult('error: ' + e.message)
-    } finally {
-      setTesting(false)
-      setTimeout(() => setTestResult(null), 5000)
-    }
   }
 
   return (
@@ -80,15 +64,6 @@ function SubscriptionCard({ sub, onEdit, onDelete, onTest }) {
             </>
           ) : (
             <>
-              <button
-                type="button"
-                className="btn-card-action btn-test"
-                onClick={handleTest}
-                disabled={testing}
-                title="Send a test email to your inbox"
-              >
-                {testing ? '…' : '✉ Test'}
-              </button>
               <button type="button" className="btn-card-action btn-open" onClick={() => onEdit(sub)}>
                 Edit
               </button>
@@ -102,11 +77,6 @@ function SubscriptionCard({ sub, onEdit, onDelete, onTest }) {
       <div className="sub-card-meta">
         <span className="sub-freq-badge">{FREQ_LABELS[sub.frequency] ?? sub.frequency}</span>
         <span className="sub-last-sent">Last sent: {fmtDate(sub.lastSentAt)}</span>
-        {testResult && (
-          <span className={testResult === 'sent' ? 'sub-test-ok' : 'sub-test-err'}>
-            {testResult === 'sent' ? '✓ Test email sent' : testResult}
-          </span>
-        )}
       </div>
     </div>
   )
@@ -134,10 +104,6 @@ export default function SubscriptionsPanel() {
   async function handleDelete(id) {
     await deleteSubscription(instance, id).catch((e) => setError(e.message))
     setSubs((prev) => prev.filter((s) => s.id !== id))
-  }
-
-  async function handleTest(sub) {
-    await sendTestEmail(instance, sub)
   }
 
   function handleEdit(sub) {
@@ -210,7 +176,6 @@ export default function SubscriptionsPanel() {
               sub={sub}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              onTest={handleTest}
             />
           ))}
         </div>

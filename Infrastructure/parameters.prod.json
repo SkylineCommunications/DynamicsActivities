@@ -20,7 +20,7 @@
     "dataverseClientSecret": {
       "reference": {
         "keyVault": {
-          "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/YOUR_RG/providers/Microsoft.KeyVault/vaults/YOUR_KEYVAULT"
+          "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-114"
         },
         "secretName": "dataverse-client-secret"
       }
@@ -28,7 +28,7 @@
     "sendGridApiKey": {
       "reference": {
         "keyVault": {
-          "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/YOUR_RG/providers/Microsoft.KeyVault/vaults/YOUR_KEYVAULT"
+          "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-114"
         },
         "secretName": "sendgrid-api-key"
       }
@@ -36,7 +36,7 @@
     "openaiApiKey": {
       "reference": {
         "keyVault": {
-          "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/YOUR_RG/providers/Microsoft.KeyVault/vaults/YOUR_KEYVAULT"
+          "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-114"
         },
         "secretName": "openai-api-key"
       }
@@ -45,7 +45,7 @@
       "value": "5f175691-8d1c-4932-b7c8-ce990839ac40"
     },
     "functionClientId": {
-      "value": "YOUR_FUNCTION_CLIENT_ID"
+      "value": "f7274be0-4d28-4b1b-8691-6e2da803ba9e"
     },
     "corsOrigins": {
       "value": "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/"
