@@ -505,6 +505,70 @@ export async function createInboxEmailActivity(
   }).then(() => created)
 }
 
+export async function createInboxAppointmentActivity(
+  msalInstance,
+  { event, regardingType, regardingId, contactsByEmail = {} },
+) {
+  if (!event) throw new Error('Calendar event is required')
+  if (!regardingType || !regardingId) throw new Error('A Dynamics link target is required')
+
+  const bindName = `regardingobjectid_${regardingType}@odata.bind`
+  const entityPlural = {
+    account: 'accounts',
+    opportunity: 'opportunities',
+    lead: 'leads',
+  }[regardingType]
+  if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
+
+  const attendees = event.attendees ?? []
+  const parties = []
+
+  if (event.organizer?.email) {
+    const organizerEmail = event.organizer.email.toLowerCase()
+    const organizerContact = contactsByEmail[organizerEmail]
+    if (organizerContact) {
+      parties.push({ participationtypemask: 7, 'partyid_contact@odata.bind': `/contacts(${organizerContact.contactid})` })
+    } else {
+      parties.push({ participationtypemask: 7, addressused: event.organizer.email })
+    }
+  }
+
+  for (const attendee of attendees) {
+    const attendeeEmail = (attendee.email || '').toLowerCase()
+    if (!attendeeEmail) continue
+    const contact = contactsByEmail[attendeeEmail]
+    if (contact) {
+      parties.push({ participationtypemask: 5, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
+    } else {
+      parties.push({ participationtypemask: 5, addressused: attendee.email })
+    }
+  }
+
+  const start = event.start ? new Date(event.start).toISOString() : new Date().toISOString()
+  const end = event.end
+    ? new Date(event.end).toISOString()
+    : new Date(new Date(start).getTime() + 30 * 60 * 1000).toISOString()
+
+  const body = {
+    subject: event.subject || '(No subject)',
+    description: [
+      event.bodyPreview,
+      `Imported from calendar${event.start ? ` on ${new Date(event.start).toLocaleString()}` : ''}`,
+      event.location ? `Location: ${event.location}` : '',
+    ].filter(Boolean).join('\n\n'),
+    scheduledstart: start,
+    scheduledend: end,
+    [bindName]: `/${entityPlural}(${regardingId})`,
+    appointment_activity_parties: parties,
+  }
+
+  return dvFetch(msalInstance, '/appointments', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { Prefer: 'return=representation' },
+  })
+}
+
 /**
  * Given an array of internetMessageId strings, returns a Set of those that
  * already exist as email activities in Dataverse.

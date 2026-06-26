@@ -286,6 +286,10 @@ body {
   margin: 0 auto;
 }
 
+.form-card:has(.inbox-container-embedded) {
+  max-width: 1200px;
+}
+
 .form-card form { display: flex; flex-direction: column; gap: 12px; }
 
 /* ─── Activity type selector ─────────────────────────────────────────────────── */
@@ -323,6 +327,68 @@ body {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.email-mode-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.appointment-import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  background: var(--clr-surface-2);
+}
+
+.appointment-import-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.appointment-import-summary {
+  padding: 10px;
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  background: var(--color1);
+}
+
+.appointment-import-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--clr-text);
+}
+
+.appointment-import-attendees {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.appointment-import-attendee-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  background: var(--color1);
+}
+
+.appointment-import-attendee-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.appointment-import-attendee-email {
+  font-size: var(--fs-xs);
+  color: var(--clr-text-muted);
 }
 
 /* ─── Fields ─────────────────────────────────────────────────────────────────── */
@@ -541,6 +607,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 }
 
 .btn-ghost:hover { background: var(--color4); border-color: var(--focus-color); }
+
+.btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
 
 /* ─── Alerts ─────────────────────────────────────────────────────────────────── */
 .alert {
@@ -1049,7 +1121,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 /* ─── Inbox ──────────────────────────────────────────────────────────────────── */
 /* When the inbox tab is active, app-main cedes padding/scroll to the inbox panes */
-.app-main:has(.inbox-container) {
+.app-main:has(> .inbox-container) {
   padding: 0;
   overflow: hidden;
 }
@@ -1060,6 +1132,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+}
+
+.inbox-container-embedded {
+  height: clamp(620px, 72vh, 840px);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
 }
 
 .inbox-toolbar {

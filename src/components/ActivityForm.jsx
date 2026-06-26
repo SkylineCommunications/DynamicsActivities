@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { searchAccounts, searchContacts, resolveAttendees, createActivity, getActiveEscalation, getAccountLeads, getUserCanManageLeads, ACTIVITY_TYPES } from '../api/dataverse'
+import {
+  searchAccounts,
+  searchContacts,
+  resolveAttendees,
+  createActivity,
+  getActiveEscalation,
+  getAccountLeads,
+  getUserCanManageLeads,
+  ACTIVITY_TYPES,
+} from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
+import CalendarImportTab from './CalendarImportTab'
+import InboxTab from './InboxTab'
 
 const NOTE_LIMIT = 500
 
@@ -24,6 +35,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
   const { instance } = useMsal()
 
   const [type, setType] = useState('phonecall')
+  const [emailMode, setEmailMode] = useState('create')
+  const [appointmentMode, setAppointmentMode] = useState('create')
   const [account, setAccount] = useState(null)
   const [date, setDate] = useState(() => {
     const d = new Date()
@@ -50,6 +63,16 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
       .then(setCanManageLeads)
       .catch(() => setCanManageLeads(false))
   }, [instance, currentUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (type !== 'email') setEmailMode('create')
+  }, [type])
+
+  useEffect(() => {
+    if (type !== 'appointment') {
+      setAppointmentMode('create')
+    }
+  }, [type])
 
   // When account changes, check for active escalation and fetch leads
   useEffect(() => {
@@ -90,8 +113,12 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isNote = type === 'note'
+  const isEmail = type === 'email'
+  const isAppointment = type === 'appointment'
+  const isInboxImportMode = isEmail && emailMode === 'import'
+  const isCalendarImportMode = isAppointment && appointmentMode === 'import'
   const charsLeft = NOTE_LIMIT - note.length
-  const canSubmit = account && note.trim().length > 0 && !submitting
+  const canSubmit = !isInboxImportMode && !isCalendarImportMode && account && note.trim().length > 0 && !submitting
 
   const dateLabel = type === 'appointment' ? 'Start Time' : 'Due Date'
   const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
@@ -173,8 +200,46 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
           ))}
         </div>
 
+        {isEmail && (
+          <div className="email-mode-row">
+            <button
+              type="button"
+              className={`filter-type-btn ${emailMode === 'create' ? 'active' : ''}`}
+              onClick={() => setEmailMode('create')}
+            >
+              Create New
+            </button>
+            <button
+              type="button"
+              className={`filter-type-btn ${emailMode === 'import' ? 'active' : ''}`}
+              onClick={() => setEmailMode('import')}
+            >
+              Import from inbox
+            </button>
+          </div>
+        )}
+
+        {isAppointment && (
+          <div className="email-mode-row">
+            <button
+              type="button"
+              className={`filter-type-btn ${appointmentMode === 'create' ? 'active' : ''}`}
+              onClick={() => setAppointmentMode('create')}
+            >
+              Create New
+            </button>
+            <button
+              type="button"
+              className={`filter-type-btn ${appointmentMode === 'import' ? 'active' : ''}`}
+              onClick={() => setAppointmentMode('import')}
+            >
+              Import from calendar
+            </button>
+          </div>
+        )}
+
         {/* Calendar link — not shown for notes */}
-        {!isNote && (
+        {type === 'phonecall' && !isInboxImportMode && !isCalendarImportMode && (
         <div className="calendar-row">
           <button type="button" className="btn-ghost" onClick={() => setShowCalendar(true)}>
             <span className="icon icon-sm">calendar_today</span> Fill from calendar
@@ -183,6 +248,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         </div>
         )}
 
+        {!isInboxImportMode && !isCalendarImportMode && (
+        <>
         {/* Account (required) */}
         <div className="field">
           <label className="field-label">
@@ -311,6 +378,26 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         <button type="submit" className="btn-primary" disabled={!canSubmit}>
           {submitting ? 'Saving…' : 'Save'}
         </button>
+        </>
+        )}
+
+        {isCalendarImportMode && (
+          <CalendarImportTab
+            compact
+            onImported={() => onNoteCreated?.(null)}
+          />
+        )}
+
+        {isInboxImportMode && (
+          <div className="field">
+            <label className="field-label">Inbox</label>
+            <p className="hint-text">Import your email threads to Dynamics from here.</p>
+            <InboxTab
+              compact
+              onImported={() => onNoteCreated?.(null)}
+            />
+          </div>
+        )}
       </form>
 
       {showCalendar && (
