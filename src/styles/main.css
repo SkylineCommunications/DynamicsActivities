@@ -768,6 +768,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .type-note { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
 .type-lead { background: color-mix(in srgb, var(--palette-color1) 20%, transparent); color: var(--palette-color1); }
 .type-opportunity { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+.type-support { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
 
 .note-card-header-right {
   display: flex;

@@ -79,6 +79,15 @@ export const ACTIVITY_TYPES = [
     cssClass: 'type-opportunity',
     tooltip: 'Sales opportunity (managed in Dynamics)',
   },
+  {
+    id: 'support',
+    label: 'Support',
+    icon: '🛡️',
+    iconLigature: 'support_agent',
+    entity: 'support',
+    cssClass: 'type-support',
+    tooltip: 'Support renewal (managed in Dynamics)',
+  },
 ]
 
 // Escalation status labels (for display in browse only — escalations are managed in Dynamics)
@@ -606,7 +615,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
-const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation', annotations: 'annotation', leads: 'lead', opportunities: 'opportunity' }
+const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation', annotations: 'annotation', leads: 'lead', opportunities: 'opportunity', support: 'opportunity' }
 
 export function getDynamicsUrl(entityType, activityid) {
   const etn = ENTITY_SINGULAR[entityType] || entityType
@@ -683,21 +692,31 @@ async function fetchLeads(msalInstance, filterClauses) {
 }
 
 // Opportunities
-const OPPORTUNITY_SELECT = 'opportunityid,name,description,statuscode,statecode,estimatedvalue,estimatedclosedate,createdon,_parentaccountid_value'
+const OPPORTUNITY_SELECT = 'opportunityid,name,description,statuscode,statecode,estimatedvalue,estimatedclosedate,createdon,_parentaccountid_value,slc_opportunitytype'
 
-async function fetchOpportunities(msalInstance, filterClauses) {
+async function fetchOpportunities(msalInstance, filterClauses, { typeFilter } = {}) {
   const filterStr = filterClauses.length ? `&$filter=${filterClauses.join(' and ')}` : ''
   const data = await dvFetch(
     msalInstance,
     `/opportunities?$select=${OPPORTUNITY_SELECT}${filterStr}&$orderby=createdon desc&$top=50`,
     { headers: { Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"' } },
   ).catch(() => ({ value: [] }))
-  return (data?.value ?? []).map((r) => ({
-    ...r,
-    activityid: r.opportunityid,
-    subject: r.name,
-    _entityType: 'opportunities',
-  }))
+  return (data?.value ?? [])
+    .filter((r) => {
+      const oppType = (r['slc_opportunitytype@OData.Community.Display.V1.FormattedValue'] || '').toLowerCase()
+      if (typeFilter === 'support') return oppType === 'renewal'
+      if (typeFilter === 'opportunity') return oppType !== 'renewal'
+      return true
+    })
+    .map((r) => {
+      const oppType = (r['slc_opportunitytype@OData.Community.Display.V1.FormattedValue'] || '').toLowerCase()
+      return {
+        ...r,
+        activityid: r.opportunityid,
+        subject: r.name,
+        _entityType: oppType === 'renewal' ? 'support' : 'opportunities',
+      }
+    })
 }
 
 // Annotations (notes)
@@ -746,6 +765,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   const wantEscalations = !typeConfig || typeConfig.entity === 'slc_escalations'
   const wantLeads = !typeConfig || typeConfig.entity === 'leads'
   const wantOpportunities = !typeConfig || typeConfig.entity === 'opportunities'
+  const wantSupport = !typeConfig || typeConfig.entity === 'support'
   const wantAnnotations = !typeConfig || typeConfig.entity === 'annotations'
 
   // Only fetch related entity IDs when we need them (activities, escalations, annotations).
@@ -798,10 +818,14 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
     fetches.push(fetchLeads(msalInstance, leadClauses))
   }
 
-  if (wantOpportunities && accountId) {
+  if ((wantOpportunities || wantSupport) && accountId) {
     const oppClauses = [`_parentaccountid_value eq ${accountId}`]
     addCreatedOnDateFilters(oppClauses, dateFrom, dateTo)
-    fetches.push(fetchOpportunities(msalInstance, oppClauses))
+    // If filtering to a specific type, pass the typeFilter; otherwise fetch all
+    const typeFilter = wantOpportunities && !wantSupport ? 'opportunity'
+      : !wantOpportunities && wantSupport ? 'support'
+      : undefined
+    fetches.push(fetchOpportunities(msalInstance, oppClauses, { typeFilter }))
   }
 
   if (wantAnnotations) {
@@ -859,6 +883,7 @@ export function noteTypeLabel(note) {
   if (note._entityType === 'slc_escalations') return 'Escalation'
   if (note._entityType === 'leads') return 'Lead'
   if (note._entityType === 'opportunities') return 'Opportunity'
+  if (note._entityType === 'support') return 'Support'
   if (note._entityType === 'annotations') return 'Note'
   return 'Appointment'
 }
@@ -866,6 +891,6 @@ export function noteTypeLabel(note) {
 export function noteDate(note) {
   if (note._entityType === 'slc_escalations') return note.slc_startdate || note.createdon
   if (note._entityType === 'leads') return note.createdon
-  if (note._entityType === 'opportunities') return note.createdon
+  if (note._entityType === 'opportunities' || note._entityType === 'support') return note.createdon
   return note.scheduledstart || note.scheduledend || note.actualend || note.createdon
 }

@@ -46,7 +46,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const recordId = note.activityid || note.annotationid
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
-  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities'
+  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities' || note._entityType === 'support'
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -160,7 +160,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
       )}
 
       {/* Opportunity status info */}
-      {note._entityType === 'opportunities' && (
+      {(note._entityType === 'opportunities' || note._entityType === 'support') && (
         <div className="note-opportunity-status">
           <span className={`opp-badge ${note.statecode === 0 ? 'opp-open' : note.statecode === 1 ? 'opp-won' : 'opp-lost'}`}>
             {note['statuscode@OData.Community.Display.V1.FormattedValue'] || (note.statecode === 0 ? 'Open' : note.statecode === 1 ? 'Won' : 'Lost')}
