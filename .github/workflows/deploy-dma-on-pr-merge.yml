@@ -101,9 +101,10 @@ jobs:
         shell: pwsh
         env:
           DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
-          DATAMINER_SYSTEM_TOKEN: ${{ secrets.DATAMINER_SYSTEM_TOKEN }}
+          DATAMINER_DEPLOY_SYSTEM_TOKEN: ${{ secrets.DATAMINER_SYSTEM_TOKEN }}
         run: |
-          dataminer-package-deploy from-volatile --artifact-id "${{ steps.upload_volatile.outputs.artifact_id }}" --dm-system-token "$env:DATAMINER_SYSTEM_TOKEN"
+          Write-Host "Deploying with CoordinationId: ${{ secrets.DATAMINER_SYSTEM_TOKEN }}"
+          dataminer-package-deploy from-volatile --artifact-id "${{ steps.upload_volatile.outputs.artifact_id }}" --dm-system-token "${{ secrets.DATAMINER_SYSTEM_TOKEN }}"
 
       - name: Summary
         run: |
