@@ -156,7 +156,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   )
 }
 
-export default function NotesList({ refreshKey }) {
+export default function NotesList({ refreshKey, initialAccount }) {
   const { instance } = useMsal()
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
@@ -164,11 +164,18 @@ export default function NotesList({ refreshKey }) {
   const [expandedId, setExpandedId] = useState(null)
 
   // Filter state
-  const [account, setAccount] = useState(null)   // { accountid, name }
+  const [account, setAccount] = useState(initialAccount || null)
   const [attendee, setAttendee] = useState(null) // { contactid, fullname }
   const [activityType, setActivityType] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+
+  // When initialAccount changes (e.g. after note creation), update filter and auto-search
+  useEffect(() => {
+    if (initialAccount) {
+      setAccount(initialAccount)
+    }
+  }, [initialAccount])
 
   const runSearch = useCallback(() => {
     setLoading(true)
@@ -185,9 +192,9 @@ export default function NotesList({ refreshKey }) {
       .finally(() => setLoading(false))
   }, [instance, account, attendee, activityType, dateFrom, dateTo])
 
-  // Re-run last search when a new note is created, but only if search was already done
+  // Auto-search when navigated here after note creation, or re-run on refresh
   useEffect(() => {
-    if (notes !== null) runSearch()
+    if (initialAccount || notes !== null) runSearch()
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

@@ -29,6 +29,7 @@ export default function App() {
   const { instance } = useMsal()
   const [activeTab, setActiveTab] = useState('new')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [browseAccount, setBrowseAccount] = useState(null)
   const [themePref, setThemePref] = useState(getInitialTheme)
 
   // Apply theme to document
@@ -53,7 +54,8 @@ function cycleTheme() {
 
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
 
-  function handleNoteCreated() {
+  function handleNoteCreated(account) {
+    setBrowseAccount(account || null)
     setRefreshKey((k) => k + 1)
     setActiveTab('browse')
   }
@@ -111,7 +113,7 @@ function cycleTheme() {
                 />
               )}
               {activeTab === 'browse' && (
-                <NotesList refreshKey={refreshKey} />
+                <NotesList refreshKey={refreshKey} initialAccount={browseAccount} />
               )}
             </>
           )}
