@@ -737,20 +737,6 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   let escalationIds = []
   let leadIds = []
 
-  if (accountId) {
-    // Include escalation IDs so child activities/notes linked to the escalation are returned too.
-    const related = await getAccountRelatedEntityIds(msalInstance, accountId)
-    escalationIds = related.escalationIds
-    leadIds = related.leadIds
-    const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
-    const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
-    base.push(buildLookupFilter('_regardingobjectid_value', allIds))
-    escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
-  }
-
-  addCreatedOnDateFilters(base, dateFrom, dateTo)
-  addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
-
   const typeConfig = activityType ? ACTIVITY_TYPES.find((t) => t.id === activityType) : null
   const fetches = []
 
@@ -761,6 +747,27 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   const wantLeads = !typeConfig || typeConfig.entity === 'leads'
   const wantOpportunities = !typeConfig || typeConfig.entity === 'opportunities'
   const wantAnnotations = !typeConfig || typeConfig.entity === 'annotations'
+
+  // Only fetch related entity IDs when we need them (activities, escalations, annotations).
+  // Leads and Opportunities are fetched directly by _parentaccountid_value and don't need the expansion.
+  const needsRelatedIds = wantCalls || wantAppts || wantEmails || wantEscalations || wantAnnotations
+
+  if (accountId && needsRelatedIds) {
+    // Include escalation IDs so child activities/notes linked to the escalation are returned too.
+    const related = await getAccountRelatedEntityIds(msalInstance, accountId)
+    escalationIds = related.escalationIds
+    leadIds = related.leadIds
+    const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
+    const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
+    base.push(buildLookupFilter('_regardingobjectid_value', allIds))
+    escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
+  } else if (accountId) {
+    base.push(`_regardingobjectid_value eq ${accountId}`)
+    escalationBase.push(`_regardingobjectid_value eq ${accountId}`)
+  }
+
+  addCreatedOnDateFilters(base, dateFrom, dateTo)
+  addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
 
   if (wantCalls) {
     const clauses = [...base]
