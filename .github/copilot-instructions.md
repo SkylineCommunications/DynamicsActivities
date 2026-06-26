@@ -12,6 +12,19 @@ Runs inside a DataMiner iframe. All auth uses popup flows — redirect flows do 
 
 ---
 
+## Versioning & Deployment
+
+**Every PR opened must increment the version in `DynamicsActivitiesPackage\DynamicsActivitiesPackage\DynamicsActivitiesPackage.csproj`:**
+- File: `DynamicsActivitiesPackage.csproj`
+- Field: `<Version>X.Y.Z</Version>`
+- **Increment the patch version (Z)** for bug fixes and features
+- **Increment the minor version (Y)** for significant changes
+- Example: `1.0.0` → `1.0.1` for a new PR
+
+This prevents version conflicts in the DataMiner Catalog when multiple PRs are deployed. The workflow automatically uses the csproj version for Catalog registration and deployment.
+
+---
+
 ## Stack
 
 - React 18 + Vite 5, static build only
