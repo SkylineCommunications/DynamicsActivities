@@ -349,21 +349,26 @@ async function fetchEscalations(msalInstance, filterClauses) {
   return (data?.value ?? []).map((r) => ({ ...r, _entityType: 'slc_escalations' }))
 }
 
-// Annotations linked to escalations (escalation notes)
-const ANNOTATION_SELECT = 'annotationid,subject,notetext,createdon,_objectid_value,objecttypecode'
+// Annotations (notes)
+const ANNOTATION_SELECT = 'annotationid,subject,notetext,createdon,_objectid_value'
 
 async function fetchAnnotations(msalInstance, filterClauses) {
-  // Only fetch annotations linked to escalations (objecttypecode = 'slc_escalation')
-  const clauses = [...filterClauses, "objecttypecode eq 'slc_escalation'"]
   // Annotations use _objectid_value instead of _regardingobjectid_value
-  const adjusted = clauses.map((c) => c.replace(/_regardingobjectid_value/g, '_objectid_value'))
+  const adjusted = filterClauses.map((c) => c.replace(/_regardingobjectid_value/g, '_objectid_value'))
   const filterStr = adjusted.length ? `&$filter=${adjusted.join(' and ')}` : ''
   const data = await dvFetch(
     msalInstance,
     `/annotations?$select=${ANNOTATION_SELECT}${filterStr}&$orderby=createdon desc`,
-    { headers: { Prefer: 'odata.maxpagesize=100' } },
   ).catch(() => ({ value: [] }))
-  return (data?.value ?? []).map((r) => ({ ...r, _entityType: 'annotations' }))
+
+  return (data?.value ?? []).map((r) => ({
+    ...r,
+    activityid: r.annotationid,
+    description: r.notetext,
+    _regardingobjectid_value: r._objectid_value,
+    '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': r['_objectid_value@OData.Community.Display.V1.FormattedValue'],
+    _entityType: 'annotations',
+  }))
 }
 
 /**
