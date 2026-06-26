@@ -135,7 +135,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         note: note.trim(),
         attendees,
         currentUserId,
-        linkToEscalationId: (linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
+        linkToEscalationId: (!linkToLeadId && linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
         linkToLeadId: linkToLeadId || undefined,
       })
       setSuccess(true)
