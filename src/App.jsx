@@ -69,8 +69,9 @@ function cycleTheme() {
             className="theme-toggle"
             onClick={cycleTheme}
             title={`Theme: ${themePref}`}
+            aria-label={`Theme: ${themePref}`}
           >
-            <span className="icon">{themeIcon}</span>
+            <span className="icon" aria-hidden="true">{themeIcon}</span>
           </button>
           <button
             type="button"
