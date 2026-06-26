@@ -40,11 +40,11 @@ app.http('subscriptionsPut', {
   methods: ['PUT'],
   route: 'subscriptions/{id}',
   authLevel: 'anonymous',
-  handler: withCors(async (request, context) => {
+  handler: withCors(async (request) => {
     const user = await requireAuth(request).catch((e) => ({ error: e }))
     if (user.error) return { status: user.error.status || 401, body: user.error.message }
     const body = await request.json()
-    const updated = await updateSubscription(user.userId, context.triggerMetadata.id, body)
+    const updated = await updateSubscription(user.userId, request.params.id, body)
     return { status: 200, jsonBody: updated }
   }),
 })
@@ -53,10 +53,10 @@ app.http('subscriptionsDelete', {
   methods: ['DELETE'],
   route: 'subscriptions/{id}',
   authLevel: 'anonymous',
-  handler: withCors(async (request, context) => {
+  handler: withCors(async (request) => {
     const user = await requireAuth(request).catch((e) => ({ error: e }))
     if (user.error) return { status: user.error.status || 401, body: user.error.message }
-    await deleteSubscription(user.userId, context.triggerMetadata.id)
+    await deleteSubscription(user.userId, request.params.id)
     return { status: 204 }
   }),
 })
