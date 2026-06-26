@@ -389,7 +389,7 @@ export async function createInboxEmailActivity(
     description: [message.bodyPreview, `Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}`]
       .filter(Boolean)
       .join('\n\n'),
-    directioncode: false,
+    directioncode: true,
     actualend: message.receivedDateTime ? message.receivedDateTime.toISOString() : undefined,
     ...(message.internetMessageId ? { messageid: message.internetMessageId.toLowerCase() } : {}),
     [bindName]: `/${entityPlural}(${regardingId})`,
