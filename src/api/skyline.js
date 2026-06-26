@@ -61,7 +61,7 @@ export async function getMyManagedCustomers(msalInstance) {
     if (!Array.isArray(customers)) return []
 
     return customers
-      .filter(c => Array.isArray(c.TAMs) && c.TAMs.some(t => t.ID === user.ID))
+      .filter(c => Array.isArray(c.TAMs) && c.TAMs.some(t => String(t.ID) === String(user.ID)))
       .map(c => ({ name: c.Name, acronym: c.Acronym }))
   } catch (e) {
     console.warn('[Skyline] getMyManagedCustomers failed:', e.message)

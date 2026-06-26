@@ -1,22 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMsal } from '@azure/msal-react'
+import { InteractionStatus } from '@azure/msal-browser'
 import { getMyManagedCustomers } from '../api/skyline'
 import { resolveAccountsByNames } from '../api/dataverse'
 
 /**
  * Hook that resolves the current user's TAM-managed accounts (Skyline→Dataverse).
- * Loads once after MSAL is ready. Degrades gracefully if anything fails.
+ * Loads once after MSAL is fully initialized. Degrades gracefully if anything fails.
  *
  * @returns {{ isTam: boolean, managedAccounts: Array<{accountid,name}>, loading: boolean }}
  */
 export default function useTamContext() {
-  const { instance } = useMsal()
+  const { instance, inProgress } = useMsal()
   const [managedAccounts, setManagedAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const ran = useRef(false)
 
   useEffect(() => {
     if (ran.current) return
+    if (inProgress !== InteractionStatus.None) return
     const accounts = instance.getAllAccounts()
     if (!accounts.length) {
       setLoading(false)
@@ -37,7 +39,7 @@ export default function useTamContext() {
         setLoading(false)
       }
     })()
-  }, [instance])
+  }, [instance, inProgress])
 
   return {
     isTam: managedAccounts.length > 0,
