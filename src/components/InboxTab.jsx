@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { getConversationMessages, getRecentInboxMessages, searchPeopleMailboxes, filterAccessibleMailboxes } from '../api/graph'
+import { getConversationMessages, getRecentInboxMessages, searchPeopleMailboxes, filterAccessibleMailboxes, invalidateMailboxCache } from '../api/graph'
 import {
   checkSyncedMessageIds,
   createContact,
@@ -808,7 +808,10 @@ export default function InboxTab({ compact = false, onImported }) {
         const ids = items.map((m) => m.internetMessageId).filter(Boolean)
         checkSyncedMessageIds(instance, ids).then(mergeChecked).catch(() => {})
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        if (mailbox) invalidateMailboxCache(mailbox)
+        setError(e.message)
+      })
       .finally(() => setLoading(false))
   }, [instance, mailbox])
 
@@ -875,7 +878,7 @@ export default function InboxTab({ compact = false, onImported }) {
     return [...fromEnv, ...recents].slice(0, 8)
   }, [])
 
-  const [accessibleSuggestions, setAccessibleSuggestions] = useState(initialMailboxSuggestions)
+  const [accessibleSuggestions, setAccessibleSuggestions] = useState([])
 
   useEffect(() => {
     if (!initialMailboxSuggestions.length) return

@@ -262,6 +262,19 @@ export async function filterAccessibleMailboxes(msalInstance, candidates) {
   }
 }
 
+/**
+ * Remove a mailbox address from the sessionStorage access cache.
+ * Call this when a previously-trusted mailbox returns an access error at runtime.
+ */
+export function invalidateMailboxCache(email) {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(MAILBOX_CACHE_KEY) || 'null')
+    if (!cached) return
+    const updated = cached.emails.filter((e) => e !== email.toLowerCase())
+    sessionStorage.setItem(MAILBOX_CACHE_KEY, JSON.stringify({ emails: updated, ts: cached.ts }))
+  } catch { /* ignore */ }
+}
+
 // ─── Calendar events ──────────────────────────────────────────────────────────
 // Returns non-all-day events: 60 days past + 30 days future, sorted newest first
 export async function getRecentCalendarEvents(msalInstance) {
