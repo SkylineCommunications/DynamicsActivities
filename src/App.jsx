@@ -80,6 +80,7 @@ function cycleTheme() {
             title="Sign out"
           >
             <span className="icon">logout</span>
+            <span className="sign-out-label">Sign out</span>
           </button>
         </div>
       </header>

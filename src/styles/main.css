@@ -169,13 +169,15 @@ body {
 .sign-out-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
+  gap: 4px;
+  padding: 4px 10px;
   height: 32px;
   border: 1px solid var(--color5);
   border-radius: var(--radius-md);
   background: var(--color2);
   color: var(--color11);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }

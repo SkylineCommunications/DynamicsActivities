@@ -72,7 +72,7 @@ VITE_REDIRECT_URI=...
 ### Business rules
 
 1. **Max ONE active escalation per account** — An account cannot have more than one escalation with `slc_status` of 1 (open) or 2 (in-progress). Enforced client-side in `createActivity()` before POST.
-2. **`slc_isescalated` (boolean on account)** — Dynamics maintains this field to indicate whether an account currently has an active escalation. Used as a fast check before querying `slc_escalations`.
+2. **`slc_inescalation` (boolean on account)** — Dynamics maintains this field to indicate whether an account currently has an active escalation. Used as a fast check before querying `slc_escalations`.
 3. **Linking notes to active escalation** — When an account has an active escalation, non-escalation notes (phonecall/appointment/email) can be linked to it by setting `regardingobjectid_slc_escalation@odata.bind` to `/slc_escalations({activityid})`. This makes the note appear in the escalation's timeline.
 4. **Auto-link default** — The UI auto-checks "Link to escalation" when an active escalation is detected for the selected account. Users can uncheck to link directly to the account instead.
 

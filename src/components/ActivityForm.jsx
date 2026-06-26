@@ -54,14 +54,6 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
       setAccountIsEscalated(false)
       return
     }
-    // Instant feedback from slc_isescalated on the account record
-    if (account.slc_isescalated) {
-      setAccountIsEscalated(true)
-      setLinkToEscalation(true)
-    } else {
-      setAccountIsEscalated(false)
-      setLinkToEscalation(false)
-    }
     // Fetch the actual escalation record for linking
     getActiveEscalation(instance, account.accountid)
       .then((esc) => {
@@ -71,6 +63,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
       })
       .catch(() => {
         setActiveEscalation(null)
+        setAccountIsEscalated(false)
       })
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
