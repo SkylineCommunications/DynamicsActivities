@@ -20,8 +20,10 @@ const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cs
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= '📞'
 TYPE_ICONS['Meeting'] ??= '📅'
+TYPE_ICONS['Escalation'] ??= '🚨'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
+TYPE_CLASSES['Escalation'] ??= 'type-escalation'
 
 const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
 

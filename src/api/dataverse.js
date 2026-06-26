@@ -40,6 +40,14 @@ export const ACTIVITY_TYPES = [
     cssClass: 'type-email',
     tooltip: 'Previously known as: Email / Chat',
   },
+  {
+    id: 'escalation',
+    label: 'Escalation',
+    icon: '🚨',
+    entity: 'slc_escalations',
+    cssClass: 'type-escalation',
+    tooltip: 'Escalation activity',
+  },
 ]
 
 // ─── Token helper ────────────────────────────────────────────────────────────
@@ -81,10 +89,11 @@ export async function whoAmI(msalInstance) {
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
   const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+  const select = 'accountid,name,address1_country,address1_stateorprovince'
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
-    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
-    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
   ])
   const seen = new Set()
   const results = []
@@ -254,7 +263,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
-const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email' }
+const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation' }
 
 export function getDynamicsUrl(entityType, activityid) {
   const etn = ENTITY_SINGULAR[entityType] || entityType
@@ -308,6 +317,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   const wantCalls = !typeConfig || typeConfig.entity === 'phonecalls'
   const wantAppts = !typeConfig || typeConfig.entity === 'appointments'
   const wantEmails = !typeConfig || typeConfig.entity === 'emails'
+  const wantEscalations = !typeConfig || typeConfig.entity === 'slc_escalations'
 
   if (wantCalls) {
     const clauses = [...base]
@@ -327,6 +337,12 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
     fetches.push(fetchFiltered(msalInstance, 'emails', 'email', clauses))
   }
 
+  if (wantEscalations) {
+    const clauses = [...base]
+    if (contactId) clauses.push(`slc_escalation_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
+    fetches.push(fetchFiltered(msalInstance, 'slc_escalations', 'slc_escalation', clauses))
+  }
+
   const results = await Promise.all(fetches)
   const all = results.flat()
   all.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
@@ -342,6 +358,9 @@ export function extractAttendees(note) {
   } else if (note._entityType === 'appointments') {
     key = 'appointment_activity_parties'
     skipMasks = new Set([7, 9]) // skip organizer and owner
+  } else if (note._entityType === 'slc_escalations') {
+    key = 'slc_escalation_activity_parties'
+    skipMasks = new Set([1, 9]) // skip sender and owner
   } else {
     key = 'email_activity_parties'
     skipMasks = new Set([1, 9]) // skip sender (from) and owner
@@ -368,6 +387,7 @@ export function extractAttendees(note) {
 export function noteTypeLabel(note) {
   if (note._entityType === 'phonecalls') return 'Phone Call'
   if (note._entityType === 'emails') return 'Email'
+  if (note._entityType === 'slc_escalations') return 'Escalation'
   return 'Appointment'
 }
 
