@@ -1,0 +1,169 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.36.177.2456",
+      "templateHash": "4905314661182807801"
+    }
+  },
+  "parameters": {
+    "appName": {
+      "type": "string"
+    },
+    "appServicePlanId": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "storageConnectionString": {
+      "type": "string"
+    },
+    "appInsightsConnectionString": {
+      "type": "string"
+    },
+    "dataverseUrl": {
+      "type": "string"
+    },
+    "dataverseClientId": {
+      "type": "string"
+    },
+    "dataverseClientSecret": {
+      "type": "securestring"
+    },
+    "sendGridApiKey": {
+      "type": "securestring"
+    },
+    "openaiApiKey": {
+      "type": "securestring"
+    },
+    "entraIdTenantId": {
+      "type": "string"
+    },
+    "functionClientId": {
+      "type": "string"
+    },
+    "corsOrigins": {
+      "type": "string"
+    },
+    "instantCooldownMinutes": {
+      "type": "int",
+      "defaultValue": 15
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-12-01",
+      "name": "[parameters('appName')]",
+      "location": "[parameters('location')]",
+      "kind": "functionapp",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "serverFarmId": "[parameters('appServicePlanId')]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "http20Enabled": true,
+          "minTlsVersion": "1.2",
+          "nodeVersion": "~20",
+          "appSettings": [
+            {
+              "name": "AzureWebJobsStorage",
+              "value": "[parameters('storageConnectionString')]"
+            },
+            {
+              "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+              "value": "[parameters('storageConnectionString')]"
+            },
+            {
+              "name": "WEBSITE_CONTENTSHARE",
+              "value": "[toLower(parameters('appName'))]"
+            },
+            {
+              "name": "FUNCTIONS_EXTENSION_VERSION",
+              "value": "~4"
+            },
+            {
+              "name": "FUNCTIONS_WORKER_RUNTIME",
+              "value": "node"
+            },
+            {
+              "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+              "value": "[parameters('appInsightsConnectionString')]"
+            },
+            {
+              "name": "ApplicationInsightsAgent_EXTENSION_VERSION",
+              "value": "~3"
+            },
+            {
+              "name": "XDT_MicrosoftApplicationInsights_Mode",
+              "value": "recommended"
+            },
+            {
+              "name": "DATAVERSE_URL",
+              "value": "[parameters('dataverseUrl')]"
+            },
+            {
+              "name": "DATAVERSE_CLIENT_ID",
+              "value": "[parameters('dataverseClientId')]"
+            },
+            {
+              "name": "DATAVERSE_CLIENT_SECRET",
+              "value": "[parameters('dataverseClientSecret')]"
+            },
+            {
+              "name": "SENDGRID_API_KEY",
+              "value": "[parameters('sendGridApiKey')]"
+            },
+            {
+              "name": "OPENAI_API_KEY",
+              "value": "[parameters('openaiApiKey')]"
+            },
+            {
+              "name": "ENTRA_ID_TENANT_ID",
+              "value": "[parameters('entraIdTenantId')]"
+            },
+            {
+              "name": "FUNCTION_CLIENT_ID",
+              "value": "[parameters('functionClientId')]"
+            },
+            {
+              "name": "INSTANT_COOLDOWN_MINUTES",
+              "value": "[string(parameters('instantCooldownMinutes'))]"
+            }
+          ],
+          "cors": {
+            "allowedOrigins": "[split(parameters('corsOrigins'), ',')]",
+            "supportCredentials": false
+          },
+          "use32BitWorkerProcess": false
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "functionAppName": {
+      "type": "string",
+      "value": "[parameters('appName')]"
+    },
+    "functionAppUrl": {
+      "type": "string",
+      "value": "[format('https://{0}/api', reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01').defaultHostName)]"
+    },
+    "functionAppId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/sites', parameters('appName'))]"
+    },
+    "functionAppPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', parameters('appName')), '2023-12-01', 'full').identity.principalId]"
+    }
+  }
+}
