@@ -20,7 +20,7 @@ on:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
     uses: ./.github/workflows/deploy-dmapp-reusable.yml
     with:
       catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
