@@ -24,8 +24,8 @@ TYPE_ICONS['Call'] ??= 'contact_phone'
 TYPE_ICONS['Meeting'] ??= 'calendar_today'
 TYPE_ICONS['Escalation'] ??= 'warning'
 TYPE_ICONS['Note'] ??= 'edit_note'
+TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
-TYPE_CLASSES['Escalation'] ??= 'type-escalation'
 
 const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
 
@@ -42,10 +42,14 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead, onMarkRead }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
   const attendees = extractAttendees(note)
-  const accountName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
-  const preview = note.notetext || note.description || ''
+  const accountName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
+    || ''
+  const rawPreview = note.notetext || note.description || ''
+  const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const recordId = note.activityid || note.annotationid
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
+  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads'
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [markingRead, setMarkingRead] = useState(false)
@@ -116,7 +120,7 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead, onMarkRead }) {
               {markingRead ? '…' : '✓ Read'}
             </button>
           )}
-          {confirmDelete ? (
+          {!isReadOnly && (confirmDelete ? (
             <>
               <button
                 type="button"
@@ -143,12 +147,22 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead, onMarkRead }) {
             >
               <span className="icon icon-sm">delete</span>
             </button>
-          )}
+          ))}
         </div>
       </div>
 
-      {note.subject && <div className="note-subject">{note.subject}</div>}
+      {note.subject && note.subject !== label && <div className="note-subject">{note.subject}</div>}
       {accountName && <div className="note-account"><span className="icon icon-sm">business_center</span> Regarding: {accountName}</div>}
+      {note._linkedToEscalation && (
+        <div className="note-escalation-link">
+          <span className="icon icon-sm">link</span> Linked to escalation
+        </div>
+      )}
+      {note._linkedToLead && (
+        <div className="note-lead-link">
+          <span className="icon icon-sm">trending_up</span> Linked to lead
+        </div>
+      )}
 
       {/* Escalation status badge */}
       {note._entityType === 'slc_escalations' && note.slc_status && (
@@ -161,6 +175,18 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead, onMarkRead }) {
           )}
           {note.slc_resolveddate && (
             <span className="escalation-resolved">Resolved: {fmtDate(note.slc_resolveddate)}</span>
+          )}
+        </div>
+      )}
+
+      {/* Lead status info */}
+      {note._entityType === 'leads' && (
+        <div className="note-lead-status">
+          <span className={`lead-badge ${note.statecode === 0 ? 'lead-open' : note.statecode === 1 ? 'lead-qualified' : 'lead-disqualified'}`}>
+            {note['statuscode@OData.Community.Display.V1.FormattedValue'] || (note.statecode === 0 ? 'Open' : note.statecode === 1 ? 'Qualified' : 'Disqualified')}
+          </span>
+          {note.schedulefollowup_prospect && (
+            <span className="lead-followup">Follow-up: {fmtDate(note.schedulefollowup_prospect)}</span>
           )}
         </div>
       )}
@@ -186,7 +212,7 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead, onMarkRead }) {
   )
 }
 
-export default function NotesList({ refreshKey }) {
+export default function NotesList({ refreshKey, initialAccount }) {
   const { instance } = useMsal()
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
@@ -195,11 +221,18 @@ export default function NotesList({ refreshKey }) {
   const [readIds, setReadIds] = useState(new Set())
 
   // Filter state
-  const [account, setAccount] = useState(null)   // { accountid, name }
+  const [account, setAccount] = useState(initialAccount || null)
   const [attendee, setAttendee] = useState(null) // { contactid, fullname }
   const [activityType, setActivityType] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+
+  // When initialAccount changes (e.g. after note creation), update the "Regarding" filter
+  useEffect(() => {
+    if (initialAccount) {
+      setAccount(initialAccount)
+    }
+  }, [initialAccount])
 
   const runSearch = useCallback(() => {
     setLoading(true)
@@ -225,9 +258,9 @@ export default function NotesList({ refreshKey }) {
       .finally(() => setLoading(false))
   }, [instance, account, attendee, activityType, dateFrom, dateTo])
 
-  // Re-run last search when a new note is created, but only if search was already done
+  // Auto-search when navigated here after note creation, or re-run on refresh
   useEffect(() => {
-    if (notes !== null) runSearch()
+    if (initialAccount || notes !== null) runSearch()
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -268,7 +301,7 @@ export default function NotesList({ refreshKey }) {
 
         <div className="filter-row filter-row-controls">
           <div className="filter-field">
-            <label className="filter-label">Activity Type</label>
+            <label className="filter-label">Type</label>
             <div className="filter-type-btns">
           {FILTER_TYPES.map((t) => (
                 <button
