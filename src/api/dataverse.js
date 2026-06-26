@@ -243,11 +243,19 @@ export async function createActivity(msalInstance, { type, accountId, date, note
       slc_startdate: escalationStartDate ? new Date(escalationStartDate).toISOString() : dateStr,
       'regardingobjectid_account@odata.bind': `/accounts(${accountId})`,
     }
-    return dvFetch(msalInstance, '/slc_escalations', {
+    const result = await dvFetch(msalInstance, '/slc_escalations', {
       method: 'POST',
       body: JSON.stringify(body),
       headers: { Prefer: 'return=representation' },
     })
+    // Set the escalation flag on the account immediately (rollup may lag)
+    if (escalationStatus === 1) {
+      await dvFetch(msalInstance, `/accounts(${accountId})`, {
+        method: 'PATCH',
+        body: JSON.stringify({ slc_inescalation: true }),
+      }).catch(() => {}) // non-critical — rollup will catch up
+    }
+    return result
   }
 
   const parties = buildParties(type, currentUserId, attendees)
