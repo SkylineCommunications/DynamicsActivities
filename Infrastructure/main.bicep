@@ -36,8 +36,36 @@ param openaiApiKey string
 @description('Entra ID tenant ID')
 param entraIdTenantId string
 
-@description('Entra ID client ID for Function app authentication')
-param functionClientId string
+@description('SendGrid API key for email delivery')
+@secure()
+param sendGridApiKey string
+
+@description('SendGrid from email address')
+param sendGridFromEmail string
+
+@description('SendGrid from display name')
+param sendGridFromName string = 'Skyline Activities'
+
+@description('Azure OpenAI endpoint URL')
+param openaiEndpoint string = 'https://oai-dynamics-activities-6a258.openai.azure.com/'
+
+@description('Azure OpenAI deployment name')
+param openaiDeployment string = 'gpt-4o'
+
+@description('OpenAI API key for activity summaries')
+@secure()
+param openaiApiKey string
+
+@description('Shared secret for Dataverse webhook validation')
+@secure()
+param webhookSecret string
+
+@description('HMAC secret for email action links')
+@secure()
+param actionTokenSecret string
+
+@description('Base URL of the deployed SPA (for email links)')
+param spaBaseUrl string
 
 @description('Allowed frontend origins for CORS (comma-separated)')
 param corsOrigins string = 'http://localhost:5173,http://localhost:4173'
@@ -93,10 +121,16 @@ module functionAppModule './modules/function-app.bicep' = {
     dataverseUrl: dataverseUrl
     dataverseClientId: dataverseClientId
     dataverseClientSecret: dataverseClientSecret
-    sendGridApiKey: sendGridApiKey
-    openaiApiKey: openaiApiKey
     entraIdTenantId: entraIdTenantId
-    functionClientId: functionClientId
+    sendGridApiKey: sendGridApiKey
+    sendGridFromEmail: sendGridFromEmail
+    sendGridFromName: sendGridFromName
+    openaiEndpoint: openaiEndpoint
+    openaiDeployment: openaiDeployment
+    openaiApiKey: openaiApiKey
+    webhookSecret: webhookSecret
+    actionTokenSecret: actionTokenSecret
+    spaBaseUrl: spaBaseUrl
     corsOrigins: corsOrigins
     instantCooldownMinutes: instantCooldownMinutes
   }

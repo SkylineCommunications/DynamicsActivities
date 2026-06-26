@@ -10,14 +10,25 @@ param dataverseUrl string
 param dataverseClientId string
 @secure()
 param dataverseClientSecret string
+param entraIdTenantId string
 @secure()
 param sendGridApiKey string
+param sendGridFromEmail string
+param sendGridFromName string = 'Skyline Activities'
+param openaiEndpoint string
+param openaiDeployment string = 'gpt-4o'
 @secure()
 param openaiApiKey string
-param entraIdTenantId string
-param functionClientId string
+@secure()
+param webhookSecret string
+@secure()
+param actionTokenSecret string
+param spaBaseUrl string
 param corsOrigins string
 param instantCooldownMinutes int = 15
+
+// Derive ENTRA_AUDIENCE from dataverseUrl (strip trailing slash so it matches JWT aud claim)
+var entraAudience = endsWith(dataverseUrl, '/') ? substring(dataverseUrl, 0, length(dataverseUrl) - 1) : dataverseUrl
 
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: appName
@@ -79,24 +90,63 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'DATAVERSE_CLIENT_SECRET'
           value: dataverseClientSecret
         }
+        {
+          name: 'DATAVERSE_TENANT_ID'
+          value: entraIdTenantId
+        }
+        // Azure Table Storage
+        {
+          name: 'AZURE_STORAGE_CONNECTION_STRING'
+          value: storageConnectionString
+        }
         // SendGrid configuration
         {
           name: 'SENDGRID_API_KEY'
           value: sendGridApiKey
         }
-        // OpenAI configuration
         {
-          name: 'OPENAI_API_KEY'
+          name: 'SENDGRID_FROM_EMAIL'
+          value: sendGridFromEmail
+        }
+        {
+          name: 'SENDGRID_FROM_NAME'
+          value: sendGridFromName
+        }
+        // Azure OpenAI configuration
+        {
+          name: 'AZURE_OPENAI_ENDPOINT'
+          value: openaiEndpoint
+        }
+        {
+          name: 'AZURE_OPENAI_KEY'
           value: openaiApiKey
         }
-        // Entra ID configuration
         {
-          name: 'ENTRA_ID_TENANT_ID'
+          name: 'AZURE_OPENAI_DEPLOYMENT'
+          value: openaiDeployment
+        }
+        // Webhook and email action secrets
+        {
+          name: 'WEBHOOK_SECRET'
+          value: webhookSecret
+        }
+        {
+          name: 'ACTION_TOKEN_SECRET'
+          value: actionTokenSecret
+        }
+        // Entra ID / JWT validation
+        {
+          name: 'ENTRA_TENANT_ID'
           value: entraIdTenantId
         }
         {
-          name: 'FUNCTION_CLIENT_ID'
-          value: functionClientId
+          name: 'ENTRA_AUDIENCE'
+          value: entraAudience
+        }
+        // SPA URL for email action links
+        {
+          name: 'SPA_BASE_URL'
+          value: spaBaseUrl
         }
         // Notification settings
         {

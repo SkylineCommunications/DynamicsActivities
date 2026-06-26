@@ -144,10 +144,11 @@ jobs:
       - name: Build frontend
         run: ${{ inputs.frontend_build_cmd }}
         env:
-          VITE_CLIENT_ID:     ${{ secrets.VITE_CLIENT_ID }}
-          VITE_TENANT_ID:     ${{ secrets.VITE_TENANT_ID }}
-          VITE_DATAVERSE_URL: ${{ secrets.VITE_DATAVERSE_URL }}
-          VITE_REDIRECT_URI:  ${{ vars.VITE_REDIRECT_URI }}
+          VITE_CLIENT_ID:             ${{ secrets.VITE_CLIENT_ID }}
+          VITE_TENANT_ID:             ${{ secrets.VITE_TENANT_ID }}
+          VITE_DATAVERSE_URL:         ${{ secrets.VITE_DATAVERSE_URL }}
+          VITE_REDIRECT_URI:          ${{ vars.VITE_REDIRECT_URI }}
+          VITE_FUNCTIONS_BASE_URL:    ${{ vars.VITE_FUNCTIONS_BASE_URL }}
 
       - name: Verify frontend dist
         run: |
