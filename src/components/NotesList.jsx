@@ -24,8 +24,6 @@ TYPE_ICONS['Meeting'] ??= 'calendar_today'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 
-const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
-
 function fmtDate(d) {
   if (!d) return ''
   return new Date(d).toLocaleString(undefined, {
@@ -205,16 +203,19 @@ export default function NotesList({ refreshKey, initialAccount }) {
   const [expandedId, setExpandedId] = useState(null)
 
   // Filter state
-  const [account, setAccount] = useState(initialAccount || null)
+  const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
   const [attendee, setAttendee] = useState(null) // { contactid, fullname }
-  const [activityType, setActivityType] = useState('')
+  const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
   // When initialAccount changes (e.g. after note creation), update the "Regarding" filter
   useEffect(() => {
     if (initialAccount) {
-      setAccount(initialAccount)
+      setAccounts((prev) => {
+        if (prev.some((a) => a.accountid === initialAccount.accountid)) return prev
+        return [...prev, initialAccount]
+      })
     }
   }, [initialAccount])
 
@@ -222,16 +223,16 @@ export default function NotesList({ refreshKey, initialAccount }) {
     setLoading(true)
     setError(null)
     searchActivities(instance, {
-      accountId: account?.accountid ?? null,
+      accountIds: accounts.map((a) => a.accountid),
       contactId: attendee?.contactid ?? null,
-      activityType: activityType || null,
+      activityTypes: selectedTypes.size ? [...selectedTypes] : null,
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
     })
       .then(setNotes)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [instance, account, attendee, activityType, dateFrom, dateTo])
+  }, [instance, accounts, attendee, selectedTypes, dateFrom, dateTo])
 
   // Auto-search when navigated here after note creation, or re-run on refresh
   useEffect(() => {
@@ -249,13 +250,30 @@ export default function NotesList({ refreshKey, initialAccount }) {
               searchFn={(q) => searchAccounts(instance, q)}
               getKey={(a) => a.accountid}
               getLabel={(a) => a.name}
-              value={account}
-              onChange={setAccount}
+              value={null}
+              onChange={(item) => {
+                if (item && !accounts.some((a) => a.accountid === item.accountid)) {
+                  setAccounts((prev) => [...prev, item])
+                }
+              }}
               onEnter={runSearch}
               placeholder="Search account…"
               minChars={2}
               autoSelectSingle
+              clearOnPick
             />
+            {accounts.length > 0 && (
+              <div className="filter-chips">
+                {accounts.map((a) => (
+                  <span key={a.accountid} className="filter-chip">
+                    {a.name}
+                    <button type="button" className="chip-remove" onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
+                      <span className="icon icon-xs">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="filter-field">
             <label className="filter-label">Attendee</label>
@@ -278,14 +296,26 @@ export default function NotesList({ refreshKey, initialAccount }) {
           <div className="filter-field">
             <label className="filter-label">Type</label>
             <div className="filter-type-btns">
-          {FILTER_TYPES.map((t) => (
+              <button
+                type="button"
+                className={`filter-type-btn ${selectedTypes.size === 0 ? 'active' : ''}`}
+                onClick={() => setSelectedTypes(new Set())}
+              >
+                All
+              </button>
+              {ACTIVITY_TYPES.map((t) => (
                 <button
-                  key={t.value}
+                  key={t.id}
                   type="button"
-                  className={`filter-type-btn ${activityType === t.value ? 'active' : ''}`}
-                  onClick={() => setActivityType(t.value)}
+                  className={`filter-type-btn ${selectedTypes.has(t.id) ? 'active' : ''}`}
+                  onClick={() => setSelectedTypes((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(t.id)) next.delete(t.id)
+                    else next.add(t.id)
+                    return next
+                  })}
                 >
-                  {t.value && <span className="icon icon-sm">{TYPE_ICONS[t.label]}</span>}{t.label}
+                  <span className="icon icon-sm">{TYPE_ICONS[t.label]}</span>{t.label}
                 </button>
               ))}
             </div>

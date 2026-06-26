@@ -746,100 +746,118 @@ async function fetchAnnotations(msalInstance, filterClauses) {
 /**
  * Search activities using server-side OData filters.
  * Returns [] immediately when no filters are provided (lazy-load pattern).
- * @param {{ accountId, contactId, activityType, dateFrom, dateTo }} filters
+ * @param {{ accountIds, contactId, activityTypes, dateFrom, dateTo }} filters
+ *   accountIds: array of account GUIDs (or null/empty for no filter)
+ *   activityTypes: array of type IDs (or null/empty for all types)
  */
-export async function searchActivities(msalInstance, { accountId, contactId, activityType, dateFrom, dateTo }) {
-  if (!accountId && !contactId && !activityType && !dateFrom && !dateTo) return []
+export async function searchActivities(msalInstance, { accountIds, contactId, activityTypes, dateFrom, dateTo }) {
+  // Backwards compat: accept old single-value params
+  const accountIdList = Array.isArray(accountIds) ? accountIds : (accountIds ? [accountIds] : [])
+  const typeList = Array.isArray(activityTypes) ? activityTypes : (activityTypes ? [activityTypes] : [])
 
-  const base = []
-  const escalationBase = []
-  let escalationIds = []
-  let leadIds = []
+  if (!accountIdList.length && !contactId && !typeList.length && !dateFrom && !dateTo) return []
 
-  const typeConfig = activityType ? ACTIVITY_TYPES.find((t) => t.id === activityType) : null
-  const fetches = []
+  const typeConfigs = typeList.length ? typeList.map((id) => ACTIVITY_TYPES.find((t) => t.id === id)).filter(Boolean) : []
+  const typeEntities = new Set(typeConfigs.map((t) => t.entity))
 
-  const wantCalls = !typeConfig || typeConfig.entity === 'phonecalls'
-  const wantAppts = !typeConfig || typeConfig.entity === 'appointments'
-  const wantEmails = !typeConfig || typeConfig.entity === 'emails'
-  const wantEscalations = !typeConfig || typeConfig.entity === 'slc_escalations'
-  const wantLeads = !typeConfig || typeConfig.entity === 'leads'
-  const wantOpportunities = !typeConfig || typeConfig.entity === 'opportunities'
-  const wantSupport = !typeConfig || typeConfig.entity === 'support'
-  const wantAnnotations = !typeConfig || typeConfig.entity === 'annotations'
+  const wantCalls = !typeList.length || typeEntities.has('phonecalls')
+  const wantAppts = !typeList.length || typeEntities.has('appointments')
+  const wantEmails = !typeList.length || typeEntities.has('emails')
+  const wantEscalations = !typeList.length || typeEntities.has('slc_escalations')
+  const wantLeads = !typeList.length || typeEntities.has('leads')
+  const wantOpportunities = !typeList.length || typeEntities.has('opportunities')
+  const wantSupport = !typeList.length || typeEntities.has('support')
+  const wantAnnotations = !typeList.length || typeEntities.has('annotations')
 
-  // Only fetch related entity IDs when we need them (activities, escalations, annotations).
-  // Leads and Opportunities are fetched directly by _parentaccountid_value and don't need the expansion.
-  const needsRelatedIds = wantCalls || wantAppts || wantEmails || wantEscalations || wantAnnotations
+  // Collect results from all accounts (or a single pass with no account filter)
+  const accountPasses = accountIdList.length ? accountIdList : [null]
+  const allResults = []
 
-  if (accountId && needsRelatedIds) {
-    // Include escalation IDs so child activities/notes linked to the escalation are returned too.
-    const related = await getAccountRelatedEntityIds(msalInstance, accountId)
-    escalationIds = related.escalationIds
-    leadIds = related.leadIds
-    const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
-    const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
-    base.push(buildLookupFilter('_regardingobjectid_value', allIds))
-    escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
-  } else if (accountId) {
-    base.push(`_regardingobjectid_value eq ${accountId}`)
-    escalationBase.push(`_regardingobjectid_value eq ${accountId}`)
+  for (const accountId of accountPasses) {
+    const base = []
+    const escalationBase = []
+    let escalationIds = []
+    let leadIds = []
+    const fetches = []
+
+    const needsRelatedIds = wantCalls || wantAppts || wantEmails || wantEscalations || wantAnnotations
+
+    if (accountId && needsRelatedIds) {
+      const related = await getAccountRelatedEntityIds(msalInstance, accountId)
+      escalationIds = related.escalationIds
+      leadIds = related.leadIds
+      const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
+      const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
+      base.push(buildLookupFilter('_regardingobjectid_value', allIds))
+      escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
+    } else if (accountId) {
+      base.push(`_regardingobjectid_value eq ${accountId}`)
+      escalationBase.push(`_regardingobjectid_value eq ${accountId}`)
+    }
+
+    addCreatedOnDateFilters(base, dateFrom, dateTo)
+    addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
+
+    if (wantCalls) {
+      const clauses = [...base]
+      if (contactId) clauses.push(`phonecall_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
+      fetches.push(fetchFiltered(msalInstance, 'phonecalls', 'phonecall', clauses))
+    }
+
+    if (wantAppts) {
+      const clauses = [...base]
+      if (contactId) clauses.push(`appointment_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
+      fetches.push(fetchFiltered(msalInstance, 'appointments', 'appointment', clauses))
+    }
+
+    if (wantEmails) {
+      const clauses = [...base]
+      if (contactId) clauses.push(`email_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
+      fetches.push(fetchFiltered(msalInstance, 'emails', 'email', clauses))
+    }
+
+    if (wantEscalations) {
+      const clauses = [...escalationBase]
+      fetches.push(fetchEscalations(msalInstance, clauses))
+    }
+
+    if (wantLeads && accountId) {
+      const leadClauses = [`_parentaccountid_value eq ${accountId}`]
+      addCreatedOnDateFilters(leadClauses, dateFrom, dateTo)
+      fetches.push(fetchLeads(msalInstance, leadClauses))
+    }
+
+    if ((wantOpportunities || wantSupport) && accountId) {
+      const oppClauses = [`_parentaccountid_value eq ${accountId}`]
+      addCreatedOnDateFilters(oppClauses, dateFrom, dateTo)
+      const typeFilter = wantOpportunities && !wantSupport ? 'opportunity'
+        : !wantOpportunities && wantSupport ? 'support'
+        : undefined
+      fetches.push(fetchOpportunities(msalInstance, oppClauses, { typeFilter }))
+    }
+
+    if (wantAnnotations) {
+      const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds])).slice(0, 50) : []
+      const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
+      addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
+      fetches.push(fetchAnnotations(msalInstance, annotationFilter))
+    }
+
+    const results = await Promise.all(fetches)
+    allResults.push(...results.flat())
   }
 
-  addCreatedOnDateFilters(base, dateFrom, dateTo)
-  addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
-
-  if (wantCalls) {
-    const clauses = [...base]
-    if (contactId) clauses.push(`phonecall_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
-    fetches.push(fetchFiltered(msalInstance, 'phonecalls', 'phonecall', clauses))
+  // Deduplicate by activityid (same record may appear for multiple accounts)
+  const seen = new Set()
+  const deduped = []
+  for (const r of allResults) {
+    const id = r.activityid || r.annotationid
+    if (id && seen.has(id)) continue
+    if (id) seen.add(id)
+    deduped.push(r)
   }
-
-  if (wantAppts) {
-    const clauses = [...base]
-    if (contactId) clauses.push(`appointment_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
-    fetches.push(fetchFiltered(msalInstance, 'appointments', 'appointment', clauses))
-  }
-
-  if (wantEmails) {
-    const clauses = [...base]
-    if (contactId) clauses.push(`email_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
-    fetches.push(fetchFiltered(msalInstance, 'emails', 'email', clauses))
-  }
-
-  if (wantEscalations) {
-    const clauses = [...escalationBase]
-    fetches.push(fetchEscalations(msalInstance, clauses))
-  }
-
-  if (wantLeads && accountId) {
-    const leadClauses = [`_parentaccountid_value eq ${accountId}`]
-    addCreatedOnDateFilters(leadClauses, dateFrom, dateTo)
-    fetches.push(fetchLeads(msalInstance, leadClauses))
-  }
-
-  if ((wantOpportunities || wantSupport) && accountId) {
-    const oppClauses = [`_parentaccountid_value eq ${accountId}`]
-    addCreatedOnDateFilters(oppClauses, dateFrom, dateTo)
-    // If filtering to a specific type, pass the typeFilter; otherwise fetch all
-    const typeFilter = wantOpportunities && !wantSupport ? 'opportunity'
-      : !wantOpportunities && wantSupport ? 'support'
-      : undefined
-    fetches.push(fetchOpportunities(msalInstance, oppClauses, { typeFilter }))
-  }
-
-  if (wantAnnotations) {
-    // Annotations link to accounts, escalations, or leads — use a focused filter to avoid 400 errors
-    const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds])).slice(0, 50) : []
-    const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
-    addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
-    fetches.push(fetchAnnotations(msalInstance, annotationFilter))
-  }
-
-  const results = await Promise.all(fetches)
-  const all = results.flat()
-  all.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
-  return all
+  deduped.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
+  return deduped
 }
 
 // Normalise activity party records into a flat attendee list
