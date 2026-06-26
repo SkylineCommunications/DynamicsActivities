@@ -176,7 +176,7 @@ export default function NotesList({ refreshKey, initialAccount }) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  // When initialAccount changes (e.g. after note creation), update filter and auto-search
+  // When initialAccount changes (e.g. after note creation), update the "Regarding" filter
   useEffect(() => {
     if (initialAccount) {
       setAccount(initialAccount)
