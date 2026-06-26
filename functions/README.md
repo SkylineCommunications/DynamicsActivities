@@ -90,7 +90,13 @@ Functions:
     digestMonthly:       timerTrigger
 ```
 
-The frontend dev server (`npm run dev` from the repo root) points to `http://localhost:7071/api` via `VITE_FUNCTIONS_BASE_URL` in `.env`.
+The frontend dev server (`npm run dev` from the repo root) connects to the Functions backend via `VITE_FUNCTIONS_BASE_URL` in your `.env`. There are three modes:
+
+| Mode | `VITE_FUNCTIONS_BASE_URL` in `.env` | Functions target |
+|---|---|---|
+| **Fully local** | `http://localhost:7071/api` | `func start` + Azurite |
+| **Local SPA → dev Azure** | `https://dmact-func-dev-7gqnlq.azurewebsites.net/api` | Deployed dev app |
+| **DataMiner prod** | *(set in `.env.dataminer`)* | Deployed prod app |
 
 ---
 
@@ -115,7 +121,7 @@ The frontend dev server (`npm run dev` from the repo root) points to `http://loc
 | `INSTANT_COOLDOWN_MINUTES` | Cooldown window for instant notifications (default: 15) |
 | `SPA_BASE_URL` | Public URL of the DynamicsActivities SPA |
 | `ENTRA_TENANT_ID` | Azure AD tenant ID (for validating user tokens from the SPA) |
-| `ENTRA_AUDIENCE` | Azure AD app registration client ID for the SPA |
+| `ENTRA_AUDIENCE` | Dataverse org URL — must match the `aud` claim of the token the SPA sends (e.g. `https://skyline365-qa.crm4.dynamics.com`) |
 
 ---
 
@@ -180,16 +186,47 @@ Tables are auto-created on first run via `ensureTables()`:
 
 ---
 
+## Deployed Function Apps
+
+Both apps live in subscription `327a6575-94e4-4d02-bb5d-9a88d68f58b9`, resource group `rg-dynamics-activities` (westeurope):
+
+| App | Name | Dataverse | Use for |
+|---|---|---|---|
+| **Dev** | `dmact-func-dev-7gqnlq` | `skyline365-qa.crm4.dynamics.com` | Local SPA development, testing |
+| **Prod** | `dmact-func-prod-7gqnlq` | `skyline365.crm4.dynamics.com` | DataMiner production deployment |
+
+Storage accounts: `dmactstordev7gqnlq` (dev) · `dmactstorprod7gqnlq` (prod)
+
+Secrets are stored in Key Vault:
+- Dev: `kv-dynamics-748` (subscription `a476a434-...`)
+- Prod: `kv-dynamics-114` (subscription `327a6575-...`)
+
+---
+
 ## Deployment
 
-```bash
-# Deploy to Azure (requires Azure CLI logged in)
-func azure functionapp publish <your-function-app-name> --javascript
+### Via GitHub Actions (recommended)
 
-# Or use GitHub Actions (add AZURE_FUNCTIONAPP_PUBLISH_PROFILE secret)
+The `.github/workflows/deploy-functions.yml` workflow deploys automatically:
+- **On push to `main`** when files under `functions/` change → deploys to **prod**
+- **Manual dispatch** → choose `dev` or `prod`
+
+Required GitHub Actions setup (Settings → Environments):
+
+| Environment | Secret: `AZURE_CREDENTIALS` | Variable: `FUNC_APP_NAME` |
+|---|---|---|
+| `dev` | Service principal JSON for subscription `327a6575-...` | `dmact-func-dev-7gqnlq` |
+| `prod` | Service principal JSON for subscription `327a6575-...` | `dmact-func-prod-7gqnlq` |
+
+### Via Azure CLI
+
+```powershell
+az account set --subscription 327a6575-94e4-4d02-bb5d-9a88d68f58b9
+cd functions
+npm ci
+func azure functionapp publish dmact-func-dev-7gqnlq --javascript   # dev
+func azure functionapp publish dmact-func-prod-7gqnlq --javascript  # prod
 ```
-
-Set all environment variables in the Function App's **Configuration > Application settings**.
 
 ---
 
