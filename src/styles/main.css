@@ -166,6 +166,26 @@ body {
   border-color: var(--color6);
 }
 
+.sign-out-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color5);
+  border-radius: var(--radius-md);
+  background: var(--color2);
+  color: var(--color11);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.sign-out-btn:hover {
+  background: var(--alert-error-bg);
+  border-color: var(--alert-error-border);
+  color: var(--alert-error-text);
+}
+
 /* ─── Tab navigation ─────────────────────────────────────────────────────────── */
 .tab-nav {
   display: flex;

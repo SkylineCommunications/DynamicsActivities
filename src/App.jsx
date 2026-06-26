@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useMsal } from '@azure/msal-react'
 import AuthGuard from './components/AuthGuard'
 import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
@@ -25,6 +26,7 @@ function resolveTheme(pref) {
 }
 
 export default function App() {
+  const { instance } = useMsal()
   const [activeTab, setActiveTab] = useState('new')
   const [refreshKey, setRefreshKey] = useState(0)
   const [themePref, setThemePref] = useState(getInitialTheme)
@@ -69,6 +71,14 @@ export default function App() {
             title={`Theme: ${themePref}`}
           >
             <span className="icon">{themeIcon}</span>
+          </button>
+          <button
+            type="button"
+            className="sign-out-btn"
+            onClick={() => instance.logoutRedirect()}
+            title="Sign out"
+          >
+            <span className="icon">logout</span>
           </button>
         </div>
       </header>
