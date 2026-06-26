@@ -938,6 +938,202 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .empty-sub { font-size: 14px; color: var(--color10); }
 .empty-text { color: var(--color9); font-size: 14px; }
 
+/* ─── Subscriptions ─────────────────────────────────────────────────────────── */
+.subscriptions-container {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.subscriptions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.subscriptions-title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--clr-text);
+}
+
+.btn.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  background: var(--clr-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.btn.btn-primary:hover:not(:disabled) { background: var(--clr-accent-hover); }
+.btn.btn-primary:disabled { opacity: 0.45; cursor: default; }
+
+.btn.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  background: transparent;
+  color: var(--clr-text-muted);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  font-family: var(--font);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn.btn-secondary:hover:not(:disabled) { background: var(--clr-surface-2); color: var(--clr-text); }
+
+/* Best practice banner */
+.best-practice-banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  background: rgba(26, 159, 255, 0.08);
+  border: 1px solid rgba(26, 159, 255, 0.25);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  font-size: var(--fs-sm);
+  color: var(--clr-text-muted);
+  line-height: 1.5;
+}
+
+.bp-icon { font-size: 1.1rem; flex-shrink: 0; }
+
+/* Subscription cards */
+.sub-list { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.sub-card {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: border-color 0.15s;
+}
+
+.sub-card:hover { border-color: var(--clr-accent); }
+
+.sub-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sub-card-scope {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.sub-scope-icon { font-size: 1.1rem; flex-shrink: 0; }
+
+.sub-scope-label {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--clr-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sub-scope-type {
+  font-size: var(--fs-xs);
+  color: var(--clr-text-muted);
+  background: var(--clr-surface-2);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-full);
+  padding: 0.1rem 0.45rem;
+  flex-shrink: 0;
+}
+
+.sub-card-actions { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+
+.sub-card-meta { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+.sub-freq-badge {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--clr-accent);
+  background: var(--clr-accent-dim);
+  border-radius: var(--radius-full);
+  padding: 0.15rem 0.55rem;
+}
+
+.sub-last-sent { font-size: var(--fs-xs); color: var(--clr-text-muted); }
+
+/* Subscription form */
+.subscription-form {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.sub-form-title {
+  font-size: var(--fs-base);
+  font-weight: 700;
+  color: var(--clr-text);
+}
+
+.sub-form-actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem; }
+
+/* Best practice hints (inline) */
+.best-practice-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: var(--fs-xs);
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-md);
+  line-height: 1.4;
+}
+
+.hint-good {
+  background: var(--clr-success-bg);
+  color: var(--clr-success);
+  border: 1px solid rgba(46, 184, 138, 0.25);
+}
+
+.hint-tip {
+  background: var(--clr-warning-bg);
+  color: var(--clr-warning);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+/* Read receipt badge */
+.read-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--clr-success);
+  padding: 0.15rem 0.45rem;
+  background: var(--clr-success-bg);
+  border-radius: var(--radius-full);
+}
+
 /* ─── Scrollbar ──────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

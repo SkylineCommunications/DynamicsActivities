@@ -3,10 +3,12 @@ import { useMsal } from '@azure/msal-react'
 import AuthGuard from './components/AuthGuard'
 import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
+import SubscriptionsPanel from './components/SubscriptionsPanel'
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
   { id: 'browse', label: 'Browse', icon: 'search' },
+  { id: 'subscriptions', label: 'Subscriptions', icon: 'notifications' },
 ]
 
 function getInitialTheme() {
@@ -112,6 +114,9 @@ function cycleTheme() {
               )}
               {activeTab === 'browse' && (
                 <NotesList refreshKey={refreshKey} />
+              )}
+              {activeTab === 'subscriptions' && (
+                <SubscriptionsPanel />
               )}
             </>
           )}
