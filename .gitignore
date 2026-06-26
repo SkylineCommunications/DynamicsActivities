@@ -13,3 +13,6 @@ obj/
 
 # Azure Functions local config (contains secrets)
 functions/local.settings.json
+
+# Deployment artifacts
+functions-deploy.zip
