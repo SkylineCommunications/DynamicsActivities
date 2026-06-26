@@ -92,7 +92,7 @@ function cycleTheme() {
             className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
             onClick={() => setActiveTab(t.id)}
           >
-            <span className="icon icon-sm">{t.icon}</span>
+            <span className="icon icon-sm" aria-hidden="true">{t.icon}</span>
             {t.label}
           </button>
         ))}
