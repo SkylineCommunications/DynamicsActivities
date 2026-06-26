@@ -81,8 +81,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
           >
-            Open in Dynamics <span className="icon icon-sm">open_in_new</span>
-          </a>
+            Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
           {confirmDelete ? (
             <>
               <button
