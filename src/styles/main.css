@@ -1682,7 +1682,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .subscriptions-title {
   font-size: var(--fs-lg);
   font-weight: 600;
-  color: var(--clr-text);
+  color: var(--color12);
 }
 
 .btn.btn-primary {
@@ -1690,18 +1690,18 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   align-items: center;
   gap: 0.4rem;
   padding: 0.5rem 1.1rem;
-  background: var(--clr-accent);
-  color: #fff;
+  background: var(--focus-color);
+  color: var(--focus-contrast-color);
   border: none;
   border-radius: var(--radius-md);
-  font-family: var(--font);
+  font-family: 'InterVariable', Inter, sans-serif;
   font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
 }
 
-.btn.btn-primary:hover:not(:disabled) { background: var(--clr-accent-hover); }
+.btn.btn-primary:hover:not(:disabled) { opacity: 0.88; }
 .btn.btn-primary:disabled { opacity: 0.45; cursor: default; }
 
 .btn.btn-secondary {
@@ -1710,17 +1710,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   gap: 0.4rem;
   padding: 0.5rem 1.1rem;
   background: transparent;
-  color: var(--clr-text-muted);
-  border: 1px solid var(--clr-border);
+  color: var(--color10);
+  border: 1px solid var(--color5);
   border-radius: var(--radius-md);
-  font-family: var(--font);
+  font-family: 'InterVariable', Inter, sans-serif;
   font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 
-.btn.btn-secondary:hover:not(:disabled) { background: var(--clr-surface-2); color: var(--clr-text); }
+.btn.btn-secondary:hover:not(:disabled) { background: var(--color3); color: var(--color12); }
 
 /* Best practice banner */
 .best-practice-banner {
@@ -1732,7 +1732,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   border-radius: var(--radius-md);
   padding: 0.75rem 1rem;
   font-size: var(--fs-sm);
-  color: var(--clr-text-muted);
+  color: var(--color10);
   line-height: 1.5;
 }
 
@@ -1742,8 +1742,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .sub-list { display: flex; flex-direction: column; gap: 0.6rem; }
 
 .sub-card {
-  background: var(--clr-surface);
-  border: 1px solid var(--clr-border);
+  background: var(--color2);
+  border: 1px solid var(--color5);
   border-radius: var(--radius-lg);
   padding: 0.85rem 1rem;
   display: flex;
@@ -1752,7 +1752,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   transition: border-color 0.15s;
 }
 
-.sub-card:hover { border-color: var(--clr-accent); }
+.sub-card:hover { border-color: var(--focus-color); }
 
 .sub-card-header {
   display: flex;
@@ -1773,17 +1773,17 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .sub-scope-label {
   font-weight: 600;
   font-size: var(--fs-sm);
-  color: var(--clr-text);
+  color: var(--color12);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sub-scope-type {
-  font-size: var(--fs-xs);
-  color: var(--clr-text-muted);
-  background: var(--clr-surface-2);
-  border: 1px solid var(--clr-border);
+  font-size: 11px;
+  color: var(--color10);
+  background: var(--color3);
+  border: 1px solid var(--color5);
   border-radius: var(--radius-full);
   padding: 0.1rem 0.45rem;
   flex-shrink: 0;
@@ -1794,20 +1794,20 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .sub-card-meta { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
 .sub-freq-badge {
-  font-size: var(--fs-xs);
+  font-size: 11px;
   font-weight: 600;
-  color: var(--clr-accent);
-  background: var(--clr-accent-dim);
+  color: var(--focus-color);
+  background: color-mix(in srgb, var(--focus-color) 12%, transparent);
   border-radius: var(--radius-full);
   padding: 0.15rem 0.55rem;
 }
 
-.sub-last-sent { font-size: var(--fs-xs); color: var(--clr-text-muted); }
+.sub-last-sent { font-size: 11px; color: var(--color10); }
 
 /* Subscription form */
 .subscription-form {
-  background: var(--clr-surface);
-  border: 1px solid var(--clr-border);
+  background: var(--color2);
+  border: 1px solid var(--color5);
   border-radius: var(--radius-lg);
   padding: 1.25rem;
   display: flex;
@@ -1818,7 +1818,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .sub-form-title {
   font-size: var(--fs-base);
   font-weight: 700;
-  color: var(--clr-text);
+  color: var(--color12);
 }
 
 .sub-form-actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem; }
@@ -1828,22 +1828,22 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   display: flex;
   align-items: flex-start;
   gap: 0.4rem;
-  font-size: var(--fs-xs);
+  font-size: 11px;
   padding: 0.55rem 0.75rem;
   border-radius: var(--radius-md);
   line-height: 1.4;
 }
 
 .hint-good {
-  background: var(--clr-success-bg);
-  color: var(--clr-success);
-  border: 1px solid rgba(46, 184, 138, 0.25);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+  border: 1px solid rgba(36, 161, 72, 0.25);
 }
 
 .hint-tip {
-  background: var(--clr-warning-bg);
-  color: var(--clr-warning);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: color-mix(in srgb, var(--major) 12%, transparent);
+  color: var(--major);
+  border: 1px solid rgba(255, 131, 43, 0.25);
 }
 
 /* Read receipt badge */
@@ -1851,11 +1851,11 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  font-size: var(--fs-xs);
+  font-size: 11px;
   font-weight: 500;
-  color: var(--clr-success);
+  color: var(--success);
   padding: 0.15rem 0.45rem;
-  background: var(--clr-success-bg);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
   border-radius: var(--radius-full);
 }
 

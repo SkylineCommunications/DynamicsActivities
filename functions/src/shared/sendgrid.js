@@ -5,7 +5,12 @@
 
 import sgMail from '@sendgrid/mail'
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+const SENDGRID_CONFIGURED =
+  process.env.SENDGRID_API_KEY && !process.env.SENDGRID_API_KEY.startsWith('<')
+
+if (SENDGRID_CONFIGURED) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+}
 
 const FROM = {
   email: process.env.SENDGRID_FROM_EMAIL,
@@ -121,11 +126,15 @@ export async function sendInstantEmail(toEmail, toName, activities, sub, tokenFo
     cardsHtml,
   )
 
+  if (!SENDGRID_CONFIGURED) {
+    console.log(`[sendgrid] No API key — skipping instant email to ${toEmail}. Subject: ${subject}`)
+    return
+  }
   await sgMail.send({ to: { email: toEmail, name: toName }, from: FROM, subject, html })
+  console.log(`[sendgrid] Instant email sent to ${toEmail} — ${subject}`)
 }
 
 /**
- * Send a digest email.
  * @param {string} toEmail
  * @param {string} toName
  * @param {object[]} activities
@@ -154,5 +163,10 @@ export async function sendDigestEmail(toEmail, toName, activities, sub, summaryT
      ${cardsHtml}`,
   )
 
+  if (!SENDGRID_CONFIGURED) {
+    console.log(`[sendgrid] No API key — skipping digest email to ${toEmail}. Subject: ${subject}`)
+    return
+  }
   await sgMail.send({ to: { email: toEmail, name: toName }, from: FROM, subject, html })
+  console.log(`[sendgrid] Digest email sent to ${toEmail} — ${subject}`)
 }

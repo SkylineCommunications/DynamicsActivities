@@ -247,6 +247,36 @@ export async function resolveAccountsByNames(msalInstance, customers) {
   return Array.from(resolved.values())
 }
 
+export async function searchCountries(msalInstance, query) {
+  if (!query || query.trim().length < 1) return []
+  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+  const data = await dvFetch(
+    msalInstance,
+    `/accounts?$filter=contains(address1_country,'${q}') and address1_country ne null&$select=address1_country&$top=50`,
+  ).catch(() => null)
+  const seen = new Set()
+  return (data?.value ?? [])
+    .map((a) => a.address1_country)
+    .filter((c) => c && !seen.has(c) && seen.add(c))
+    .sort()
+    .map((c) => ({ id: c, name: c }))
+}
+
+export async function searchRegions(msalInstance, query) {
+  if (!query || query.trim().length < 1) return []
+  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+  const data = await dvFetch(
+    msalInstance,
+    `/accounts?$filter=contains(address1_stateorprovince,'${q}') and address1_stateorprovince ne null&$select=address1_stateorprovince&$top=50`,
+  ).catch(() => null)
+  const seen = new Set()
+  return (data?.value ?? [])
+    .map((a) => a.address1_stateorprovince)
+    .filter((r) => r && !seen.has(r) && seen.add(r))
+    .sort()
+    .map((r) => ({ id: r, name: r }))
+}
+
 // ─── Contacts ────────────────────────────────────────────────────────────────
 export async function searchContacts(msalInstance, query, accountId = null) {
   if (!query || query.trim().length < 2) return []

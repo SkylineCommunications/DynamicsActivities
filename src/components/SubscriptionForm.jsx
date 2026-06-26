@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { searchAccounts } from '../api/dataverse'
+import { searchAccounts, searchCountries, searchRegions } from '../api/dataverse'
 import { createSubscription, updateSubscription } from '../api/subscriptions'
 import AutocompletePicker from './AutocompletePicker'
 
@@ -72,10 +72,10 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
       : null,
   )
   const [countryInput, setCountryInput] = useState(
-    subscription?.scopeType === 'country' ? subscription.scopeValue : '',
+    subscription?.scopeType === 'country' ? { id: subscription.scopeValue, name: subscription.scopeValue } : null,
   )
   const [regionInput, setRegionInput] = useState(
-    subscription?.scopeType === 'region' ? subscription.scopeValue : '',
+    subscription?.scopeType === 'region' ? { id: subscription.scopeValue, name: subscription.scopeValue } : null,
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -84,22 +84,22 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
 
   function getScopeValue() {
     if (scopeType === 'account') return account?.accountid ?? ''
-    if (scopeType === 'country') return countryInput.trim()
-    if (scopeType === 'region') return regionInput.trim()
+    if (scopeType === 'country') return countryInput?.id ?? ''
+    if (scopeType === 'region') return regionInput?.id ?? ''
     return '' // escalation has no value
   }
 
   function getScopeLabel() {
     if (scopeType === 'account') return account?.name ?? ''
-    if (scopeType === 'country') return countryInput.trim()
-    if (scopeType === 'region') return regionInput.trim()
+    if (scopeType === 'country') return countryInput?.name ?? ''
+    if (scopeType === 'region') return regionInput?.name ?? ''
     return 'All Escalations'
   }
 
   function isValid() {
     if (scopeType === 'account') return !!account?.accountid
-    if (scopeType === 'country') return countryInput.trim().length > 0
-    if (scopeType === 'region') return regionInput.trim().length > 0
+    if (scopeType === 'country') return !!countryInput?.id
+    if (scopeType === 'region') return !!regionInput?.id
     return true // escalation
   }
 
@@ -170,27 +170,29 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
       {scopeType === 'country' && (
         <div className="field">
           <label className="field-label">Country <span className="required">*</span></label>
-          <input
-            className="input"
-            type="text"
+          <AutocompletePicker
+            searchFn={(q) => searchCountries(instance, q)}
+            getKey={(c) => c.id}
+            getLabel={(c) => c.name}
             value={countryInput}
-            onChange={(e) => setCountryInput(e.target.value)}
-            placeholder="e.g. Belgium"
+            onChange={setCountryInput}
+            placeholder="Type to search countries…"
           />
-          <div className="hint-text">Must match the country name as stored on Account records in Dynamics.</div>
+          <div className="hint-text">Matches the country field on Account records in Dynamics.</div>
         </div>
       )}
       {scopeType === 'region' && (
         <div className="field">
           <label className="field-label">Region / State <span className="required">*</span></label>
-          <input
-            className="input"
-            type="text"
+          <AutocompletePicker
+            searchFn={(q) => searchRegions(instance, q)}
+            getKey={(r) => r.id}
+            getLabel={(r) => r.name}
             value={regionInput}
-            onChange={(e) => setRegionInput(e.target.value)}
-            placeholder="e.g. Flanders"
+            onChange={setRegionInput}
+            placeholder="Type to search regions…"
           />
-          <div className="hint-text">Must match the state/province value as stored on Account records in Dynamics.</div>
+          <div className="hint-text">Matches the state/province field on Account records in Dynamics.</div>
         </div>
       )}
       {scopeType === 'escalation' && (
