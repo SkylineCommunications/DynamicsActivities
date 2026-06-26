@@ -112,6 +112,8 @@ jobs:
       # --------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || 'main' }}
 
       # --------------------------------------------------------
       # 2. Validate required secrets
