@@ -54,7 +54,7 @@ export default function AuthGuard({ children }) {
     return (
       <div className="auth-screen">
         <div className="auth-card">
-          <div className="auth-icon"><span className="icon icon-lg">warning</span></div>
+          <div className="auth-icon"><span className="icon icon-lg" aria-hidden="true">warning</span></div>
           <h2>Authentication error</h2>
           <p className="auth-error">{authError}</p>
           <button className="btn-primary" onClick={handleLogin}>
