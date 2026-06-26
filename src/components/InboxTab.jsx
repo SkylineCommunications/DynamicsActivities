@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { getConversationMessages, getRecentInboxMessages } from '../api/graph'
+import { getConversationMessages, getRecentInboxMessages, searchPeopleMailboxes } from '../api/graph'
 import {
   checkSyncedMessageIds,
   createContact,
@@ -781,7 +781,7 @@ export default function InboxTab({ compact = false, onImported }) {
   const [externalOnly, setExternalOnly] = useState(false)
   const [syncedSet, setSyncedSet] = useState(new Set())
   const [mailbox, setMailbox] = useState('')
-  const [mailboxDraft, setMailboxDraft] = useState('')
+  const mailboxQueryRef = useRef('')
   const [selectedThreadKey, setSelectedThreadKey] = useState(null)
   const [addingThread, setAddingThread] = useState(null)
   const sentinelRef = useRef(null)
@@ -862,8 +862,30 @@ export default function InboxTab({ compact = false, onImported }) {
     }
   }, [filteredThreads, allThreads, selectedThreadKey])
 
+  const initialMailboxSuggestions = useMemo(() => {
+    const fromEnv = (import.meta.env.VITE_SHARED_MAILBOXES || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((e) => ({ email: e, label: e }))
+    const envEmails = new Set(fromEnv.map((m) => m.email))
+    const recents = JSON.parse(localStorage.getItem('inbox_recent_mailboxes') || '[]')
+      .filter((e) => !envEmails.has(e))
+      .map((e) => ({ email: e, label: e }))
+    return [...fromEnv, ...recents].slice(0, 8)
+  }, [])
+
+  function saveMailboxToRecents(address) {
+    if (!address) return
+    const recents = JSON.parse(localStorage.getItem('inbox_recent_mailboxes') || '[]')
+    const updated = [address, ...recents.filter((a) => a !== address)].slice(0, 8)
+    localStorage.setItem('inbox_recent_mailboxes', JSON.stringify(updated))
+  }
+
   function commitMailbox() {
-    setMailbox(mailboxDraft.trim())
+    const address = mailboxQueryRef.current.trim()
+    if (address) saveMailboxToRecents(address)
+    setMailbox(address)
   }
 
   return (
@@ -873,19 +895,31 @@ export default function InboxTab({ compact = false, onImported }) {
           <div className="filter-field">
             <label className="filter-label">Mailbox</label>
             <div className="mailbox-field">
-              <input
-                className="input"
-                value={mailboxDraft}
-                onChange={(e) => setMailboxDraft(e.target.value)}
+              <AutocompletePicker
+                searchFn={(q) => searchPeopleMailboxes(instance, q)}
+                getKey={(item) => item.email}
+                getLabel={(item) => item.label && item.label !== item.email ? item.label : item.email}
+                getSublabel={(item) => item.label && item.label !== item.email ? item.email : null}
+                value={mailbox ? { email: mailbox, label: mailbox } : null}
+                onChange={(item) => {
+                  const address = item?.email ?? ''
+                  if (address) saveMailboxToRecents(address)
+                  mailboxQueryRef.current = address
+                  setMailbox(address)
+                }}
+                onEnter={commitMailbox}
                 onBlur={commitMailbox}
-                onKeyDown={(e) => e.key === 'Enter' && commitMailbox()}
-                placeholder="My mailbox"
+                onQueryChange={(q) => { mailboxQueryRef.current = q }}
+                initialSuggestions={initialMailboxSuggestions}
+                placeholder="Type or select a mailbox…"
+                clearOnPick={false}
+                minChars={2}
               />
               {mailbox && (
                 <button
                   type="button"
                   className="mailbox-clear"
-                  onClick={() => { setMailboxDraft(''); setMailbox('') }}
+                  onClick={() => { mailboxQueryRef.current = ''; setMailbox('') }}
                   aria-label="Clear mailbox"
                 >×</button>
               )}

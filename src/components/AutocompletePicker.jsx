@@ -14,6 +14,9 @@ import { useState, useEffect, useRef } from 'react'
  *   clearOnPick     — if true, clears input after selection (for multi-add flows)
  *   minChars        — minimum chars before searching (default 2)
  *   debounce        — ms delay (default 300)
+ *   initialSuggestions — items shown on focus when query is empty / below minChars
+ *   onQueryChange(q) — called on every input change with the raw query string
+ *   onBlur()        — called after the blur+close delay (use for free-text commit)
  */
 export default function AutocompletePicker({
   searchFn,
@@ -28,6 +31,9 @@ export default function AutocompletePicker({
   autoSelectSingle = false,
   minChars = 2,
   debounce = 300,
+  initialSuggestions = [],
+  onQueryChange,
+  onBlur,
 }) {
   const [query, setQuery] = useState(value ? getLabel(value) : '')
   const [results, setResults] = useState([])
@@ -47,6 +53,7 @@ export default function AutocompletePicker({
   function handleInput(e) {
     const q = e.target.value
     setQuery(q)
+    if (onQueryChange) onQueryChange(q)
     if (!q) {
       onChange(null)
       setResults([])
@@ -127,8 +134,19 @@ export default function AutocompletePicker({
         placeholder={placeholder}
         value={query}
         onChange={handleInput}
-        onBlur={() => setTimeout(() => { setOpen(false); setActiveIndex(-1) }, 150)}
-        onFocus={() => results.length > 0 && setOpen(true)}
+        onBlur={() => setTimeout(() => {
+          setOpen(false)
+          setActiveIndex(-1)
+          if (onBlur) onBlur()
+        }, 150)}
+        onFocus={() => {
+          if (results.length > 0) {
+            setOpen(true)
+          } else if (query.trim().length < minChars && initialSuggestions.length > 0) {
+            setResults(initialSuggestions)
+            setOpen(true)
+          }
+        }}
         onKeyDown={handleKeyDown}
         autoComplete="off"
       />

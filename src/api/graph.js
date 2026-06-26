@@ -171,6 +171,35 @@ function normaliseMessage(message) {
   }
 }
 
+// ─── People / mailbox search ─────────────────────────────────────────────────
+/**
+ * Search org people by name or email fragment using the Microsoft People API.
+ * Returns contacts ranked by interaction frequency — shared mailboxes the user
+ * regularly emails will surface here.
+ * Requires People.Read scope (delegated, no admin consent needed).
+ */
+export async function searchPeopleMailboxes(msalInstance, query) {
+  if (!query || query.trim().length < 2) return []
+  try {
+    const token = await getGraphToken(msalInstance)
+    const q = encodeURIComponent(`"${query.trim()}"`)
+    const url = `${GRAPH}/me/people?$search=${q}&$select=displayName,scoredEmailAddresses&$top=10`
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? [])
+      .map((p) => ({
+        email: p.scoredEmailAddresses?.[0]?.address ?? '',
+        label: p.displayName || '',
+      }))
+      .filter((p) => p.email)
+  } catch {
+    return []
+  }
+}
+
 // ─── Calendar events ──────────────────────────────────────────────────────────
 // Returns non-all-day events: 60 days past + 30 days future, sorted newest first
 export async function getRecentCalendarEvents(msalInstance) {
