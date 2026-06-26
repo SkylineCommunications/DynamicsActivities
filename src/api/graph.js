@@ -214,10 +214,13 @@ const MAILBOX_CACHE_TTL = 15 * 60 * 1000 // 15 minutes
 export async function filterAccessibleMailboxes(msalInstance, candidates) {
   if (!candidates.length) return []
 
-  // Return cached results if still fresh
+  // Include a fingerprint of the candidate list so changing the list busts the cache
+  const candidateKey = candidates.map((c) => c.email.toLowerCase()).sort().join(',')
+
+  // Return cached results if still fresh and for the same candidate set
   try {
     const cached = JSON.parse(sessionStorage.getItem(MAILBOX_CACHE_KEY) || 'null')
-    if (cached && Date.now() - cached.ts < MAILBOX_CACHE_TTL) {
+    if (cached && cached.candidateKey === candidateKey && Date.now() - cached.ts < MAILBOX_CACHE_TTL) {
       const accessibleEmails = new Set(cached.emails)
       return candidates.filter((c) => accessibleEmails.has(c.email.toLowerCase()))
     }
@@ -227,13 +230,15 @@ export async function filterAccessibleMailboxes(msalInstance, candidates) {
     const token = await getGraphToken(msalInstance)
     const accessibleEmails = new Set()
 
-    // Process in chunks of 20 (Graph Batch API limit)
+    // Process in chunks of 20 (Graph Batch API limit).
+    // Probe the messages endpoint with $top=1 — same path used by the inbox loader,
+    // so 200/403/404 here matches what the real inbox load will get.
     for (let i = 0; i < candidates.length; i += 20) {
       const chunk = candidates.slice(i, i + 20)
       const requests = chunk.map((mb, idx) => ({
         id: `${idx}`,
         method: 'GET',
-        url: `/users/${encodeURIComponent(mb.email)}/mailFolders/inbox`,
+        url: `/users/${encodeURIComponent(mb.email)}/mailFolders/inbox/messages?$top=1&$select=id`,
       }))
       const res = await fetch(`${GRAPH}/$batch`, {
         method: 'POST',
@@ -252,13 +257,14 @@ export async function filterAccessibleMailboxes(msalInstance, candidates) {
 
     sessionStorage.setItem(MAILBOX_CACHE_KEY, JSON.stringify({
       emails: [...accessibleEmails],
+      candidateKey,
       ts: Date.now(),
     }))
 
     return candidates.filter((c) => accessibleEmails.has(c.email.toLowerCase()))
   } catch {
-    // On any error fall back to showing all candidates unfiltered
-    return candidates
+    // On any error return empty — safer than showing inaccessible mailboxes
+    return []
   }
 }
 
