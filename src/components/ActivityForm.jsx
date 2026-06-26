@@ -52,7 +52,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
       .then((esc) => {
         setActiveEscalation(esc)
         setAccountIsEscalated(!!esc)
-        setLinkToEscalation(false)
+        setLinkToEscalation(!!esc)
       })
       .catch(() => {
         setActiveEscalation(null)
