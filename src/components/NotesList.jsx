@@ -24,8 +24,6 @@ TYPE_ICONS['Meeting'] ??= 'calendar_today'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 
-const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
-
 function fmtDate(d) {
   if (!d) return ''
   return new Date(d).toLocaleString(undefined, {
@@ -46,7 +44,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const recordId = note.activityid || note.annotationid
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
-  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities'
+  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities' || note._entityType === 'support'
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -160,7 +158,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
       )}
 
       {/* Opportunity status info */}
-      {note._entityType === 'opportunities' && (
+      {(note._entityType === 'opportunities' || note._entityType === 'support') && (
         <div className="note-opportunity-status">
           <span className={`opp-badge ${note.statecode === 0 ? 'opp-open' : note.statecode === 1 ? 'opp-won' : 'opp-lost'}`}>
             {note['statuscode@OData.Community.Display.V1.FormattedValue'] || (note.statecode === 0 ? 'Open' : note.statecode === 1 ? 'Won' : 'Lost')}
@@ -205,16 +203,19 @@ export default function NotesList({ refreshKey, initialAccount }) {
   const [expandedId, setExpandedId] = useState(null)
 
   // Filter state
-  const [account, setAccount] = useState(initialAccount || null)
+  const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
   const [attendee, setAttendee] = useState(null) // { contactid, fullname }
-  const [activityType, setActivityType] = useState('')
+  const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
   // When initialAccount changes (e.g. after note creation), update the "Regarding" filter
   useEffect(() => {
     if (initialAccount) {
-      setAccount(initialAccount)
+      setAccounts((prev) => {
+        if (prev.some((a) => a.accountid === initialAccount.accountid)) return prev
+        return [...prev, initialAccount]
+      })
     }
   }, [initialAccount])
 
@@ -222,16 +223,16 @@ export default function NotesList({ refreshKey, initialAccount }) {
     setLoading(true)
     setError(null)
     searchActivities(instance, {
-      accountId: account?.accountid ?? null,
+      accountIds: accounts.map((a) => a.accountid),
       contactId: attendee?.contactid ?? null,
-      activityType: activityType || null,
+      activityTypes: selectedTypes.size ? [...selectedTypes] : null,
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
     })
       .then(setNotes)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [instance, account, attendee, activityType, dateFrom, dateTo])
+  }, [instance, accounts, attendee, selectedTypes, dateFrom, dateTo])
 
   // Auto-search when navigated here after note creation, or re-run on refresh
   useEffect(() => {
@@ -249,12 +250,17 @@ export default function NotesList({ refreshKey, initialAccount }) {
               searchFn={(q) => searchAccounts(instance, q)}
               getKey={(a) => a.accountid}
               getLabel={(a) => a.name}
-              value={account}
-              onChange={setAccount}
+              value={null}
+              onChange={(item) => {
+                if (item && !accounts.some((a) => a.accountid === item.accountid)) {
+                  setAccounts((prev) => [...prev, item])
+                }
+              }}
               onEnter={runSearch}
               placeholder="Search account…"
               minChars={2}
               autoSelectSingle
+              clearOnPick
             />
           </div>
           <div className="filter-field">
@@ -274,18 +280,45 @@ export default function NotesList({ refreshKey, initialAccount }) {
           </div>
         </div>
 
+        {accounts.length > 0 && (
+          <div className="filter-chips">
+            {accounts.map((a) => (
+              <span key={a.accountid} className="filter-chip">
+                {a.name}
+<button type="button" className="chip-remove" aria-label={`Remove ${a.name}`} onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
+  <span className="icon icon-xs" aria-hidden="true">close</span>
+</button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <div className="filter-row filter-row-controls">
           <div className="filter-field">
             <label className="filter-label">Type</label>
             <div className="filter-type-btns">
-          {FILTER_TYPES.map((t) => (
+<button
+  type="button"
+  className={`filter-type-btn ${selectedTypes.size === 0 ? 'active' : ''}`}
+  aria-pressed={selectedTypes.size === 0}
+  onClick={() => setSelectedTypes(new Set())}
+>
+                All
+              </button>
+              {ACTIVITY_TYPES.map((t) => (
                 <button
-                  key={t.value}
+                  key={t.id}
                   type="button"
-                  className={`filter-type-btn ${activityType === t.value ? 'active' : ''}`}
-                  onClick={() => setActivityType(t.value)}
+                  className={`filter-type-btn ${selectedTypes.has(t.id) ? 'active' : ''}`}
+                  aria-pressed={selectedTypes.has(t.id)}
+                  onClick={() => setSelectedTypes((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(t.id)) next.delete(t.id)
+                    else next.add(t.id)
+                    return next
+                  })}
                 >
-                  {t.value && <span className="icon icon-sm">{TYPE_ICONS[t.label]}</span>}{t.label}
+<span className="icon icon-sm" aria-hidden="true">{TYPE_ICONS[t.label]}</span>{t.label}
                 </button>
               ))}
             </div>
