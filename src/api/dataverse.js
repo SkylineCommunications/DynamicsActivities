@@ -537,10 +537,11 @@ export async function createInboxAppointmentActivity(
     const attendeeEmail = (attendee.email || '').toLowerCase()
     if (!attendeeEmail) continue
     const contact = contactsByEmail[attendeeEmail]
+    const mask = attendee.type === 'optional' ? 6 : 5
     if (contact) {
-      parties.push({ participationtypemask: 5, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
+      parties.push({ participationtypemask: mask, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
     } else {
-      parties.push({ participationtypemask: 5, addressused: attendee.email })
+      parties.push({ participationtypemask: mask, addressused: attendee.email })
     }
   }
 

@@ -329,7 +329,7 @@ body {
   flex-wrap: wrap;
 }
 
-.email-mode-row {
+.mode-row {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;

@@ -227,7 +227,10 @@ function CalendarAddModal({ event, onClose, onImported }) {
                   key={t.id}
                   type="button"
                   className={`filter-type-btn ${regardingType === t.id ? 'active' : ''}`}
-                  onClick={() => setRegardingType(t.id)}
+                  onClick={() => {
+                    setRegardingType(t.id)
+                    setRegardingItem(null)
+                  }}
                 >
                   {t.label}
                 </button>

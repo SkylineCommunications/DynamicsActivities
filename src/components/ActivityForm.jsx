@@ -201,7 +201,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         </div>
 
         {isEmail && (
-          <div className="email-mode-row">
+          <div className="mode-row">
             <button
               type="button"
               className={`filter-type-btn ${emailMode === 'create' ? 'active' : ''}`}
@@ -220,7 +220,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         )}
 
         {isAppointment && (
-          <div className="email-mode-row">
+          <div className="mode-row">
             <button
               type="button"
               className={`filter-type-btn ${appointmentMode === 'create' ? 'active' : ''}`}
