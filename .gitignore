@@ -5,3 +5,4 @@ dataminer-dist/
 .env
 .env.dataminer
 *.local
+dist-dataminer/
