@@ -285,9 +285,9 @@ export default function NotesList({ refreshKey, initialAccount }) {
             {accounts.map((a) => (
               <span key={a.accountid} className="filter-chip">
                 {a.name}
-                <button type="button" className="chip-remove" onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
-                  <span className="icon icon-xs">close</span>
-                </button>
+<button type="button" className="chip-remove" aria-label={`Remove ${a.name}`} onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
+  <span className="icon icon-xs" aria-hidden="true">close</span>
+</button>
               </span>
             ))}
           </div>
