@@ -310,6 +310,7 @@ export default function NotesList({ refreshKey, initialAccount }) {
                   key={t.id}
                   type="button"
                   className={`filter-type-btn ${selectedTypes.has(t.id) ? 'active' : ''}`}
+                  aria-pressed={selectedTypes.has(t.id)}
                   onClick={() => setSelectedTypes((prev) => {
                     const next = new Set(prev)
                     if (next.has(t.id)) next.delete(t.id)
