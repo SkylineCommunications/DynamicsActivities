@@ -45,11 +45,11 @@ export default function App() {
     }
   }, [themePref])
 
-  function cycleTheme() {
-    const next = themePref === 'light' ? 'dark' : themePref === 'dark' ? 'system' : 'light'
-    setThemePref(next)
-    localStorage.setItem('dm-theme', next)
-  }
+function cycleTheme() {
+  const next = themePref === 'light' ? 'dark' : themePref === 'dark' ? 'system' : 'light'
+  setThemePref(next)
+  try { localStorage.setItem('dm-theme', next) } catch {}
+}
 
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
 
