@@ -148,6 +148,14 @@ function splitName(displayName, email) {
   return { firstname: parts[0], lastname: parts.slice(1).join(' ') }
 }
 
+function hasPlausibleDomain(email) {
+  const normalized = String(email || '').trim().toLowerCase()
+  const at = normalized.lastIndexOf('@')
+  if (at <= 0 || at === normalized.length - 1) return false
+  const domain = normalized.slice(at + 1)
+  return domain.includes('.') && !domain.startsWith('.') && !domain.endsWith('.')
+}
+
 function ContactCreatePrompt({
   draft,
   domainSuggestedAccount,
@@ -538,18 +546,20 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
     let cancelled = false
     const email = contactDraft?.email || ''
     const hasManualAccount = !!contactDraft?.account
-    if (!email || hasManualAccount) {
+    if (!email || !hasPlausibleDomain(email) || hasManualAccount) {
       setDomainSuggestedAccount(null)
       return () => { cancelled = true }
     }
-    suggestAccountByEmailDomain(instance, email)
-      .then((suggestion) => {
-        if (!cancelled) setDomainSuggestedAccount(suggestion)
-      })
-      .catch(() => {
-        if (!cancelled) setDomainSuggestedAccount(null)
-      })
-    return () => { cancelled = true }
+    const timer = setTimeout(() => {
+      suggestAccountByEmailDomain(instance, email)
+        .then((suggestion) => {
+          if (!cancelled) setDomainSuggestedAccount(suggestion)
+        })
+        .catch(() => {
+          if (!cancelled) setDomainSuggestedAccount(null)
+        })
+    }, 350)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [instance, contactDraft?.email, contactDraft?.account?.accountid])
 
   async function handleCreateContact() {
@@ -570,10 +580,14 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
         telephone1: telephone1 || null,
         accountId: contactDraft.account?.accountid || null,
       })
-      const emailKey = (emailaddress1 || contactDraft.participant?.email || '').toLowerCase()
-      if (emailKey) {
-        setContactsByEmail((prev) => ({ ...prev, [emailKey]: contact }))
-      }
+      const editedEmailKey = (emailaddress1 || '').toLowerCase()
+      const participantEmailKey = String(contactDraft.participant?.email || '').trim().toLowerCase()
+      setContactsByEmail((prev) => {
+        const next = { ...prev }
+        if (participantEmailKey) next[participantEmailKey] = contact
+        if (editedEmailKey) next[editedEmailKey] = contact
+        return next
+      })
       setContactDraft(null)
     } catch (e) {
       setError(e.message)
