@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { searchAccounts, searchContacts, resolveAttendees, createActivity, getActiveEscalation, ACTIVITY_TYPES } from '../api/dataverse'
+import { searchAccounts, searchContacts, resolveAttendees, createActivity, getActiveEscalation, getAccountLeads, getUserCanManageLeads, ACTIVITY_TYPES } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
 
@@ -39,13 +39,26 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
   const [activeEscalation, setActiveEscalation] = useState(null)
   const [linkToEscalation, setLinkToEscalation] = useState(false)
   const [accountIsEscalated, setAccountIsEscalated] = useState(false)
+  const [accountLeads, setAccountLeads] = useState([])
+  const [linkToLeadId, setLinkToLeadId] = useState('')
+  const [canManageLeads, setCanManageLeads] = useState(false)
 
-  // When account changes, check for active escalation
+  // Check if user has a sales license (can manage leads in Dynamics)
+  useEffect(() => {
+    if (!currentUserId) return
+    getUserCanManageLeads(instance, currentUserId)
+      .then(setCanManageLeads)
+      .catch(() => setCanManageLeads(false))
+  }, [instance, currentUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When account changes, check for active escalation and fetch leads
   useEffect(() => {
     if (!account?.accountid) {
       setActiveEscalation(null)
       setLinkToEscalation(false)
       setAccountIsEscalated(false)
+      setAccountLeads([])
+      setLinkToLeadId('')
       return
     }
     getActiveEscalation(instance, account.accountid)
@@ -58,6 +71,9 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         setActiveEscalation(null)
         setAccountIsEscalated(false)
       })
+    getAccountLeads(instance, account.accountid)
+      .then(setAccountLeads)
+      .catch(() => setAccountLeads([]))
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isNote = type === 'note'
@@ -107,6 +123,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         attendees,
         currentUserId,
         linkToEscalationId: (linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
+        linkToLeadId: linkToLeadId || undefined,
       })
       setSuccess(true)
       setNote('')
@@ -178,11 +195,39 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
               <input
                 type="checkbox"
                 checked={linkToEscalation}
-                onChange={(e) => setLinkToEscalation(e.target.checked)}
+                onChange={(e) => { setLinkToEscalation(e.target.checked); if (e.target.checked) setLinkToLeadId('') }}
                 disabled={!activeEscalation}
               />
               {activeEscalation ? 'Link to escalation' : 'Loading escalation…'}
             </label>
+          </div>
+        )}
+
+        {/* BD Leads — show when account has open leads */}
+        {accountLeads.length > 0 && (
+          <div className="lead-link-banner">
+            <span className="icon icon-sm">trending_up</span>
+            <label className="lead-link-select">
+              <span>Link to BD lead</span>
+              <select
+                value={linkToLeadId}
+                onChange={(e) => { setLinkToLeadId(e.target.value); if (e.target.value) setLinkToEscalation(false) }}
+              >
+                <option value="">None</option>
+                {accountLeads.map((l) => (
+                  <option key={l.leadid} value={l.leadid}>
+                    {l.subject || '(Untitled)'} — {l.statusLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {canManageLeads && (
+              <span className="lead-hint">
+                <a href={`${import.meta.env.VITE_DATAVERSE_URL}main.aspx?pagetype=entitylist&etn=lead`} target="_blank" rel="noreferrer">
+                  Manage leads <span className="icon icon-sm">open_in_new</span>
+                </a>
+              </span>
+            )}
           </div>
         )}
 

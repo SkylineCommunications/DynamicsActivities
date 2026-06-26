@@ -125,6 +125,11 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
           <span className="icon icon-sm">link</span> Linked to escalation
         </div>
       )}
+      {note._linkedToLead && (
+        <div className="note-lead-link">
+          <span className="icon icon-sm">trending_up</span> Linked to lead
+        </div>
+      )}
 
       {/* Escalation status badge */}
       {note._entityType === 'slc_escalations' && note.slc_status && (

@@ -77,6 +77,24 @@ export async function getActiveEscalation(msalInstance, accountId) {
   return data?.value?.[0] ?? null
 }
 
+// ─── Lead helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Fetch open BD leads for an account.
+ * Returns leads with statecode=0 (Open), ordered by creation date desc.
+ */
+export async function getAccountLeads(msalInstance, accountId) {
+  if (!accountId) return []
+  const data = await dvFetch(
+    msalInstance,
+    `/leads?$filter=_parentaccountid_value eq ${accountId} and statecode eq 0&$select=leadid,subject,statuscode,schedulefollowup_prospect&$orderby=createdon desc&$top=20`,
+  ).catch(() => null)
+  return (data?.value ?? []).map((l) => ({
+    ...l,
+    statusLabel: l['statuscode@OData.Community.Display.V1.FormattedValue'] || 'Open',
+  }))
+}
+
 // ─── Token helper ────────────────────────────────────────────────────────────
 export async function getDvToken(msalInstance) {
   const account = msalInstance.getAllAccounts()[0]
@@ -110,6 +128,19 @@ async function dvFetch(msalInstance, path, options = {}) {
 // ─── Identity ─────────────────────────────────────────────────────────────────
 export async function whoAmI(msalInstance) {
   return dvFetch(msalInstance, '/WhoAmI')
+}
+
+// CAL types that can create/manage leads in Dynamics Sales
+const SALES_CAL_TYPES = new Set([7, 8, 9, 10, 11, 12]) // Enterprise, Device Enterprise, Sales, Service, Field Service, Project Service
+
+/**
+ * Check if the current user has a sales-capable license (not Team Member).
+ * Team Member (caltype 0/Professional, 2/Basic, 5/Essential) cannot create leads.
+ */
+export async function getUserCanManageLeads(msalInstance, userId) {
+  if (!userId) return false
+  const user = await dvFetch(msalInstance, `/systemusers(${userId})?$select=caltype`).catch(() => null)
+  return user ? SALES_CAL_TYPES.has(user.caltype) : false
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
@@ -264,18 +295,20 @@ function buildParties(typeId, currentUserId, attendees) {
   return parties
 }
 
-export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId, linkToEscalationId }) {
+export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId, linkToEscalationId, linkToLeadId }) {
   const typeConfig = ACTIVITY_TYPES.find((t) => t.id === type)
   if (!typeConfig) throw new Error(`Unknown activity type: ${type}`)
 
   const dateStr = new Date(date).toISOString()
   const endStr = new Date(new Date(date).getTime() + 30 * 60 * 1000).toISOString()
 
-  // Note (annotation) — links to escalation if linkToEscalationId, otherwise to account
+  // Note (annotation) — links to escalation, lead, or account
   if (type === 'note') {
     const objectBind = linkToEscalationId
       ? { 'objectid_slc_escalation@odata.bind': `/slc_escalations(${linkToEscalationId})` }
-      : { 'objectid_account@odata.bind': `/accounts(${accountId})` }
+      : linkToLeadId
+        ? { 'objectid_lead@odata.bind': `/leads(${linkToLeadId})` }
+        : { 'objectid_account@odata.bind': `/accounts(${accountId})` }
     const body = {
       subject: 'Note',
       notetext: note,
@@ -290,11 +323,18 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
   const parties = buildParties(type, currentUserId, attendees)
 
-  // Activities always regard the account — escalation link is tracked in the description
-  const regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
-  const desc = linkToEscalationId
-    ? `[Linked to escalation]\n${note}`
-    : note
+  // Lead is a native regarding target — use direct binding. Escalation is not — use description prefix.
+  let regardingBind, desc
+  if (linkToLeadId) {
+    regardingBind = { 'regardingobjectid_lead@odata.bind': `/leads(${linkToLeadId})` }
+    desc = note
+  } else if (linkToEscalationId) {
+    regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
+    desc = `[Linked to escalation]\n${note}`
+  } else {
+    regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
+    desc = note
+  }
 
   const base = {
     description: desc,
@@ -528,13 +568,14 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
 
   const relatedIds = []
   const escalationIds = []
+  const leadIds = []
 
   for (const opp of opportunitiesData?.value ?? []) relatedIds.push(opp.opportunityid)
   for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
-  for (const lead of leadsData?.value ?? []) relatedIds.push(lead.leadid)
+  for (const lead of leadsData?.value ?? []) { relatedIds.push(lead.leadid); leadIds.push(lead.leadid) }
   for (const escalation of escalationsData?.value ?? []) escalationIds.push(escalation.activityid)
 
-  return { relatedIds, escalationIds }
+  return { relatedIds, escalationIds, leadIds }
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
@@ -558,12 +599,15 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
     msalInstance,
     `/${entity}?$select=${BASE_SELECT}${filterStr}${expandOrTop}&$orderby=createdon desc`,
   )
-  return (data?.value ?? []).map((r) => ({
-    ...r,
-    _linkedToEscalation: r['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'] === 'slc_escalation'
-      || (r.description && r.description.startsWith('[Linked to escalation]')),
-    _entityType: entity,
-  }))
+  return (data?.value ?? []).map((r) => {
+    const lookupType = r['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+    return {
+      ...r,
+      _linkedToEscalation: lookupType === 'slc_escalation' || (r.description && r.description.startsWith('[Linked to escalation]')),
+      _linkedToLead: lookupType === 'lead',
+      _entityType: entity,
+    }
+  })
 }
 
 // Escalations have custom columns and no activity parties — fetch with extended select
@@ -613,6 +657,7 @@ async function fetchAnnotations(msalInstance, filterClauses) {
     _regardingobjectid_value: r._objectid_value,
     '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': r['_objectid_value@OData.Community.Display.V1.FormattedValue'],
     _linkedToEscalation: r.objecttypecode === 'slc_escalation',
+    _linkedToLead: r.objecttypecode === 'lead',
     _entityType: 'annotations',
   }))
 }
@@ -628,11 +673,13 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   const base = []
   const escalationBase = []
   let escalationIds = []
+  let leadIds = []
 
   if (accountId) {
     // Include escalation IDs so child activities/notes linked to the escalation are returned too.
     const related = await getAccountRelatedEntityIds(msalInstance, accountId)
     escalationIds = related.escalationIds
+    leadIds = related.leadIds
     const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
     const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
     base.push(buildLookupFilter('_regardingobjectid_value', allIds))
@@ -675,8 +722,8 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   }
 
   if (wantAnnotations) {
-    // Annotations only link to accounts or escalations — use a smaller filter to avoid 400 errors
-    const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds])).slice(0, 50) : []
+    // Annotations link to accounts, escalations, or leads — use a focused filter to avoid 400 errors
+    const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds])).slice(0, 50) : []
     const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
     addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
     fetches.push(fetchAnnotations(msalInstance, annotationFilter))
