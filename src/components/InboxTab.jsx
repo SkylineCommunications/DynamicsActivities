@@ -8,6 +8,7 @@ import {
   findContactByEmail,
   getThreadSuggestion,
   relinkExistingEmails,
+  suggestAccountByEmailDomain,
   searchAccounts,
   searchLeads,
   searchOpportunities,
@@ -138,6 +139,115 @@ function mapSuggestionToItem(suggestion) {
   return null
 }
 
+function splitName(displayName, email) {
+  const raw = String(displayName || '').trim()
+  const emailNorm = String(email || '').trim().toLowerCase()
+  if (!raw || raw.toLowerCase() === emailNorm) return { firstname: '', lastname: '' }
+  const parts = raw.split(/\s+/).filter(Boolean)
+  if (parts.length <= 1) return { firstname: parts[0] || '', lastname: '' }
+  return { firstname: parts[0], lastname: parts.slice(1).join(' ') }
+}
+
+function ContactCreatePrompt({
+  draft,
+  domainSuggestedAccount,
+  onClose,
+  onChange,
+  onPickDomainSuggestion,
+  onConfirm,
+  creating,
+  searchAccountsFn,
+}) {
+  if (!draft) return null
+  return (
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && !creating && onClose()}>
+      <div className="modal contact-create-modal">
+        <div className="modal-header">
+          <h3 className="modal-title">Create contact</h3>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close" disabled={creating}>×</button>
+        </div>
+        <div className="modal-body">
+          <div className="contact-create-grid">
+            <label className="field-label" htmlFor="contact-firstname">First name</label>
+            <input
+              id="contact-firstname"
+              className="input"
+              value={draft.firstname}
+              onChange={(e) => onChange('firstname', e.target.value)}
+              placeholder="Contact first name"
+              autoFocus
+            />
+
+            <label className="field-label" htmlFor="contact-lastname">Last name</label>
+            <input
+              id="contact-lastname"
+              className="input"
+              value={draft.lastname}
+              onChange={(e) => onChange('lastname', e.target.value)}
+              placeholder="Contact last name"
+            />
+
+            <label className="field-label" htmlFor="contact-email">Email</label>
+            <input
+              id="contact-email"
+              className="input"
+              value={draft.email}
+              onChange={(e) => onChange('email', e.target.value)}
+              placeholder="name@company.com"
+            />
+
+            <label className="field-label" htmlFor="contact-jobtitle">Job title</label>
+            <input
+              id="contact-jobtitle"
+              className="input"
+              value={draft.jobtitle}
+              onChange={(e) => onChange('jobtitle', e.target.value)}
+              placeholder="Job title"
+            />
+
+            <label className="field-label" htmlFor="contact-phone">Phone</label>
+            <input
+              id="contact-phone"
+              className="input"
+              value={draft.phone}
+              onChange={(e) => onChange('phone', e.target.value)}
+              placeholder="Phone number"
+            />
+
+            <label className="field-label">Account / Company link</label>
+            <AutocompletePicker
+              searchFn={searchAccountsFn}
+              getKey={(a) => a.accountid}
+              getLabel={(a) => a.name}
+              value={draft.account}
+              onChange={(item) => onChange('account', item)}
+              placeholder="Search account…"
+              autoSelectSingle
+            />
+            {!draft.account && domainSuggestedAccount && (
+              <button
+                type="button"
+                className="suggestion-chip"
+                onClick={onPickDomainSuggestion}
+                disabled={creating}
+              >
+                💡 Suggested from @{domainSuggestedAccount.domain}: {domainSuggestedAccount.name}
+              </button>
+            )}
+          </div>
+
+          <div className="inbox-modal-actions">
+            <button type="button" className="btn-ghost" onClick={onClose} disabled={creating}>Cancel</button>
+            <button type="button" className="btn-primary" onClick={onConfirm} disabled={creating}>
+              {creating ? 'Creating…' : 'Create contact'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ThreadDetailView({ thread, onAddToDynamics }) {
   const [expandedMessageIds, setExpandedMessageIds] = useState(() => new Set())
   useEffect(() => {
@@ -260,6 +370,9 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
   const [saving, setSaving] = useState(false)
   const [loadingThread, setLoadingThread] = useState(false)
   const [error, setError] = useState(null)
+  const [contactDraft, setContactDraft] = useState(null)
+  const [domainSuggestedAccount, setDomainSuggestedAccount] = useState(null)
+  const [creatingContact, setCreatingContact] = useState(false)
   const [threadMessages, setThreadMessages] = useState(thread.messages)
   const [existingByMessageId, setExistingByMessageId] = useState(new Map())
   const [originalSuggestion, setOriginalSuggestion] = useState(null)
@@ -390,18 +503,82 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
     setRegardingItem(mapSuggestionToItem(originalSuggestion))
   }
 
-  async function handleCreateContact(participant) {
-    setError(null)
-    try {
-      const resolvedAccountId = regardingType === 'account' ? regardingItem?.accountid || null : null
-      const contact = await createContact(instance, {
-        fullname: participant.name || participant.email,
-        emailaddress1: participant.email,
-        accountId: resolvedAccountId,
+  function handleOpenCreateContact(participant) {
+    const { firstname, lastname } = splitName(participant.name, participant.email)
+    const defaultAccount = regardingType === 'account' ? regardingItem : null
+    setContactDraft({
+      participant,
+      firstname,
+      lastname,
+      email: participant.email || '',
+      jobtitle: '',
+      phone: '',
+      account: defaultAccount,
+    })
+  }
+
+  function handleCloseCreateContact() {
+    if (creatingContact) return
+    setContactDraft(null)
+  }
+
+  function updateContactDraftField(field, value) {
+    setContactDraft((prev) => (prev ? { ...prev, [field]: value } : prev))
+  }
+
+  function pickDomainSuggestion() {
+    if (!domainSuggestedAccount) return
+    updateContactDraftField('account', {
+      accountid: domainSuggestedAccount.accountid,
+      name: domainSuggestedAccount.name,
+    })
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    const email = contactDraft?.email || ''
+    const hasManualAccount = !!contactDraft?.account
+    if (!email || hasManualAccount) {
+      setDomainSuggestedAccount(null)
+      return () => { cancelled = true }
+    }
+    suggestAccountByEmailDomain(instance, email)
+      .then((suggestion) => {
+        if (!cancelled) setDomainSuggestedAccount(suggestion)
       })
-      setContactsByEmail((prev) => ({ ...prev, [participant.email.toLowerCase()]: contact }))
+      .catch(() => {
+        if (!cancelled) setDomainSuggestedAccount(null)
+      })
+    return () => { cancelled = true }
+  }, [instance, contactDraft?.email, contactDraft?.account?.accountid])
+
+  async function handleCreateContact() {
+    if (!contactDraft) return
+    setError(null)
+    setCreatingContact(true)
+    try {
+      const firstname = contactDraft.firstname.trim()
+      const lastname = contactDraft.lastname.trim()
+      const emailaddress1 = contactDraft.email.trim()
+      const jobtitle = contactDraft.jobtitle.trim()
+      const telephone1 = contactDraft.phone.trim()
+      const contact = await createContact(instance, {
+        firstname: firstname || null,
+        lastname: lastname || null,
+        emailaddress1: emailaddress1 || null,
+        jobtitle: jobtitle || null,
+        telephone1: telephone1 || null,
+        accountId: contactDraft.account?.accountid || null,
+      })
+      const emailKey = (emailaddress1 || contactDraft.participant?.email || '').toLowerCase()
+      if (emailKey) {
+        setContactsByEmail((prev) => ({ ...prev, [emailKey]: contact }))
+      }
+      setContactDraft(null)
     } catch (e) {
       setError(e.message)
+    } finally {
+      setCreatingContact(false)
     }
   }
 
@@ -546,7 +723,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
                     {contact ? (
                       <span className="chip-sm chip-linked">✓ Linked contact</span>
                     ) : (
-                      <button type="button" className="btn-ghost btn-sm" onClick={() => handleCreateContact(participant)}>
+                      <button type="button" className="btn-ghost btn-sm" onClick={() => handleOpenCreateContact(participant)}>
                         Create contact
                       </button>
                     )}
@@ -564,6 +741,16 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
           </div>
         </div>
       </div>
+      <ContactCreatePrompt
+        draft={contactDraft}
+        domainSuggestedAccount={domainSuggestedAccount}
+        onClose={handleCloseCreateContact}
+        onChange={updateContactDraftField}
+        onPickDomainSuggestion={pickDomainSuggestion}
+        onConfirm={handleCreateContact}
+        creating={creatingContact}
+        searchAccountsFn={(q) => searchAccounts(instance, q)}
+      />
     </div>
   )
 }
