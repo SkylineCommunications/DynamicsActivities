@@ -1,16 +1,14 @@
 name: Build
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
-    branches:
-      - main
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:

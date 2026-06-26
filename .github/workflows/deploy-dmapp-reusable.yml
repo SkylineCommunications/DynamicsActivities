@@ -1,0 +1,294 @@
+# ============================================================
+# Reusable workflow: Build, Register, and Deploy a custom UI
+# app (.dmapp) to a DataMiner system.
+#
+# Designed for Vite/React/Angular SPAs that are packaged as
+# DataMiner Packages and deployed via the DataMiner Catalog.
+#
+# Usage — reference from a product repo's caller workflow:
+#
+#   jobs:
+#     deploy:
+#       uses: ./.github/workflows/deploy-dmapp-reusable.yml
+#       with:
+#         catalog_id:           "your-catalog-guid"
+#         agent_destination_id: "your-dma-agent-guid"
+#       secrets: inherit
+#
+# Required secrets on the calling repo:
+#   DATAMINER_TOKEN     — DataMiner system token (catalog + deploy)
+#   VITE_CLIENT_ID      — Entra app registration client ID
+#   VITE_TENANT_ID      — Entra tenant ID
+#   VITE_DATAVERSE_URL  — Dataverse environment URL
+# Required vars:
+#   VITE_REDIRECT_URI   — OAuth redirect URI (not a secret)
+# ============================================================
+
+name: "[Reusable] Build, Register and Deploy UI App DMAPP"
+
+on:
+  workflow_call:
+    inputs:
+
+      # ----------------------------------------------------------
+      # Required: DataMiner Catalog + deployment targets
+      # ----------------------------------------------------------
+      catalog_id:
+        description: >
+          Catalog artifact ID (GUID) for this package.
+          Find it on catalog.dataminer.services, or from the
+          existing deploy workflow of the product repo.
+        required: true
+        type: string
+
+      agent_destination_id:
+        description: >
+          DataMiner Agent ID to deploy the package to.
+          Find it in DataMiner Cube → System Center → Agents.
+        required: true
+        type: string
+
+      # ----------------------------------------------------------
+      # Optional: Frontend build
+      # ----------------------------------------------------------
+      frontend_build_cmd:
+        description: >
+          Command to produce the frontend dist folder.
+          Runs after `npm ci`.
+        required: false
+        type: string
+        default: "npm run build"
+
+      frontend_dist_dir:
+        description: >
+          Directory the build writes output to (relative to repo root).
+          The .csproj packaging target is expected to read from here.
+        required: false
+        type: string
+        default: "dist-dataminer"
+
+      node_version:
+        description: Node.js version for the frontend build.
+        required: false
+        type: string
+        default: "20"
+
+      # ----------------------------------------------------------
+      # Optional: .NET / DataMiner packaging
+      # ----------------------------------------------------------
+      dotnet_version:
+        description: .NET SDK version for building the DataMiner package.
+        required: false
+        type: string
+        default: "8.0.x"
+
+      csproj_path:
+        description: >
+          Explicit path to the DataMiner Package .csproj
+          (relative to repo root).
+          Leave empty to auto-discover the first .csproj that
+          contains <DataMinerType>Package</DataMinerType>.
+        required: false
+        type: string
+        default: ""
+
+    secrets:
+      DATAMINER_TOKEN:
+        description: DataMiner system token for Catalog upload and deployment.
+        required: true
+      # All other secrets (VITE_*, etc.) flow in via `secrets: inherit`
+      # on the caller — no need to enumerate them here.
+
+permissions:
+  contents: read
+
+jobs:
+  build_register_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # --------------------------------------------------------
+      # 1. Source
+      # --------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # PR merge → always build from main; manual dispatch → build from the selected branch
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+
+      # --------------------------------------------------------
+      # 2. Validate required secrets
+      # --------------------------------------------------------
+      - name: Validate DATAMINER_TOKEN
+        run: |
+          if [[ -z "${{ secrets.DATAMINER_TOKEN }}" ]]; then
+            echo "::error::DATAMINER_TOKEN secret is not set on this repository."
+            exit 1
+          fi
+          echo "✓ DATAMINER_TOKEN is present."
+
+      # --------------------------------------------------------
+      # 3. Frontend build (Vite / React / Angular)
+      # --------------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # VITE_* env vars flow in automatically via `secrets: inherit`.
+      # Add additional app-specific env vars here as needed.
+      - name: Build frontend
+        run: ${{ inputs.frontend_build_cmd }}
+        env:
+          VITE_CLIENT_ID:     ${{ secrets.VITE_CLIENT_ID }}
+          VITE_TENANT_ID:     ${{ secrets.VITE_TENANT_ID }}
+          VITE_DATAVERSE_URL: ${{ secrets.VITE_DATAVERSE_URL }}
+          VITE_REDIRECT_URI:  ${{ vars.VITE_REDIRECT_URI }}
+
+      - name: Verify frontend dist
+        run: |
+          if [[ ! -d "${{ inputs.frontend_dist_dir }}" ]]; then
+            echo "::error::Frontend dist directory '${{ inputs.frontend_dist_dir }}' not found after build."
+            exit 1
+          fi
+          echo "✓ Frontend dist ready at '${{ inputs.frontend_dist_dir }}'."
+
+      # --------------------------------------------------------
+      # 4. .NET + Mono setup
+      # --------------------------------------------------------
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Install Mono (required for net48 targets)
+        run: |
+          sudo apt update -qq
+          sudo apt install -y mono-complete
+
+      # --------------------------------------------------------
+      # 5. Resolve .csproj path
+      # --------------------------------------------------------
+      - name: Resolve csproj path
+        id: csproj
+        shell: pwsh
+        run: |
+          $explicit = "${{ inputs.csproj_path }}"
+          if ($explicit -ne "") {
+            if (-not (Test-Path $explicit)) {
+              Write-Error "Provided csproj_path '$explicit' does not exist."
+              exit 1
+            }
+            "path=$explicit" >> $env:GITHUB_OUTPUT
+            Write-Host "Using provided csproj: $explicit"
+          } else {
+            $found = Get-ChildItem -Recurse -Filter "*.csproj" |
+              Where-Object { (Get-Content $_.FullName -Raw) -match '<DataMinerType>\s*Package\s*</DataMinerType>' } |
+              Select-Object -First 1
+            if (-not $found) {
+              Write-Error "No .csproj with <DataMinerType>Package</DataMinerType> found. Set csproj_path input explicitly."
+              exit 1
+            }
+            "path=$($found.FullName)" >> $env:GITHUB_OUTPUT
+            Write-Host "Auto-discovered csproj: $($found.FullName)"
+          }
+
+      # --------------------------------------------------------
+      # 6. Extract version from .csproj
+      # --------------------------------------------------------
+      - name: Extract package version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$csproj = Get-Content "${{ steps.csproj.outputs.path }}"
+          $version = $csproj.Project.PropertyGroup.Version |
+            Where-Object { $_ } | Select-Object -First 1
+          if (-not $version) {
+            Write-Error "No <Version> element found in '${{ steps.csproj.outputs.path }}'."
+            Write-Error "Add <Version>X.Y.Z</Version> to the .csproj PropertyGroup."
+            exit 1
+          }
+          "number=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Package version: $version"
+
+      # --------------------------------------------------------
+      # 7. Build DataMiner package (.dmapp)
+      # --------------------------------------------------------
+      - name: Build DataMiner package
+        run: dotnet build "${{ steps.csproj.outputs.path }}" -c Release
+
+      # --------------------------------------------------------
+      # 8. Locate generated .dmapp
+      # --------------------------------------------------------
+      - name: Locate .dmapp artifact
+        id: dmapp
+        shell: pwsh
+        run: |
+          $csprojDir = Split-Path "${{ steps.csproj.outputs.path }}"
+          $dmapp = Get-ChildItem -Path $csprojDir -Filter "*.dmapp" -Recurse |
+            Select-Object -First 1
+          if (-not $dmapp) {
+            Write-Error "No .dmapp found under '$csprojDir' after build."
+            exit 1
+          }
+          "path=$($dmapp.FullName)" >> $env:GITHUB_OUTPUT
+          Write-Host "Found .dmapp: $($dmapp.FullName)"
+
+      # --------------------------------------------------------
+      # 9. Install DataMiner CI/CD tools
+      # --------------------------------------------------------
+      - name: Install DataMiner CI/CD tools
+        run: |
+          dotnet tool update --global Skyline.DataMiner.CICD.Tools.CatalogUpload
+          dotnet tool update --global Skyline.DataMiner.CICD.Tools.DataMinerDeploy
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      # --------------------------------------------------------
+      # 10. Upload & register in Catalog
+      # --------------------------------------------------------
+      - name: Upload package to Catalog
+        shell: pwsh
+        env:
+          DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
+        run: |
+          Write-Host "Uploading v${{ steps.version.outputs.number }} to DataMiner Catalog..."
+          $output = dataminer-catalog-upload with-registration `
+            --path-to-artifact "${{ steps.dmapp.outputs.path }}" `
+            --artifact-version "${{ steps.version.outputs.number }}" `
+            --dm-catalog-token "$env:DATAMINER_CATALOG_TOKEN" 2>&1
+          $output | ForEach-Object { Write-Host $_ }
+          Write-Host "✓ Package registered in Catalog."
+
+      # --------------------------------------------------------
+      # 11. Deploy from Catalog to DMA
+      # --------------------------------------------------------
+      - name: Deploy package to DataMiner
+        shell: pwsh
+        env:
+          DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
+        run: |
+          Write-Host "Deploying v${{ steps.version.outputs.number }} to agent '${{ inputs.agent_destination_id }}'..."
+          dataminer-package-deploy from-catalog `
+            --catalog-id "${{ inputs.catalog_id }}" `
+            --catalog-version "${{ steps.version.outputs.number }}" `
+            --agent-destination-id "${{ inputs.agent_destination_id }}" `
+            --dm-catalog-token "$env:DATAMINER_CATALOG_TOKEN"
+          Write-Host "✓ Deployment complete."
+
+      # --------------------------------------------------------
+      # 12. Job summary
+      # --------------------------------------------------------
+      - name: Write job summary
+        run: |
+          echo "## ✅ UI App Deployed to DataMiner" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.version.outputs.number }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Catalog ID | \`${{ inputs.catalog_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent ID | \`${{ inputs.agent_destination_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
