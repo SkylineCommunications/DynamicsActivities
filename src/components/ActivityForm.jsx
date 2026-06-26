@@ -11,9 +11,11 @@ function AttendeeChip({ attendee, onRemove }) {
   const isLinked = !!attendee.contactId
   return (
     <span className={`chip ${isLinked ? 'chip-linked' : 'chip-unlinked'}`}>
-      <span className="chip-icon">{isLinked ? '✓' : '○'}</span>
+      <span className="icon icon-sm">{isLinked ? 'check_circle' : 'radio_button_unchecked'}</span>
       <span>{attendee.name || attendee.email}</span>
-      <button type="button" className="chip-remove" onClick={onRemove} aria-label="Remove attendee">×</button>
+      <button type="button" className="chip-remove" onClick={onRemove} aria-label="Remove attendee">
+        <span className="icon icon-sm">close</span>
+      </button>
     </span>
   )
 }
@@ -110,7 +112,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
               onClick={() => setType(t.id)}
               title={t.tooltip}
             >
-              <span className="type-icon">{t.icon}</span>
+              <span className="icon icon-sm">{t.iconLigature}</span>
               <span>{t.label}</span>
             </button>
           ))}
@@ -118,8 +120,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
 
         {/* Calendar link */}
         <div className="calendar-row">
-          <button type="button" className="btn-ghost btn-sm" onClick={() => setShowCalendar(true)}>
-            📆 Fill from calendar
+          <button type="button" className="btn-ghost" onClick={() => setShowCalendar(true)}>
+            <span className="icon icon-sm">calendar_today</span> Fill from calendar
           </button>
           <span className="hint-text">Auto-fills date &amp; attendees from your Outlook</span>
         </div>
@@ -197,7 +199,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
 
         {/* Errors / success */}
         {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">✓ Activity saved</div>}
+        {success && <div className="alert alert-success"><span className="icon icon-sm">check_circle</span> Activity saved</div>}
 
         {/* Submit */}
         <button type="submit" className="btn-primary" disabled={!canSubmit}>

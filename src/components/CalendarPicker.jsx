@@ -65,10 +65,10 @@ export default function CalendarPicker({ onSelect, onClose }) {
           <span className="calendar-item-subject">{ev.subject}</span>
           <span className="calendar-item-date">{fmtEventDate(ev.start)}</span>
         </div>
-        {ev.location && <div className="calendar-item-meta">📍 {ev.location}</div>}
+        {ev.location && <div className="calendar-item-meta"><span className="icon icon-sm">location_on</span> {ev.location}</div>}
         {ev.attendees.length > 0 && (
           <div className="calendar-item-meta">
-            👥{' '}
+            <span className="icon icon-sm">group</span>{' '}
             {shownAttendees.map((a) => a.name || a.email).join(', ')}
             {extraCount > 0 && <span className="calendar-item-extra"> +{extraCount} more</span>}
           </div>
@@ -82,7 +82,9 @@ export default function CalendarPicker({ onSelect, onClose }) {
       <div className="modal">
         <div className="modal-header">
           <h3 className="modal-title">Pick from calendar</h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+            <span className="icon">close</span>
+          </button>
         </div>
 
         <div className="modal-search">
