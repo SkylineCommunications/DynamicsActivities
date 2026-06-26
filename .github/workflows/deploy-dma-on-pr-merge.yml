@@ -1,10 +1,10 @@
-# Volatile cloud deployment flow
+# Build, register, and deploy workflow
 # - Trigger on merged PRs into main
 # - Build frontend + DataMiner package (.dmapp)
-# - Upload package as a volatile cloud artifact (no official Catalog registration)
-# - Deploy volatile artifact to the target DMA
+# - Register package in DataMiner Catalog
+# - Deploy registered package to the target DMA
 
-name: Build and Deploy DMAPP to DMA (Volatile) on PR Merge
+name: Build, Register and Deploy DMAPP to DMA on PR Merge
 
 on:
   pull_request:
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  deploy_volatile_to_dma:
+  register_and_deploy_to_dma:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
