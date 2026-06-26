@@ -39,20 +39,20 @@ title: DynamicsActivitiesPackage
 # General information about the Catalog item.
 #   Max length: 100,000 characters
 # Currently not shown in the Catalog UI but will be supported in the near future.
-short_description: 
+short_description: DataMiner package that deploys the DynamicsActivities web app to DataMiner webpages at /public/DynamicsActivities.
 
 # [Optional]
 # A valid URL that points to the source code.
 #   A valid URL
 #   Max length: 2048 characters
-source_code_url: 
+source_code_url: https://github.com/SkylineCommunications/DynamicsActivities
 
 # [Optional]
 # A valid URL that points to documentation.
 #   A valid URL
 #   Max length: 2048 characters
 # Currently not shown in the Catalog UI but will be supported in the near future.
-documentation_url: 
+documentation_url: https://github.com/SkylineCommunications/DynamicsActivities/tree/main/DynamicsActivitiesPackage
 
 # [Optional]
 # People who are responsible for this Catalog item. Might be developers, but this is not required.
@@ -60,9 +60,9 @@ documentation_url:
 #   The name is required; max 256 characters.
 #   The email and url are optional, and should be in valid email/URL formats.
 owners:
-  - name: ''
+  - name: Skyline Communications
     email: 
-    url: 
+    url: https://www.skyline.be
 
 # [Optional]
 # Tags that allow you to categorize your Catalog items.
@@ -71,8 +71,11 @@ owners:
 #   Cannot contain newlines.
 #   Cannot contain leading or trailing whitespace characters.
 tags:
-  - 
-  - 
+  - DataMiner
+  - Dynamics 365
+  - Activities
+  - React
+  - Web App
 
 # [Optional]
 # The ID of the vendor.
