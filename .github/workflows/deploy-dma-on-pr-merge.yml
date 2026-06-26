@@ -1,0 +1,111 @@
+# Volatile cloud deployment flow
+# - Trigger on merged PRs into main
+# - Build frontend + DataMiner package (.dmapp)
+# - Upload package as a volatile cloud artifact (no official Catalog registration)
+# - Deploy volatile artifact to the target DMA
+
+name: Build and Deploy DMAPP to DMA (Volatile) on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_volatile_to_dma:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        run: |
+          if [[ -z "${{ secrets.DATAMINER_TOKEN }}" ]]; then
+            echo "Error: DATAMINER_TOKEN is not set."
+            echo "For volatile upload + deploy, this should be a DataMiner System Token."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Build web app (dist-dataminer)
+        run: npm run build
+        env:
+          VITE_CLIENT_ID: ${{ secrets.VITE_CLIENT_ID }}
+          VITE_TENANT_ID: ${{ secrets.VITE_TENANT_ID }}
+          VITE_DATAVERSE_URL: ${{ secrets.VITE_DATAVERSE_URL }}
+          VITE_REDIRECT_URI: ${{ vars.VITE_REDIRECT_URI }}
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Mono
+        run: |
+          sudo apt update
+          sudo apt install -y mono-complete
+
+      - name: Build DataMiner package
+        run: dotnet build "DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj" -c Release
+
+      - name: Locate generated dmapp
+        id: find_dmapp
+        shell: pwsh
+        run: |
+          $dmapp = Get-ChildItem -Path "DynamicsActivitiesPackage/DynamicsActivitiesPackage/bin/Release/net48/DataMinerBuild" -Filter *.dmapp -Recurse | Select-Object -First 1
+          if (-not $dmapp) {
+            throw "No .dmapp found in bin/Release/net48/DataMinerBuild"
+          }
+          "dmapp_path=$($dmapp.FullName)" >> $env:GITHUB_OUTPUT
+          Write-Host "Found .dmapp: $($dmapp.FullName)"
+
+      - name: Install DataMiner CI/CD tools
+        run: |
+          dotnet tool update --global Skyline.DataMiner.CICD.Tools.CatalogUpload
+          dotnet tool update --global Skyline.DataMiner.CICD.Tools.DataMinerDeploy
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Upload volatile artifact
+        id: upload_volatile
+        shell: pwsh
+        env:
+          DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
+        run: |
+          $output = dataminer-catalog-upload --path-to-artifact "${{ steps.find_dmapp.outputs.dmapp_path }}" 2>&1
+          $output | ForEach-Object { Write-Host $_ }
+
+          $artifactMatch = [regex]::Match(($output -join "`n"), "([a-zA-Z]+/[0-9a-fA-F-]{36})")
+          if (-not $artifactMatch.Success) {
+            throw "Could not determine artifact-id from catalog-upload output."
+          }
+
+          $artifactId = $artifactMatch.Groups[1].Value
+          "artifact_id=$artifactId" >> $env:GITHUB_OUTPUT
+          Write-Host "Captured artifact-id: $artifactId"
+
+      - name: Deploy volatile artifact to DMA
+        shell: pwsh
+        env:
+          DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
+        run: |
+          dataminer-package-deploy from-catalog --artifact-id "${{ steps.upload_volatile.outputs.artifact_id }}"
+
+      - name: Summary
+        run: |
+          echo "Volatile artifact deployed to DMA."
+          echo "Artifact id: ${{ steps.upload_volatile.outputs.artifact_id }}"
+          echo "Note: volatile artifacts are temporary and intended for testing/staging deployments."
