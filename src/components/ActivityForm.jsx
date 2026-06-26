@@ -61,19 +61,32 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
       setLinkToLeadId('')
       return
     }
+    // Reset lead/escalation state immediately so stale values from
+    // a previous account are never visible while requests are in-flight.
+    let active = true
+    setLinkToLeadId('')
+    setLinkToEscalation(false)
+    setActiveEscalation(null)
+    setAccountIsEscalated(false)
+    setAccountLeads([])
+
     getActiveEscalation(instance, account.accountid)
       .then((esc) => {
+        if (!active) return
         setActiveEscalation(esc)
         setAccountIsEscalated(!!esc)
         setLinkToEscalation(!!esc)
       })
       .catch(() => {
+        if (!active) return
         setActiveEscalation(null)
         setAccountIsEscalated(false)
       })
     getAccountLeads(instance, account.accountid)
-      .then(setAccountLeads)
-      .catch(() => setAccountLeads([]))
+      .then((leads) => { if (active) setAccountLeads(leads) })
+      .catch(() => { if (active) setAccountLeads([]) })
+
+    return () => { active = false }
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isNote = type === 'note'
