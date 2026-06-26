@@ -70,6 +70,15 @@ export const ACTIVITY_TYPES = [
     cssClass: 'type-lead',
     tooltip: 'BD lead (managed in Dynamics)',
   },
+  {
+    id: 'opportunity',
+    label: 'Opportunity',
+    icon: '💼',
+    iconLigature: 'work',
+    entity: 'opportunities',
+    cssClass: 'type-opportunity',
+    tooltip: 'Sales opportunity (managed in Dynamics)',
+  },
 ]
 
 // Escalation status labels (for display in browse only — escalations are managed in Dynamics)
@@ -597,7 +606,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
-const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation', annotations: 'annotation', leads: 'lead' }
+const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation', annotations: 'annotation', leads: 'lead', opportunities: 'opportunity' }
 
 export function getDynamicsUrl(entityType, activityid) {
   const etn = ENTITY_SINGULAR[entityType] || entityType
@@ -673,6 +682,24 @@ async function fetchLeads(msalInstance, filterClauses) {
   }))
 }
 
+// Opportunities
+const OPPORTUNITY_SELECT = 'opportunityid,name,description,statuscode,statecode,estimatedvalue,estimatedclosedate,createdon,_parentaccountid_value'
+
+async function fetchOpportunities(msalInstance, filterClauses) {
+  const filterStr = filterClauses.length ? `&$filter=${filterClauses.join(' and ')}` : ''
+  const data = await dvFetch(
+    msalInstance,
+    `/opportunities?$select=${OPPORTUNITY_SELECT}${filterStr}&$orderby=createdon desc&$top=50`,
+    { headers: { Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue"' } },
+  ).catch(() => ({ value: [] }))
+  return (data?.value ?? []).map((r) => ({
+    ...r,
+    activityid: r.opportunityid,
+    subject: r.name,
+    _entityType: 'opportunities',
+  }))
+}
+
 // Annotations (notes)
 const ANNOTATION_SELECT = 'annotationid,subject,notetext,createdon,_objectid_value,objecttypecode'
 
@@ -710,20 +737,6 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   let escalationIds = []
   let leadIds = []
 
-  if (accountId) {
-    // Include escalation IDs so child activities/notes linked to the escalation are returned too.
-    const related = await getAccountRelatedEntityIds(msalInstance, accountId)
-    escalationIds = related.escalationIds
-    leadIds = related.leadIds
-    const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
-    const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
-    base.push(buildLookupFilter('_regardingobjectid_value', allIds))
-    escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
-  }
-
-  addCreatedOnDateFilters(base, dateFrom, dateTo)
-  addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
-
   const typeConfig = activityType ? ACTIVITY_TYPES.find((t) => t.id === activityType) : null
   const fetches = []
 
@@ -732,7 +745,29 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   const wantEmails = !typeConfig || typeConfig.entity === 'emails'
   const wantEscalations = !typeConfig || typeConfig.entity === 'slc_escalations'
   const wantLeads = !typeConfig || typeConfig.entity === 'leads'
+  const wantOpportunities = !typeConfig || typeConfig.entity === 'opportunities'
   const wantAnnotations = !typeConfig || typeConfig.entity === 'annotations'
+
+  // Only fetch related entity IDs when we need them (activities, escalations, annotations).
+  // Leads and Opportunities are fetched directly by _parentaccountid_value and don't need the expansion.
+  const needsRelatedIds = wantCalls || wantAppts || wantEmails || wantEscalations || wantAnnotations
+
+  if (accountId && needsRelatedIds) {
+    // Include escalation IDs so child activities/notes linked to the escalation are returned too.
+    const related = await getAccountRelatedEntityIds(msalInstance, accountId)
+    escalationIds = related.escalationIds
+    leadIds = related.leadIds
+    const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
+    const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
+    base.push(buildLookupFilter('_regardingobjectid_value', allIds))
+    escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
+  } else if (accountId) {
+    base.push(`_regardingobjectid_value eq ${accountId}`)
+    escalationBase.push(`_regardingobjectid_value eq ${accountId}`)
+  }
+
+  addCreatedOnDateFilters(base, dateFrom, dateTo)
+  addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
 
   if (wantCalls) {
     const clauses = [...base]
@@ -761,6 +796,12 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
     const leadClauses = [`_parentaccountid_value eq ${accountId}`]
     addCreatedOnDateFilters(leadClauses, dateFrom, dateTo)
     fetches.push(fetchLeads(msalInstance, leadClauses))
+  }
+
+  if (wantOpportunities && accountId) {
+    const oppClauses = [`_parentaccountid_value eq ${accountId}`]
+    addCreatedOnDateFilters(oppClauses, dateFrom, dateTo)
+    fetches.push(fetchOpportunities(msalInstance, oppClauses))
   }
 
   if (wantAnnotations) {
@@ -817,6 +858,7 @@ export function noteTypeLabel(note) {
   if (note._entityType === 'emails') return 'Email'
   if (note._entityType === 'slc_escalations') return 'Escalation'
   if (note._entityType === 'leads') return 'Lead'
+  if (note._entityType === 'opportunities') return 'Opportunity'
   if (note._entityType === 'annotations') return 'Note'
   return 'Appointment'
 }
@@ -824,5 +866,6 @@ export function noteTypeLabel(note) {
 export function noteDate(note) {
   if (note._entityType === 'slc_escalations') return note.slc_startdate || note.createdon
   if (note._entityType === 'leads') return note.createdon
+  if (note._entityType === 'opportunities') return note.createdon
   return note.scheduledstart || note.scheduledend || note.actualend || note.createdon
 }

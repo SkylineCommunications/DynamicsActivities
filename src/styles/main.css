@@ -767,6 +767,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .type-escalation { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
 .type-note { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
 .type-lead { background: color-mix(in srgb, var(--palette-color1) 20%, transparent); color: var(--palette-color1); }
+.type-opportunity { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
 
 .note-card-header-right {
   display: flex;
@@ -926,6 +927,32 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .lead-badge.lead-disqualified { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
 
 .lead-followup {
+  font-size: 12px;
+  color: var(--color10);
+}
+
+/* ─── Opportunity status in browse ─────────────────────────────────────────── */
+.note-opportunity-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.opp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.opp-badge.opp-open { background: color-mix(in srgb, var(--palette-color1) 15%, transparent); color: var(--palette-color1); }
+.opp-badge.opp-won { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.opp-badge.opp-lost { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
+
+.opp-value, .opp-close {
   font-size: 12px;
   color: var(--color10);
 }

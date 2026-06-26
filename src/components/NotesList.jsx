@@ -46,7 +46,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const recordId = note.activityid || note.annotationid
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
-  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads'
+  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities'
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -155,6 +155,23 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
           </span>
           {note.schedulefollowup_prospect && (
             <span className="lead-followup">Follow-up: {fmtDate(note.schedulefollowup_prospect)}</span>
+          )}
+        </div>
+      )}
+
+      {/* Opportunity status info */}
+      {note._entityType === 'opportunities' && (
+        <div className="note-opportunity-status">
+          <span className={`opp-badge ${note.statecode === 0 ? 'opp-open' : note.statecode === 1 ? 'opp-won' : 'opp-lost'}`}>
+            {note['statuscode@OData.Community.Display.V1.FormattedValue'] || (note.statecode === 0 ? 'Open' : note.statecode === 1 ? 'Won' : 'Lost')}
+          </span>
+          {note.estimatedvalue != null && (
+            <span className="opp-value">
+              {note['estimatedvalue@OData.Community.Display.V1.FormattedValue'] || Number(note.estimatedvalue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+          )}
+          {note.estimatedclosedate && (
+            <span className="opp-close">Est. close: {fmtDate(note.estimatedclosedate)}</span>
           )}
         </div>
       )}
