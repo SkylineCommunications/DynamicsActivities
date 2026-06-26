@@ -21,12 +21,8 @@ const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cs
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= 'contact_phone'
 TYPE_ICONS['Meeting'] ??= 'calendar_today'
-TYPE_ICONS['Escalation'] ??= 'warning'
-TYPE_ICONS['Lead'] ??= 'trending_up'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
-TYPE_CLASSES['Escalation'] ??= 'type-escalation'
-TYPE_CLASSES['Lead'] ??= 'type-lead'
 
 const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
 
@@ -263,7 +259,7 @@ export default function NotesList({ refreshKey, initialAccount }) {
 
         <div className="filter-row filter-row-controls">
           <div className="filter-field">
-            <label className="filter-label">Activity Type</label>
+            <label className="filter-label">Type</label>
             <div className="filter-type-btns">
           {FILTER_TYPES.map((t) => (
                 <button

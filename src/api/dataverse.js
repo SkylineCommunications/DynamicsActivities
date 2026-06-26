@@ -52,6 +52,24 @@ export const ACTIVITY_TYPES = [
     cssClass: 'type-note',
     tooltip: 'Quick note or update',
   },
+  {
+    id: 'escalation',
+    label: 'Escalation',
+    icon: '⚠️',
+    iconLigature: 'warning',
+    entity: 'slc_escalations',
+    cssClass: 'type-escalation',
+    tooltip: 'Account escalation (managed in Dynamics)',
+  },
+  {
+    id: 'lead',
+    label: 'Lead',
+    icon: '📈',
+    iconLigature: 'trending_up',
+    entity: 'leads',
+    cssClass: 'type-lead',
+    tooltip: 'BD lead (managed in Dynamics)',
+  },
 ]
 
 // Escalation status labels (for display in browse only — escalations are managed in Dynamics)

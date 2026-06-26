@@ -146,7 +146,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
 
         {/* Interaction type */}
         <div className="type-selector">
-          {ACTIVITY_TYPES.map((t) => (
+          {ACTIVITY_TYPES.filter((t) => !['slc_escalations', 'leads'].includes(t.entity)).map((t) => (
             <button
               key={t.id}
               type="button"
