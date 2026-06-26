@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { getConversationMessages, getRecentInboxMessages, searchPeopleMailboxes } from '../api/graph'
+import { getConversationMessages, getRecentInboxMessages, searchPeopleMailboxes, filterAccessibleMailboxes } from '../api/graph'
 import {
   checkSyncedMessageIds,
   createContact,
@@ -875,6 +875,15 @@ export default function InboxTab({ compact = false, onImported }) {
     return [...fromEnv, ...recents].slice(0, 8)
   }, [])
 
+  const [accessibleSuggestions, setAccessibleSuggestions] = useState(initialMailboxSuggestions)
+
+  useEffect(() => {
+    if (!initialMailboxSuggestions.length) return
+    filterAccessibleMailboxes(instance, initialMailboxSuggestions)
+      .then(setAccessibleSuggestions)
+      .catch(() => {/* keep unfiltered suggestions on error */})
+  }, [instance, initialMailboxSuggestions])
+
   function saveMailboxToRecents(address) {
     if (!address) return
     const recents = JSON.parse(localStorage.getItem('inbox_recent_mailboxes') || '[]')
@@ -910,7 +919,7 @@ export default function InboxTab({ compact = false, onImported }) {
                 onEnter={commitMailbox}
                 onBlur={commitMailbox}
                 onQueryChange={(q) => { mailboxQueryRef.current = q }}
-                initialSuggestions={initialMailboxSuggestions}
+                initialSuggestions={accessibleSuggestions}
                 placeholder="Type or select a mailbox…"
                 clearOnPick={false}
                 minChars={2}

@@ -200,6 +200,68 @@ export async function searchPeopleMailboxes(msalInstance, query) {
   }
 }
 
+const MAILBOX_CACHE_KEY = 'accessibleSharedMailboxes'
+const MAILBOX_CACHE_TTL = 15 * 60 * 1000 // 15 minutes
+
+/**
+ * Filter a list of mailbox candidates to only those the signed-in user can
+ * actually access (Exchange FullAccess). Uses Graph Batch API to probe up to
+ * 20 mailboxes per HTTP request. Results are cached in sessionStorage (15 min).
+ *
+ * Returns the subset of candidates that returned HTTP 200 on inbox probe.
+ * Requires Mail.Read or Mail.Read.Shared scope (already present).
+ */
+export async function filterAccessibleMailboxes(msalInstance, candidates) {
+  if (!candidates.length) return []
+
+  // Return cached results if still fresh
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(MAILBOX_CACHE_KEY) || 'null')
+    if (cached && Date.now() - cached.ts < MAILBOX_CACHE_TTL) {
+      const accessibleEmails = new Set(cached.emails)
+      return candidates.filter((c) => accessibleEmails.has(c.email.toLowerCase()))
+    }
+  } catch { /* ignore corrupt cache */ }
+
+  try {
+    const token = await getGraphToken(msalInstance)
+    const accessibleEmails = new Set()
+
+    // Process in chunks of 20 (Graph Batch API limit)
+    for (let i = 0; i < candidates.length; i += 20) {
+      const chunk = candidates.slice(i, i + 20)
+      const requests = chunk.map((mb, idx) => ({
+        id: `${idx}`,
+        method: 'GET',
+        url: `/users/${encodeURIComponent(mb.email)}/mailFolders/inbox`,
+      }))
+      const res = await fetch(`${GRAPH}/$batch`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requests }),
+      })
+      if (!res.ok) continue
+      const { responses } = await res.json()
+      responses.forEach((r) => {
+        if (r.status === 200) accessibleEmails.add(chunk[parseInt(r.id)].email.toLowerCase())
+      })
+    }
+
+    sessionStorage.setItem(MAILBOX_CACHE_KEY, JSON.stringify({
+      emails: [...accessibleEmails],
+      ts: Date.now(),
+    }))
+
+    return candidates.filter((c) => accessibleEmails.has(c.email.toLowerCase()))
+  } catch {
+    // On any error fall back to showing all candidates unfiltered
+    return candidates
+  }
+}
+
 // ─── Calendar events ──────────────────────────────────────────────────────────
 // Returns non-all-day events: 60 days past + 30 days future, sorted newest first
 export async function getRecentCalendarEvents(msalInstance) {
