@@ -383,7 +383,10 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   if (accountId) {
     // Fetch IDs of all related entities (opportunities, etc.) so their activities are included
     const relatedIds = await getAccountRelatedEntityIds(msalInstance, accountId)
-    const allIds = Array.from(new Set([accountId, ...relatedIds])).slice(0, 50)
+    // Include active escalation ID so notes linked to it also appear in browse results
+    const escalation = await getActiveEscalation(msalInstance, accountId)
+    const escalationId = escalation?.activityid
+    const allIds = Array.from(new Set([accountId, ...relatedIds, ...(escalationId ? [escalationId] : [])])).slice(0, 50)
     const regardingFilter = allIds.map((id) => `_regardingobjectid_value eq ${id}`).join(' or ')
     base.push(allIds.length > 1 ? `(${regardingFilter})` : regardingFilter)
   }
