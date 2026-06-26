@@ -106,7 +106,11 @@ async function fetchMessagesPaginated(token, initialUrl, normalisePage) {
 
   while (url) {
     const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        Prefer: 'HonorNonIndexedQueriesWarning=true',
+      },
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
