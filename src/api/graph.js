@@ -171,6 +171,116 @@ function normaliseMessage(message) {
   }
 }
 
+// ─── People / mailbox search ─────────────────────────────────────────────────
+/**
+ * Search org people by name or email fragment using the Microsoft People API.
+ * Returns contacts ranked by interaction frequency — shared mailboxes the user
+ * regularly emails will surface here.
+ * Requires People.Read scope (delegated, no admin consent needed).
+ */
+export async function searchPeopleMailboxes(msalInstance, query) {
+  if (!query || query.trim().length < 2) return []
+  try {
+    const token = await getGraphToken(msalInstance)
+    const q = encodeURIComponent(`"${query.trim()}"`)
+    const url = `${GRAPH}/me/people?$search=${q}&$select=displayName,scoredEmailAddresses&$top=10`
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return (data.value ?? [])
+      .map((p) => ({
+        email: p.scoredEmailAddresses?.[0]?.address ?? '',
+        label: p.displayName || '',
+      }))
+      .filter((p) => p.email)
+  } catch {
+    return []
+  }
+}
+
+const MAILBOX_CACHE_KEY = 'accessibleSharedMailboxes'
+const MAILBOX_CACHE_TTL = 15 * 60 * 1000 // 15 minutes
+
+/**
+ * Filter a list of mailbox candidates to only those the signed-in user can
+ * actually access (Exchange FullAccess). Uses Graph Batch API to probe up to
+ * 20 mailboxes per HTTP request. Results are cached in sessionStorage (15 min).
+ *
+ * Returns the subset of candidates that returned HTTP 200 on inbox probe.
+ * Requires Mail.Read or Mail.Read.Shared scope (already present).
+ */
+export async function filterAccessibleMailboxes(msalInstance, candidates) {
+  if (!candidates.length) return []
+
+  // Include a fingerprint of the candidate list so changing the list busts the cache
+  const candidateKey = candidates.map((c) => c.email.toLowerCase()).sort().join(',')
+
+  // Return cached results if still fresh and for the same candidate set
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(MAILBOX_CACHE_KEY) || 'null')
+    if (cached && cached.candidateKey === candidateKey && Date.now() - cached.ts < MAILBOX_CACHE_TTL) {
+      const accessibleEmails = new Set(cached.emails)
+      return candidates.filter((c) => accessibleEmails.has(c.email.toLowerCase()))
+    }
+  } catch { /* ignore corrupt cache */ }
+
+  try {
+    const token = await getGraphToken(msalInstance)
+    const accessibleEmails = new Set()
+
+    // Process in chunks of 20 (Graph Batch API limit).
+    // Probe the messages endpoint with $top=1 — same path used by the inbox loader,
+    // so 200/403/404 here matches what the real inbox load will get.
+    for (let i = 0; i < candidates.length; i += 20) {
+      const chunk = candidates.slice(i, i + 20)
+      const requests = chunk.map((mb, idx) => ({
+        id: `${idx}`,
+        method: 'GET',
+        url: `/users/${encodeURIComponent(mb.email)}/mailFolders/inbox/messages?$top=1&$select=id`,
+      }))
+      const res = await fetch(`${GRAPH}/$batch`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requests }),
+      })
+      if (!res.ok) continue
+      const { responses } = await res.json()
+      responses.forEach((r) => {
+        if (r.status === 200) accessibleEmails.add(chunk[parseInt(r.id)].email.toLowerCase())
+      })
+    }
+
+    sessionStorage.setItem(MAILBOX_CACHE_KEY, JSON.stringify({
+      emails: [...accessibleEmails],
+      candidateKey,
+      ts: Date.now(),
+    }))
+
+    return candidates.filter((c) => accessibleEmails.has(c.email.toLowerCase()))
+  } catch {
+    // On any error return empty — safer than showing inaccessible mailboxes
+    return []
+  }
+}
+
+/**
+ * Remove a mailbox address from the sessionStorage access cache.
+ * Call this when a previously-trusted mailbox returns an access error at runtime.
+ */
+export function invalidateMailboxCache(email) {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(MAILBOX_CACHE_KEY) || 'null')
+    if (!cached) return
+    const updated = cached.emails.filter((e) => e !== email.toLowerCase())
+    sessionStorage.setItem(MAILBOX_CACHE_KEY, JSON.stringify({ emails: updated, ts: cached.ts }))
+  } catch { /* ignore */ }
+}
+
 // ─── Calendar events ──────────────────────────────────────────────────────────
 // Returns non-all-day events: 60 days past + 30 days future, sorted newest first
 export async function getRecentCalendarEvents(msalInstance) {
