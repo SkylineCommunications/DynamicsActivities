@@ -102,7 +102,7 @@ jobs:
         env:
           DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
         run: |
-          dataminer-package-deploy from-catalog --artifact-id "${{ steps.upload_volatile.outputs.artifact_id }}"
+          dataminer-package-deploy from-volatile --artifact-id "${{ steps.upload_volatile.outputs.artifact_id }}"
 
       - name: Summary
         run: |
