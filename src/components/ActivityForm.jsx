@@ -31,13 +31,14 @@ function AttendeeChip({ attendee, onRemove }) {
   )
 }
 
-export default function ActivityForm({ currentUserId, onNoteCreated }) {
+export default function ActivityForm({ currentUserId, onNoteCreated, managedAccounts = [], tamLoading = false }) {
   const { instance } = useMsal()
 
   const [type, setType] = useState('phonecall')
   const [emailMode, setEmailMode] = useState('create')
   const [appointmentMode, setAppointmentMode] = useState('create')
   const [account, setAccount] = useState(null)
+  const [showAllAccounts, setShowAllAccounts] = useState(false)
   const [date, setDate] = useState(() => {
     const d = new Date()
     d.setSeconds(0, 0)
@@ -124,7 +125,15 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
   const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
 
   // ─── Search functions for pickers ──────────────────────────────────────────
-  function searchAccountsFn(q) { return searchAccounts(instance, q) }
+  function searchAccountsFn(q) {
+    // If TAM and not showing all, filter within managed accounts (client-side)
+    if (!showAllAccounts && managedAccounts.length) {
+      const lower = (q || '').toLowerCase()
+      const filtered = managedAccounts.filter((a) => a.name.toLowerCase().includes(lower))
+      return Promise.resolve(filtered)
+    }
+    return searchAccounts(instance, q)
+  }
   function searchContactsFn(q) { return searchContacts(instance, q) }
 
   function handleAttendeeSelected(contact) {
@@ -261,9 +270,21 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
             getLabel={(a) => a.name}
             value={account}
             onChange={setAccount}
-            placeholder="Type to search accounts…"
+            placeholder={showAllAccounts || !managedAccounts.length ? 'Type to search accounts…' : 'Search my accounts…'}
             autoSelectSingle
+            minChars={showAllAccounts || !managedAccounts.length ? 2 : 0}
+            showOnFocus={!showAllAccounts && managedAccounts.length > 0}
           />
+          {managedAccounts.length > 0 && (
+            <label className="field-hint toggle-row">
+              <input
+                type="checkbox"
+                checked={showAllAccounts}
+                onChange={(e) => setShowAllAccounts(e.target.checked)}
+              />
+              Show all accounts
+            </label>
+          )}
         </div>
 
         {/* Active escalation link banner */}

@@ -347,6 +347,16 @@ body {
 .required { color: var(--error); }
 .optional { color: var(--color9); font-weight: 400; }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color10);
+  cursor: pointer;
+  margin-top: 2px;
+}
+
 /* ─── Inputs ─────────────────────────────────────────────────────────────────── */
 .input {
   width: 100%;

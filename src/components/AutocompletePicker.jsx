@@ -28,6 +28,7 @@ export default function AutocompletePicker({
   autoSelectSingle = false,
   minChars = 2,
   debounce = 300,
+  showOnFocus = false,
 }) {
   const [query, setQuery] = useState(value ? getLabel(value) : '')
   const [results, setResults] = useState([])
@@ -47,7 +48,7 @@ export default function AutocompletePicker({
   function handleInput(e) {
     const q = e.target.value
     setQuery(q)
-    if (!q) {
+    if (!q && minChars > 0) {
       onChange(null)
       setResults([])
       setOpen(false)
@@ -128,7 +129,23 @@ export default function AutocompletePicker({
         value={query}
         onChange={handleInput}
         onBlur={() => setTimeout(() => { setOpen(false); setActiveIndex(-1) }, 150)}
-        onFocus={() => results.length > 0 && setOpen(true)}
+        onFocus={() => {
+          if (results.length > 0) { setOpen(true); return }
+          if (showOnFocus && !value) {
+            // Trigger a search with current (possibly empty) query
+            ;(async () => {
+              setLoading(true)
+              try {
+                const res = await searchFn(query.trim())
+                setResults(res)
+                setActiveIndex(-1)
+                setOpen(res.length > 0)
+              } finally {
+                setLoading(false)
+              }
+            })()
+          }
+        }}
         onKeyDown={handleKeyDown}
         autoComplete="off"
       />

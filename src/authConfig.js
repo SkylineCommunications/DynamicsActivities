@@ -36,3 +36,10 @@ export const graphRequest = {
     'https://graph.microsoft.com/Mail.Read.Shared',
   ],
 }
+
+// Scopes for Skyline collaboration API
+export const skylineRequest = {
+  scopes: [import.meta.env.VITE_SKYLINE_SCOPE || 'api://53d05a51-7b85-4f10-a44b-69f97640b152/.default'],
+}
+
+export const skylineApiUrl = (import.meta.env.VITE_SKYLINE_API_URL || 'https://api.skyline.be').replace(/\/$/, '')

@@ -195,12 +195,13 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   )
 }
 
-export default function NotesList({ refreshKey, initialAccount }) {
+export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false }) {
   const { instance } = useMsal()
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  const [tamAutoApplied, setTamAutoApplied] = useState(false)
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
@@ -218,6 +219,14 @@ export default function NotesList({ refreshKey, initialAccount }) {
       })
     }
   }, [initialAccount])
+
+  // TAM auto-select: on first load, pre-fill managed accounts and auto-search
+  useEffect(() => {
+    if (tamAutoApplied || tamLoading || !managedAccounts.length) return
+    if (initialAccount) return // don't override when navigated from Create
+    setAccounts(managedAccounts)
+    setTamAutoApplied(true)
+  }, [tamLoading, managedAccounts, tamAutoApplied, initialAccount])
 
   const runSearch = useCallback(() => {
     setLoading(true)
@@ -238,6 +247,11 @@ export default function NotesList({ refreshKey, initialAccount }) {
   useEffect(() => {
     if (initialAccount || notes !== null) runSearch()
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-search after TAM accounts were auto-applied
+  useEffect(() => {
+    if (tamAutoApplied && accounts.length && notes === null) runSearch()
+  }, [tamAutoApplied]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="notes-container">

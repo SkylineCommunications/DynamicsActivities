@@ -199,6 +199,44 @@ export async function searchAccounts(msalInstance, query) {
   return results
 }
 
+/**
+ * Resolve an array of Skyline customers to Dataverse accounts.
+ * Strategy: exact name match first, fall back to acronym match.
+ * @param {Array<{ name: string, acronym: string }>} customers
+ * @returns {Promise<Array<{ accountid: string, name: string }>>}
+ */
+export async function resolveAccountsByNames(msalInstance, customers) {
+  if (!customers?.length) return []
+  const resolved = new Map()
+
+  for (const { name, acronym } of customers) {
+    // Try exact name match
+    const safeName = name.replace(/'/g, "''")
+    const byName = await dvFetch(
+      msalInstance,
+      `/accounts?$filter=name eq '${encodeURIComponent(safeName)}'&$select=accountid,name&$top=1`,
+    ).catch(() => null)
+    if (byName?.value?.[0]) {
+      const a = byName.value[0]
+      if (!resolved.has(a.accountid)) resolved.set(a.accountid, a)
+      continue
+    }
+    // Fallback: acronym match (startswith on name or exact name = acronym)
+    if (acronym) {
+      const safeAcronym = acronym.replace(/'/g, "''")
+      const byAcronym = await dvFetch(
+        msalInstance,
+        `/accounts?$filter=name eq '${encodeURIComponent(safeAcronym)}'&$select=accountid,name&$top=1`,
+      ).catch(() => null)
+      if (byAcronym?.value?.[0]) {
+        const a = byAcronym.value[0]
+        if (!resolved.has(a.accountid)) resolved.set(a.accountid, a)
+      }
+    }
+  }
+  return Array.from(resolved.values())
+}
+
 // ─── Contacts ────────────────────────────────────────────────────────────────
 export async function searchContacts(msalInstance, query, accountId = null) {
   if (!query || query.trim().length < 2) return []
