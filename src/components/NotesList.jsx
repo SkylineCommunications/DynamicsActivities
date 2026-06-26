@@ -12,6 +12,7 @@ import {
   ACTIVITY_TYPES,
   ESCALATION_STATUSES,
 } from '../api/dataverse'
+import { getReadStatus, markActivityRead } from '../api/subscriptions'
 import AutocompletePicker from './AutocompletePicker'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
@@ -36,7 +37,7 @@ function fmtDate(d) {
   })
 }
 
-function NoteCard({ note, expanded, onToggle, onDelete }) {
+function NoteCard({ note, expanded, onToggle, onDelete, isRead, onMarkRead }) {
   const { instance } = useMsal()
   const label = noteTypeLabel(note)
   const date = noteDate(note)
@@ -47,6 +48,8 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [markingRead, setMarkingRead] = useState(false)
+  const [localRead, setLocalRead] = useState(isRead)
 
   async function handleDelete(e) {
     e.stopPropagation()
@@ -67,6 +70,21 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
     setConfirmDelete(false)
   }
 
+  async function handleMarkRead(e) {
+    e.stopPropagation()
+    if (localRead) return
+    setMarkingRead(true)
+    try {
+      await markActivityRead(instance, note.activityid)
+      setLocalRead(true)
+      onMarkRead?.(note.activityid)
+    } catch {
+      // silently ignore — read status is best-effort
+    } finally {
+      setMarkingRead(false)
+    }
+  }
+
   return (
     <div className={`note-card ${expanded ? 'expanded' : ''}`} onClick={onToggle}>
       <div className="note-card-header">
@@ -74,6 +92,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
           <span className="icon icon-sm">{TYPE_ICONS[label]}</span> {label}
         </span>
         <div className="note-card-header-right">
+          {localRead && <span className="read-badge">✓ Read</span>}
           <span className="note-date">{fmtDate(date)}</span>
           {dynamicsUrl && (
             <a
@@ -85,6 +104,17 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
             >
               Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
             </a>
+          )}
+          {!localRead && (
+            <button
+              type="button"
+              className="btn-card-action btn-cancel"
+              onClick={handleMarkRead}
+              disabled={markingRead}
+              title="Mark as read"
+            >
+              {markingRead ? '…' : '✓ Read'}
+            </button>
           )}
           {confirmDelete ? (
             <>
@@ -162,6 +192,7 @@ export default function NotesList({ refreshKey }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  const [readIds, setReadIds] = useState(new Set())
 
   // Filter state
   const [account, setAccount] = useState(null)   // { accountid, name }
@@ -180,7 +211,16 @@ export default function NotesList({ refreshKey }) {
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
     })
-      .then(setNotes)
+      .then(async (results) => {
+        setNotes(results)
+        if (results.length > 0) {
+          const ids = results.map((n) => n.activityid)
+          const read = await getReadStatus(instance, ids).catch(() => [])
+          setReadIds(new Set(read))
+        } else {
+          setReadIds(new Set())
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [instance, account, attendee, activityType, dateFrom, dateTo])
@@ -302,6 +342,8 @@ export default function NotesList({ refreshKey }) {
               expanded={expandedId === n.activityid}
               onToggle={() => setExpandedId((prev) => (prev === n.activityid ? null : n.activityid))}
               onDelete={(id) => setNotes((prev) => prev.filter((x) => x.activityid !== id))}
+              isRead={readIds.has(n.activityid)}
+              onMarkRead={(id) => setReadIds((prev) => new Set([...prev, id]))}
             />
           ))}
         </div>
