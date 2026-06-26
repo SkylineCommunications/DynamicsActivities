@@ -665,7 +665,7 @@ export default function InboxTab() {
               )}
             </div>
           </div>
-          <div className="filter-field" style={{ flex: 1 }}>
+          <div className="filter-field inbox-search-field">
             <label className="filter-label">Search</label>
             <input
               className="input"
@@ -674,7 +674,7 @@ export default function InboxTab() {
               placeholder="Search by subject, sender or recipient…"
             />
           </div>
-          <div className="filter-field" style={{ alignSelf: 'flex-end' }}>
+          <div className="filter-field inbox-toggle-field">
             <button
               type="button"
               className={`filter-type-btn ${hideSynced ? 'active' : ''}`}
@@ -686,11 +686,11 @@ export default function InboxTab() {
         </div>
       </div>
 
-      {error && <div className="alert alert-error" style={{ margin: '0.5rem 1rem 0' }}>{error}</div>}
+      {error && <div className="alert alert-error inbox-alert">{error}</div>}
 
       <div className="inbox-body">
         <div className="mail-list-pane">
-          {loading && <div className="loading-text" style={{ padding: '1rem' }}>Loading{mailbox ? ` ${mailbox}` : ' inbox'}…</div>}
+          {loading && <div className="loading-text inbox-loading-text">Loading{mailbox ? ` ${mailbox}` : ' inbox'}…</div>}
 
           {!loading && filteredThreads.length === 0 && (
             <div className="empty-state">
@@ -717,7 +717,7 @@ export default function InboxTab() {
                       {thread.latest.from?.name || thread.latest.from?.email || 'Unknown'}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                  <div className="inbox-card-head-right">
                     {status === 'complete' && <span className="inbox-synced-badge">✓</span>}
                     {status === 'partial' && <span className="inbox-thread-badge inbox-thread-partial-sm">Partial</span>}
                     <span className="inbox-card-date">{fmtDateShort(thread.latest.receivedDateTime)}</span>
@@ -743,7 +743,7 @@ export default function InboxTab() {
               onAddToDynamics={() => setAddingThread(selectedThread)}
             />
           ) : (
-            <div className="empty-state" style={{ paddingTop: '4rem' }}>
+            <div className="empty-state inbox-empty-state">
               <div className="empty-icon">📬</div>
               <div className="empty-title">No thread selected</div>
               <div className="empty-sub">Select a thread from the list to preview it.</div>
