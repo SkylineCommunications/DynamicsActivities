@@ -10,3 +10,6 @@ bin/
 obj/
 *.csproj.user
 .DS_Store
+
+# Azure Functions local config (contains secrets)
+functions/local.settings.json

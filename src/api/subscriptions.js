@@ -1,6 +1,7 @@
 /**
  * Client for the Azure Functions subscriptions API.
- * Uses the same MSAL token pattern as the Dataverse client.
+ * Uses a Dataverse-scoped token — the Functions backend validates
+ * against ENTRA_AUDIENCE which is set to the Dataverse org URL.
  */
 
 import { getDvToken } from './dataverse'
