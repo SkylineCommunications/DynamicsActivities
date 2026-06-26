@@ -6,7 +6,7 @@
       "value": "dmact"
     },
     "location": {
-      "value": "eastus"
+      "value": "westeurope"
     },
     "environment": {
       "value": "prod"
@@ -15,7 +15,7 @@
       "value": "https://skyline365.crm4.dynamics.com/"
     },
     "dataverseClientId": {
-      "value": "YOUR_DATAVERSE_CLIENT_ID"
+      "value": "f7274be0-4d28-4b1b-8691-6e2da803ba9e"
     },
     "dataverseClientSecret": {
       "reference": {
