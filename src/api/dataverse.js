@@ -63,8 +63,7 @@ export const ESCALATION_STATUSES = [
 // ─── Escalation helpers ──────────────────────────────────────────────────────
 
 /**
- * Check whether an account is currently escalated using the slc_inescalation field.
- * If true, fetches the active escalation record for linking.
+ * Fetch the active escalation record for an account by querying slc_escalations directly.
  * Business rule: an account can have at most ONE escalation that is open (1) or in-progress (2).
  */
 export async function getActiveEscalation(msalInstance, accountId) {
