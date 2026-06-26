@@ -9,9 +9,12 @@ const TABS = [
 ]
 
 function getInitialTheme() {
-  const stored = localStorage.getItem('dm-theme')
-  if (stored) return stored
-  return 'system'
+  try {
+    const stored = localStorage.getItem('dm-theme')
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+  } catch {
+    return 'system'
+  }
 }
 
 function resolveTheme(pref) {
