@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
 import AuthGuard from './components/AuthGuard'
 import ActivityForm from './components/ActivityForm'
+import InboxTab from './components/InboxTab'
 import NotesList from './components/NotesList'
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
+  { id: 'inbox', label: 'Inbox', icon: 'inbox' },
   { id: 'browse', label: 'Browse', icon: 'search' },
 ]
 
@@ -112,6 +114,7 @@ function cycleTheme() {
                   onNoteCreated={handleNoteCreated}
                 />
               )}
+              {activeTab === 'inbox' && <InboxTab />}
               {activeTab === 'browse' && (
                 <NotesList refreshKey={refreshKey} initialAccount={browseAccount} />
               )}

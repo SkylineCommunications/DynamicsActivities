@@ -9,7 +9,7 @@ const DV_HEADERS = {
   'Content-Type': 'application/json',
   'OData-MaxVersion': '4.0',
   'OData-Version': '4.0',
-  Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue",odata.maxpagesize=100',
+  Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue,Microsoft.Dynamics.CRM.lookuplogicalname",odata.maxpagesize=100',
 }
 
 // ─── Activity type definitions (shared across create form and browse) ─────────
@@ -140,9 +140,45 @@ export async function searchContacts(msalInstance, query, accountId = null) {
   if (accountId) filter += ` and _parentaccountid_value eq ${accountId}`
   const data = await dvFetch(
     msalInstance,
-    `/contacts?$filter=${filter}&$select=contactid,fullname,emailaddress1&$top=10`,
+    `/contacts?$filter=${filter}&$select=contactid,fullname,emailaddress1,_parentcustomerid_value&$top=10`,
   )
   return data?.value ?? []
+}
+
+export async function searchOpportunities(msalInstance, query) {
+  if (!query || query.trim().length < 2) return []
+  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+  const [startsWith, contains] = await Promise.all([
+    dvFetch(msalInstance, `/opportunities?$filter=startswith(name,'${q}')&$select=opportunityid,name&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/opportunities?$filter=contains(name,'${q}')&$select=opportunityid,name&$orderby=name asc&$top=10`).catch(() => null),
+  ])
+  const seen = new Set()
+  const results = []
+  for (const item of [...(startsWith?.value ?? []), ...(contains?.value ?? [])]) {
+    if (!seen.has(item.opportunityid)) {
+      seen.add(item.opportunityid)
+      results.push(item)
+    }
+  }
+  return results
+}
+
+export async function searchLeads(msalInstance, query) {
+  if (!query || query.trim().length < 2) return []
+  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+  const [startsWith, contains] = await Promise.all([
+    dvFetch(msalInstance, `/leads?$filter=startswith(fullname,'${q}')&$select=leadid,fullname,companyname&$orderby=fullname asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/leads?$filter=contains(fullname,'${q}') or contains(companyname,'${q}')&$select=leadid,fullname,companyname&$orderby=fullname asc&$top=10`).catch(() => null),
+  ])
+  const seen = new Set()
+  const results = []
+  for (const item of [...(startsWith?.value ?? []), ...(contains?.value ?? [])]) {
+    if (!seen.has(item.leadid)) {
+      seen.add(item.leadid)
+      results.push(item)
+    }
+  }
+  return results
 }
 
 export async function findContactByEmail(msalInstance, email) {
@@ -150,9 +186,23 @@ export async function findContactByEmail(msalInstance, email) {
   const enc = encodeURIComponent(email.toLowerCase())
   const data = await dvFetch(
     msalInstance,
-    `/contacts?$filter=emailaddress1 eq '${enc}'&$select=contactid,fullname,emailaddress1&$top=1`,
+    `/contacts?$filter=emailaddress1 eq '${enc}'&$select=contactid,fullname,emailaddress1,_parentcustomerid_value&$top=1`,
   )
   return data?.value?.[0] ?? null
+}
+
+export async function createContact(msalInstance, { fullname, emailaddress1, accountId = null }) {
+  if (!fullname && !emailaddress1) throw new Error('A contact needs a name or email')
+  const body = {
+    fullname: fullname || emailaddress1,
+    ...(emailaddress1 ? { emailaddress1 } : {}),
+    ...(accountId ? { 'parentcustomerid_account@odata.bind': `/accounts(${accountId})` } : {}),
+  }
+  return dvFetch(msalInstance, '/contacts', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { Prefer: 'return=representation' },
+  })
 }
 
 // ─── Activity creation ──────────────────────────────────────────────────────────
@@ -272,6 +322,172 @@ export async function createActivity(msalInstance, { type, accountId, date, note
     body: JSON.stringify(body),
     headers: { Prefer: 'return=representation' },
   })
+}
+
+export async function createInboxEmailActivity(
+  msalInstance,
+  { message, regardingType, regardingId, contactsByEmail = {} },
+) {
+  if (!message) throw new Error('Message is required')
+  if (!regardingType || !regardingId) throw new Error('A Dynamics link target is required')
+
+  const fromAddress = message.from?.email || ''
+  const toRecipients = [...(message.toRecipients ?? []), ...(message.ccRecipients ?? [])]
+
+  const parties = []
+
+  if (fromAddress) {
+    const contact = contactsByEmail[fromAddress.toLowerCase()]
+    if (contact) {
+      parties.push({ participationtypemask: 1, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
+    } else {
+      parties.push({ participationtypemask: 1, addressused: fromAddress })
+    }
+  }
+
+  for (const recipient of toRecipients) {
+    const email = (recipient.email || '').toLowerCase()
+    if (!email) continue
+    const contact = contactsByEmail[email]
+    if (contact) {
+      parties.push({ participationtypemask: 2, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
+    } else {
+      parties.push({ participationtypemask: 2, addressused: recipient.email })
+    }
+  }
+
+  const bindName = `regardingobjectid_${regardingType}@odata.bind`
+  const entityPlural = {
+    account: 'accounts',
+    opportunity: 'opportunities',
+    lead: 'leads',
+  }[regardingType]
+
+  if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
+
+  const body = {
+    subject: message.subject || '(No subject)',
+    description: [message.bodyPreview, `Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}`]
+      .filter(Boolean)
+      .join('\n\n'),
+    directioncode: true,
+    actualend: message.receivedDateTime ? message.receivedDateTime.toISOString() : undefined,
+    ...(message.internetMessageId ? { messageid: message.internetMessageId.toLowerCase() } : {}),
+    [bindName]: `/${entityPlural}(${regardingId})`,
+    email_activity_parties: parties,
+  }
+
+  const created = await dvFetch(msalInstance, '/emails', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { Prefer: 'return=representation' },
+  })
+
+  return dvFetch(msalInstance, `/emails(${created.activityid})`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      statecode: 1,
+      statuscode: 4,
+      actualend: message.receivedDateTime ? message.receivedDateTime.toISOString() : undefined,
+    }),
+  }).then(() => created)
+}
+
+/**
+ * Given an array of internetMessageId strings, returns a Set of those that
+ * already exist as email activities in Dataverse.
+ */
+export async function checkSyncedMessageIds(msalInstance, internetMessageIds) {
+  const ids = internetMessageIds.filter(Boolean).map((id) => id.toLowerCase())
+  if (ids.length === 0) return new Set()
+  const rows = await getEmailsByInternetMessageIds(msalInstance, ids, 'messageid')
+  const found = rows.map((e) => (e.messageid || '').toLowerCase()).filter(Boolean)
+  return new Set(found)
+}
+
+function chunkArray(items, size) {
+  const chunks = []
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
+  return chunks
+}
+
+export async function getEmailsByInternetMessageIds(msalInstance, internetMessageIds, select = 'activityid,messageid') {
+  const ids = Array.from(new Set(internetMessageIds.filter(Boolean).map((id) => id.toLowerCase())))
+  if (!ids.length) return []
+
+  const chunks = chunkArray(ids, 20)
+  const results = []
+  for (const chunk of chunks) {
+    const filter = chunk.map((id) => `messageid eq '${id.replace(/'/g, "''")}'`).join(' or ')
+    const data = await dvFetch(
+      msalInstance,
+      `/emails?$filter=${encodeURIComponent(filter)}&$select=${encodeURIComponent(select)}`,
+    )
+    results.push(...(data?.value ?? []))
+  }
+  return results
+}
+
+export async function getThreadSuggestion(msalInstance, internetMessageIds) {
+  const rows = await getEmailsByInternetMessageIds(
+    msalInstance,
+    internetMessageIds,
+    'activityid,messageid,_regardingobjectid_value',
+  )
+
+  const existingByMessageId = new Map(
+    rows
+      .map((r) => [String(r.messageid || '').toLowerCase(), r])
+      .filter(([id]) => !!id),
+  )
+
+  const counts = new Map()
+  for (const row of rows) {
+    const type = row['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+    const id = row._regardingobjectid_value
+    const name = row['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+    if (!id || !type) continue
+    if (!['account', 'opportunity', 'lead'].includes(type)) continue
+    const key = `${type}:${id}`
+    const current = counts.get(key) || { type, id, name: name || 'Suggested record', count: 0 }
+    current.count += 1
+    counts.set(key, current)
+  }
+
+  const top = [...counts.values()].sort((a, b) => b.count - a.count)[0] || null
+  return {
+    existingByMessageId,
+    suggestion: top
+      ? {
+          regardingType: top.type,
+          regardingId: top.id,
+          label: top.name,
+        }
+      : null,
+  }
+}
+
+export async function relinkExistingEmails(msalInstance, activityIds, { regardingType, regardingId }) {
+  const entityPlural = {
+    account: 'accounts',
+    opportunity: 'opportunities',
+    lead: 'leads',
+  }[regardingType]
+  if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
+  if (!activityIds?.length) return 0
+
+  const bindName = `regardingobjectid_${regardingType}@odata.bind`
+  await Promise.all(
+    activityIds.map((activityId) =>
+      dvFetch(msalInstance, `/emails(${activityId})`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          [bindName]: `/${entityPlural}(${regardingId})`,
+        }),
+      }),
+    ),
+  )
+  return activityIds.length
 }
 
 // ─── Browse / search activities ───────────────────────────────────────────────
