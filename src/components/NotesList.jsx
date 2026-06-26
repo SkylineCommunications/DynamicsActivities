@@ -42,8 +42,9 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const date = noteDate(note)
   const attendees = extractAttendees(note)
   const accountName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
-  const preview = note.description || ''
-  const dynamicsUrl = getDynamicsUrl(note._entityType, note.activityid)
+  const preview = note.notetext || note.description || ''
+  const recordId = note.activityid || note.annotationid
+  const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
@@ -52,8 +53,8 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
     if (!confirmDelete) { setConfirmDelete(true); return }
     setDeleting(true)
     try {
-      await deleteActivity(instance, note._entityType, note.activityid)
-      onDelete(note.activityid)
+      await deleteActivity(instance, note._entityType, recordId)
+      onDelete(recordId)
     } catch (err) {
       alert('Delete failed: ' + err.message)
       setDeleting(false)
@@ -74,15 +75,17 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
         </span>
         <div className="note-card-header-right">
           <span className="note-date">{fmtDate(date)}</span>
-          <a
-            className="btn-card-action btn-open"
-            href={dynamicsUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-          >
-            Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
-          </a>
+          {dynamicsUrl && (
+            <a
+              className="btn-card-action btn-open"
+              href={dynamicsUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
+            </a>
+          )}
           {confirmDelete ? (
             <>
               <button

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { searchAccounts, searchContacts, resolveAttendees, createActivity, getActiveEscalation, ACTIVITY_TYPES, ESCALATION_STATUSES } from '../api/dataverse'
+import { searchAccounts, searchContacts, resolveAttendees, createActivity, getActiveEscalation, ACTIVITY_TYPES } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
 
@@ -36,12 +36,6 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(false)
-  const [escalationStatus, setEscalationStatus] = useState(1)
-  const [escalationStartDate, setEscalationStartDate] = useState(() => {
-    const d = new Date()
-    d.setSeconds(0, 0)
-    return d.toISOString().slice(0, 10)
-  })
   const [activeEscalation, setActiveEscalation] = useState(null)
   const [linkToEscalation, setLinkToEscalation] = useState(false)
   const [accountIsEscalated, setAccountIsEscalated] = useState(false)
@@ -54,12 +48,11 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
       setAccountIsEscalated(false)
       return
     }
-    // Fetch the actual escalation record for linking
     getActiveEscalation(instance, account.accountid)
       .then((esc) => {
         setActiveEscalation(esc)
         setAccountIsEscalated(!!esc)
-        setLinkToEscalation(!!esc)
+        setLinkToEscalation(false)
       })
       .catch(() => {
         setActiveEscalation(null)
@@ -67,11 +60,11 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
       })
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isEscalation = type === 'escalation'
+  const isNote = type === 'note'
   const charsLeft = NOTE_LIMIT - note.length
   const canSubmit = account && note.trim().length > 0 && !submitting
 
-  const dateLabel = isEscalation ? 'Due Date' : type === 'appointment' ? 'Start Time' : 'Due Date'
+  const dateLabel = type === 'appointment' ? 'Start Time' : 'Due Date'
   const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
 
   // ─── Search functions for pickers ──────────────────────────────────────────
@@ -113,9 +106,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         note: note.trim(),
         attendees,
         currentUserId,
-        escalationStatus: isEscalation ? escalationStatus : undefined,
-        escalationStartDate: isEscalation ? escalationStartDate : undefined,
-        linkToEscalationId: (!isEscalation && linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
+        linkToEscalationId: (linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
       })
       setSuccess(true)
       setNote('')
@@ -152,8 +143,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
           ))}
         </div>
 
-        {/* Calendar link — not shown for escalations */}
-        {!isEscalation && (
+        {/* Calendar link — not shown for notes */}
+        {!isNote && (
         <div className="calendar-row">
           <button type="button" className="btn-ghost" onClick={() => setShowCalendar(true)}>
             <span className="icon icon-sm">calendar_today</span> Fill from calendar
@@ -178,8 +169,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
           />
         </div>
 
-        {/* Active escalation link banner — shown for non-escalation types when account is escalated */}
-        {!isEscalation && accountIsEscalated && (
+        {/* Active escalation link banner */}
+        {accountIsEscalated && (
           <div className="escalation-link-banner">
             <span className="icon">warning</span>
             <span>This account has an active escalation</span>
@@ -195,8 +186,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
           </div>
         )}
 
-        {/* Date — not shown for escalations */}
-        {!isEscalation && (
+        {/* Date — not shown for notes */}
+        {!isNote && (
         <div className="field">
           <label className="field-label">{dateLabel}</label>
           <input
@@ -208,38 +199,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         </div>
         )}
 
-        {/* Escalation-specific fields */}
-        {isEscalation && (
-          <>
-            <div className="field">
-              <label className="field-label">Escalation Status <span className="required">*</span></label>
-              <div className="escalation-status-selector">
-                {ESCALATION_STATUSES.map((s) => (
-                  <button
-                    key={s.value}
-                    type="button"
-                    className={`status-btn ${s.cssClass} ${escalationStatus === s.value ? 'active' : ''}`}
-                    onClick={() => setEscalationStatus(s.value)}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <label className="field-label">Escalation Start Date</label>
-              <input
-                type="date"
-                className="input"
-                value={escalationStartDate}
-                onChange={(e) => setEscalationStartDate(e.target.value)}
-              />
-            </div>
-          </>
-        )}
-
-        {/* Attendees — not shown for escalations */}
-        {!isEscalation && (
+        {/* Attendees — not shown for notes */}
+        {!isNote && (
         <div className="field">
           <label className="field-label">{attendeesLabel} <span className="optional">(optional)</span></label>
           <div className="chip-list">
