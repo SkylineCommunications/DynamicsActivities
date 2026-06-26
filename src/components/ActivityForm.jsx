@@ -115,7 +115,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         const d = new Date(); d.setSeconds(0, 0); return d.toISOString().slice(0, 16)
       })
       setTimeout(() => setSuccess(false), 3000)
-      onNoteCreated?.()
+      onNoteCreated?.(account)
     } catch (err) {
       setError(err.message)
     } finally {
