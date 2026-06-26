@@ -19,6 +19,7 @@ const REGARDING_TYPES = [
   { id: 'opportunity', label: 'Opportunity' },
   { id: 'lead', label: 'Lead' },
 ]
+const INTERNAL_DOMAINS = ['@skyline.be', '@dataminer.services']
 
 function fmtDate(d) {
   if (!d) return ''
@@ -105,6 +106,24 @@ function threadSearchHaystack(thread) {
     ])
     .join(' ')
     .toLowerCase()
+}
+
+function isInternalEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase()
+  return INTERNAL_DOMAINS.some((domain) => normalized.endsWith(domain))
+}
+
+function threadHasExternalContacts(thread) {
+  return thread.messages.some((m) => {
+    const addresses = [
+      m.from?.email,
+      ...(m.toRecipients ?? []).map((r) => r.email),
+      ...(m.ccRecipients ?? []).map((r) => r.email),
+    ]
+    return addresses
+      .map((email) => String(email || '').trim().toLowerCase())
+      .some((email) => email && !isInternalEmail(email))
+  })
 }
 
 function mapSuggestionToItem(suggestion) {
@@ -326,7 +345,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
       if (!accountId || accountType !== 'account') continue
       const accountName =
         contact?.['_parentcustomerid_value@OData.Community.Display.V1.FormattedValue'] || 'Suggested account'
-      const isInternal = (email || '').toLowerCase().endsWith('@skyline.be')
+      const isInternal = isInternalEmail(email)
       const bucket = isInternal ? internalCounts : externalCounts
       const current = bucket.get(accountId) || { accountid: accountId, name: accountName, count: 0 }
       current.count += 1
@@ -554,6 +573,7 @@ export default function InboxTab() {
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
   const [hideSynced, setHideSynced] = useState(false)
+  const [externalOnly, setExternalOnly] = useState(false)
   const [syncedSet, setSyncedSet] = useState(new Set())
   const [mailbox, setMailbox] = useState('')
   const [mailboxDraft, setMailboxDraft] = useState('')
@@ -617,9 +637,10 @@ export default function InboxTab() {
     const q = query.trim().toLowerCase()
     let base = allThreads
     if (hideSynced) base = base.filter((thread) => threadStatus(thread) !== 'complete')
+    if (externalOnly) base = base.filter(threadHasExternalContacts)
     if (!q) return base
     return base.filter((thread) => threadSearchHaystack(thread).includes(q))
-  }, [allThreads, query, hideSynced])
+  }, [allThreads, query, hideSynced, externalOnly])
 
   const selectedThread = useMemo(
     () => filteredThreads.find((thread) => thread.key === selectedThreadKey) || allThreads.find((thread) => thread.key === selectedThreadKey) || null,
@@ -675,13 +696,22 @@ export default function InboxTab() {
             />
           </div>
           <div className="filter-field inbox-toggle-field">
-            <button
-              type="button"
-              className={`filter-type-btn ${hideSynced ? 'active' : ''}`}
-              onClick={() => setHideSynced((v) => !v)}
-            >
-              {hideSynced ? '✓ Hide synced threads' : 'Hide synced threads'}
-            </button>
+            <div className="inbox-toggle-buttons">
+              <button
+                type="button"
+                className={`filter-type-btn ${hideSynced ? 'active' : ''}`}
+                onClick={() => setHideSynced((v) => !v)}
+              >
+                {hideSynced ? '✓ Hide synced threads' : 'Hide synced threads'}
+              </button>
+              <button
+                type="button"
+                className={`filter-type-btn ${externalOnly ? 'active' : ''}`}
+                onClick={() => setExternalOnly((v) => !v)}
+              >
+                {externalOnly ? '✓ External contacts' : 'External contacts'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

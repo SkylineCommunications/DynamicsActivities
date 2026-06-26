@@ -960,6 +960,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .inbox-toolbar .filter-label { margin-bottom: 2px; }
 .inbox-search-field { flex: 1; }
 .inbox-toggle-field { align-self: flex-end; }
+.inbox-toggle-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .inbox-alert { margin: 0.5rem 1rem 0; }
 
 .inbox-body {
