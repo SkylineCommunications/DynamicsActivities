@@ -262,18 +262,6 @@ export default function NotesList({ refreshKey, initialAccount }) {
               autoSelectSingle
               clearOnPick
             />
-            {accounts.length > 0 && (
-              <div className="filter-chips">
-                {accounts.map((a) => (
-                  <span key={a.accountid} className="filter-chip">
-                    {a.name}
-                    <button type="button" className="chip-remove" onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
-                      <span className="icon icon-xs">close</span>
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
           <div className="filter-field">
             <label className="filter-label">Attendee</label>
@@ -291,6 +279,19 @@ export default function NotesList({ refreshKey, initialAccount }) {
             />
           </div>
         </div>
+
+        {accounts.length > 0 && (
+          <div className="filter-chips">
+            {accounts.map((a) => (
+              <span key={a.accountid} className="filter-chip">
+                {a.name}
+                <button type="button" className="chip-remove" onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
+                  <span className="icon icon-xs">close</span>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="filter-row filter-row-controls">
           <div className="filter-field">
