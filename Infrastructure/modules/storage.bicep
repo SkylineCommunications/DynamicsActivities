@@ -25,15 +25,15 @@ resource tableService 'Microsoft.Storage/storageAccounts/tableServices@2023-01-0
   name: 'default'
 }
 
-// Create tables for subscriptions, notifications, pending items
+// Create tables matching the TABLES constants in functions/src/shared/tables.js
 resource subscriptionsTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = {
   parent: tableService
   name: 'Subscriptions'
 }
 
-resource notificationsTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = {
+resource notificationLogTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = {
   parent: tableService
-  name: 'Notifications'
+  name: 'NotificationLog'
 }
 
 resource pendingInstantTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = {
@@ -41,9 +41,14 @@ resource pendingInstantTable 'Microsoft.Storage/storageAccounts/tableServices/ta
   name: 'PendingInstant'
 }
 
-resource readStatusTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = {
+resource readReceiptsTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = {
   parent: tableService
-  name: 'ReadStatus'
+  name: 'ReadReceipts'
+}
+
+resource followUpsTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-01-01' = {
+  parent: tableService
+  name: 'FollowUps'
 }
 
 // Get storage connection string (for function app configuration)

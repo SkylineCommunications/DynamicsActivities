@@ -25,6 +25,15 @@ import { buildActionToken } from './emailActions.js'
 const SUPPORTED_ENTITIES = new Set(['phonecalls', 'appointments', 'emails', 'slc_escalations'])
 const DEFAULT_COOLDOWN = parseInt(process.env.INSTANT_COOLDOWN_MINUTES || '15', 10)
 
+// Explicit map from Dataverse PrimaryEntityName to the plural collection name used in OData.
+// Avoids fragile naive string + 's' pluralisation that breaks for irregular names.
+const ENTITY_NAME_MAP = {
+  phonecall: 'phonecalls',
+  appointment: 'appointments',
+  email: 'emails',
+  slc_escalation: 'slc_escalations',
+}
+
 app.http('notifyWebhook', {
   methods: ['POST'],
   route: 'notify',
@@ -47,7 +56,7 @@ app.http('notifyWebhook', {
 
     // Dataverse sends entity info in the RemoteExecutionContext
     const ctx = payload?.RemoteExecutionContext ?? payload
-    const entityType = (ctx?.PrimaryEntityName ?? '').toLowerCase() + 's' // e.g. phonecall → phonecalls
+    const entityType = ENTITY_NAME_MAP[(ctx?.PrimaryEntityName ?? '').toLowerCase()] ?? null
     const activityId = ctx?.PrimaryEntityId
 
     if (!SUPPORTED_ENTITIES.has(entityType) || !activityId) {

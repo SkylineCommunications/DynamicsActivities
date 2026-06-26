@@ -63,26 +63,27 @@ export async function getAccount(accountId) {
 }
 
 /**
- * Fetch activities since a given ISO date string for one or more regarding object IDs.
+ * Fetch activities since a given ISO date string.
  * Returns activities from all four entity tables (phonecalls, appointments, emails, slc_escalations).
- * @param {string[]} regardingIds - account or related entity GUIDs
+ *
+ * @param {string[]} regardingIds - account GUIDs to filter by. Pass an empty array for a broad
+ *   fetch (geo/escalation subscriptions) which returns all activities filtered only by date.
  * @param {string} since - ISO date string
  * @returns {Array} combined, date-sorted activity records
  */
 export async function fetchActivitiesSince(regardingIds, since) {
-  if (!regardingIds?.length) return []
-
   const SELECT = 'activityid,subject,description,createdon,scheduledend,scheduledstart,actualend,_regardingobjectid_value'
-  const regardingFilter = regardingIds
-    .map((id) => `_regardingobjectid_value eq ${id}`)
-    .join(' or ')
   const dateFilter = `createdon ge ${new Date(since).toISOString()}`
-  const filter = `(${regardingFilter}) and ${dateFilter}`
+
+  const filter =
+    regardingIds?.length
+      ? `(${regardingIds.map((id) => `_regardingobjectid_value eq ${id}`).join(' or ')}) and ${dateFilter}`
+      : dateFilter
 
   const entities = ['phonecalls', 'appointments', 'emails', 'slc_escalations']
   const results = await Promise.allSettled(
     entities.map((e) =>
-      dvFetch(`/${e}?$select=${SELECT}&$filter=${filter}&$orderby=createdon desc`).then(
+      dvFetch(`/${e}?$select=${SELECT}&$filter=${filter}&$orderby=createdon desc&$top=500`).then(
         (d) => (d?.value ?? []).map((r) => ({ ...r, _entityType: e })),
       ),
     ),

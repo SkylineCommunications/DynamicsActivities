@@ -43,7 +43,9 @@ function verifyActionToken(token) {
       .createHmac('sha256', process.env.ACTION_TOKEN_SECRET)
       .update(`${userId}:${activityId}:${expiresAt}`)
       .digest('hex')
-    if (!crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) return null
+    const sigBuf = Buffer.from(sig, 'hex')
+    const expBuf = Buffer.from(expected, 'hex')
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null
     return { userId, activityId }
   } catch {
     return null
@@ -84,7 +86,9 @@ app.http('actionsMarkRead', {
           body: htmlPage('Link expired', 'This mark-as-read link has expired or is invalid.', true),
         }
       }
-      const activityId = idParam || claims.activityId
+      // Always use the activityId from the verified token — do NOT let the ?id= query param
+      // override it, as that would allow any valid token to mark arbitrary activities as read.
+      const activityId = claims.activityId
       await markRead(claims.userId, activityId).catch((err) => context.warn('markRead failed:', err))
       return {
         status: 200,

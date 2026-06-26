@@ -8,14 +8,24 @@ param storageConnectionString string
 param appInsightsConnectionString string
 param dataverseUrl string
 param dataverseClientId string
+param dataverseTenantId string
 @secure()
 param dataverseClientSecret string
 @secure()
 param sendGridApiKey string
+param sendGridFromEmail string
+param sendGridFromName string = 'Skyline Activities'
 @secure()
-param openaiApiKey string
+param azureOpenAiKey string = ''
+param azureOpenAiEndpoint string = ''
+param azureOpenAiDeployment string = ''
 param entraIdTenantId string
-param functionClientId string
+param entraAudience string
+@secure()
+param webhookSecret string
+@secure()
+param actionTokenSecret string
+param spaBaseUrl string
 param corsOrigins string
 param instantCooldownMinutes int = 15
 
@@ -66,6 +76,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'XDT_MicrosoftApplicationInsights_Mode'
           value: 'recommended'
         }
+        // Storage — tables.js reads AZURE_STORAGE_CONNECTION_STRING directly
+        {
+          name: 'AZURE_STORAGE_CONNECTION_STRING'
+          value: storageConnectionString
+        }
         // Dataverse configuration
         {
           name: 'DATAVERSE_URL'
@@ -79,24 +94,62 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'DATAVERSE_CLIENT_SECRET'
           value: dataverseClientSecret
         }
+        {
+          name: 'DATAVERSE_TENANT_ID'
+          value: dataverseTenantId
+        }
         // SendGrid configuration
         {
           name: 'SENDGRID_API_KEY'
           value: sendGridApiKey
         }
-        // OpenAI configuration
         {
-          name: 'OPENAI_API_KEY'
-          value: openaiApiKey
+          name: 'SENDGRID_FROM_EMAIL'
+          value: sendGridFromEmail
         }
-        // Entra ID configuration
         {
-          name: 'ENTRA_ID_TENANT_ID'
+          name: 'SENDGRID_FROM_NAME'
+          value: sendGridFromName
+        }
+        // Azure OpenAI configuration (optional — falls back to rule-based summaries if empty)
+        {
+          name: 'AZURE_OPENAI_KEY'
+          value: azureOpenAiKey
+        }
+        {
+          name: 'AZURE_OPENAI_ENDPOINT'
+          value: azureOpenAiEndpoint
+        }
+        {
+          name: 'AZURE_OPENAI_DEPLOYMENT'
+          value: azureOpenAiDeployment
+        }
+        // Entra ID / auth configuration
+        {
+          name: 'ENTRA_TENANT_ID'
           value: entraIdTenantId
         }
         {
-          name: 'FUNCTION_CLIENT_ID'
-          value: functionClientId
+          name: 'ENTRA_AUDIENCE'
+          value: entraAudience
+        }
+        // Notification security — must be set manually after deployment
+        {
+          name: 'WEBHOOK_SECRET'
+          value: webhookSecret
+        }
+        {
+          name: 'ACTION_TOKEN_SECRET'
+          value: actionTokenSecret
+        }
+        // URL configuration
+        {
+          name: 'SPA_BASE_URL'
+          value: spaBaseUrl
+        }
+        {
+          name: 'FUNCTIONS_BASE_URL'
+          value: 'https://${appName}.azurewebsites.net/api'
         }
         // Notification settings
         {
@@ -112,34 +165,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     }
   }
 }
-
-// Diagnostic settings for logging (optional, can be removed if not needed)
-// resource functionAppDiagnostics 'Microsoft.Insights/diagnosticSettings@2017-05-01-preview' = {
-//   name: 'diagnostics'
-//   scope: functionApp
-//   properties: {
-//     logs: [
-//       {
-//         category: 'FunctionAppLogs'
-//         enabled: true
-//         retentionPolicy: {
-//           enabled: true
-//           days: environment == 'prod' ? 30 : 7
-//         }
-//       }
-//     ]
-//     metrics: [
-//       {
-//         category: 'AllMetrics'
-//         enabled: true
-//         retentionPolicy: {
-//           enabled: true
-//           days: environment == 'prod' ? 30 : 7
-//         }
-//       }
-//     ]
-//   }
-// }
 
 output functionAppName string = functionApp.name
 output functionAppUrl string = 'https://${functionApp.properties.defaultHostName}/api'

@@ -18,37 +18,43 @@
       "value": "acd01a7c-7c83-4977-a98d-ade9e82ae6e8"
     },
     "dataverseClientSecret": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/a476a434-0f2f-45db-bf17-cf278ef08379/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748"
-        },
-        "secretName": "dataverse-client-secret"
-      }
+      "value": "PLACEHOLDER_DATAVERSE_SECRET"
     },
     "sendGridApiKey": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/a476a434-0f2f-45db-bf17-cf278ef08379/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748"
-        },
-        "secretName": "sendgrid-api-key"
-      }
+      "value": "PLACEHOLDER_SENDGRID_KEY"
     },
-    "openaiApiKey": {
-      "reference": {
-        "keyVault": {
-          "id": "/subscriptions/a476a434-0f2f-45db-bf17-cf278ef08379/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748"
-        },
-        "secretName": "openai-api-key"
-      }
+    "sendGridFromEmail": {
+      "value": "activities@skyline.be"
+    },
+    "sendGridFromName": {
+      "value": "Skyline Activities"
     },
     "entraIdTenantId": {
       "value": "5f175691-8d1c-4932-b7c8-ce990839ac40"
     },
-    "functionClientId": {
+    "entraAudience": {
       "value": "acd01a7c-7c83-4977-a98d-ade9e82ae6e8"
     },
+    "webhookSecret": {
+      "value": "PLACEHOLDER_WEBHOOK_SECRET"
+    },
+    "actionTokenSecret": {
+      "value": "PLACEHOLDER_ACTION_TOKEN_SECRET"
+    },
+    "spaBaseUrl": {
+      "value": "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/"
+    },
+    "azureOpenAiKey": {
+      "value": ""
+    },
+    "azureOpenAiEndpoint": {
+      "value": ""
+    },
+    "azureOpenAiDeployment": {
+      "value": ""
+    },
     "corsOrigins": {
-      "value": "http://localhost:5173,http://localhost:4173"
+      "value": "http://localhost:5173,http://localhost:4173,https://solutionsdma-skyline.on.dataminer.services"
     },
     "instantCooldownMinutes": {
       "value": 15

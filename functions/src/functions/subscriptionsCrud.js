@@ -33,7 +33,19 @@ app.http('subscriptionsPost', {
     const user = await requireAuth(request).catch((e) => ({ error: e }))
     if (user.error) return { status: user.error.status || 401, body: user.error.message }
     const body = await request.json()
-    const sub = await createSubscription(user.userId, { ...body, userEmail: user.email, userName: user.name })
+
+    // Validate required fields
+    const validFrequencies = ['instant', 'daily', 'weekly', 'monthly']
+    if (!body.scopeType) return { status: 400, body: 'scopeType is required' }
+    if (!body.frequency || !validFrequencies.includes(body.frequency))
+      return { status: 400, body: `frequency must be one of: ${validFrequencies.join(', ')}` }
+
+    // userEmail comes from the token; validate it is present
+    const userEmail = user.email
+    if (!userEmail || !userEmail.includes('@'))
+      return { status: 400, body: 'Could not determine a valid email from your identity token' }
+
+    const sub = await createSubscription(user.userId, { ...body, userEmail, userName: user.name })
     return { status: 201, jsonBody: sub }
   },
 })

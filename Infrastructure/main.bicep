@@ -29,15 +29,38 @@ param dataverseClientSecret string
 @secure()
 param sendGridApiKey string
 
-@description('OpenAI API key for activity summaries')
-@secure()
-param openaiApiKey string
-
 @description('Entra ID tenant ID')
 param entraIdTenantId string
 
-@description('Entra ID client ID for Function app authentication')
-param functionClientId string
+@description('Entra ID audience (client ID) for Function app JWT validation')
+param entraAudience string
+
+@description('Shared secret for validating incoming Dataverse webhook calls')
+@secure()
+param webhookSecret string
+
+@description('HMAC secret for signing email action tokens')
+@secure()
+param actionTokenSecret string
+
+@description('Base URL of the SPA (used for email links)')
+param spaBaseUrl string = 'https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/'
+
+@description('SendGrid from email address')
+param sendGridFromEmail string
+
+@description('SendGrid from display name')
+param sendGridFromName string = 'Skyline Activities'
+
+@description('Azure OpenAI API key (optional — falls back to rule-based summaries if empty)')
+@secure()
+param azureOpenAiKey string = ''
+
+@description('Azure OpenAI endpoint URL (optional)')
+param azureOpenAiEndpoint string = ''
+
+@description('Azure OpenAI deployment name (optional)')
+param azureOpenAiDeployment string = ''
 
 @description('Allowed frontend origins for CORS (comma-separated)')
 param corsOrigins string = 'http://localhost:5173,http://localhost:4173'
@@ -93,10 +116,18 @@ module functionAppModule './modules/function-app.bicep' = {
     dataverseUrl: dataverseUrl
     dataverseClientId: dataverseClientId
     dataverseClientSecret: dataverseClientSecret
+    dataverseTenantId: entraIdTenantId
     sendGridApiKey: sendGridApiKey
-    openaiApiKey: openaiApiKey
+    sendGridFromEmail: sendGridFromEmail
+    sendGridFromName: sendGridFromName
+    azureOpenAiKey: azureOpenAiKey
+    azureOpenAiEndpoint: azureOpenAiEndpoint
+    azureOpenAiDeployment: azureOpenAiDeployment
     entraIdTenantId: entraIdTenantId
-    functionClientId: functionClientId
+    entraAudience: entraAudience
+    webhookSecret: webhookSecret
+    actionTokenSecret: actionTokenSecret
+    spaBaseUrl: spaBaseUrl
     corsOrigins: corsOrigins
     instantCooldownMinutes: instantCooldownMinutes
   }
