@@ -21,6 +21,8 @@ const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cs
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= 'contact_phone'
 TYPE_ICONS['Meeting'] ??= 'calendar_today'
+TYPE_ICONS['Escalation'] ??= 'warning'
+TYPE_ICONS['Note'] ??= 'edit_note'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 
