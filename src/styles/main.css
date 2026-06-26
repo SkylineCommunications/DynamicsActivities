@@ -817,6 +817,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 }
 
 .note-account { font-size: 14px; font-weight: 500; color: var(--color11); display: flex; align-items: center; gap: 6px; }
+.note-escalation-link { font-size: 13px; font-weight: 500; color: var(--error); display: flex; align-items: center; gap: 4px; }
 
 .note-attendees { display: flex; flex-wrap: wrap; gap: 4px; }
 
