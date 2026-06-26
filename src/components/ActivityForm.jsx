@@ -44,20 +44,34 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
   })
   const [activeEscalation, setActiveEscalation] = useState(null)
   const [linkToEscalation, setLinkToEscalation] = useState(false)
+  const [accountIsEscalated, setAccountIsEscalated] = useState(false)
 
   // When account changes, check for active escalation
   useEffect(() => {
     if (!account?.accountid) {
       setActiveEscalation(null)
       setLinkToEscalation(false)
+      setAccountIsEscalated(false)
       return
     }
+    // Instant feedback from slc_isescalated on the account record
+    if (account.slc_isescalated) {
+      setAccountIsEscalated(true)
+      setLinkToEscalation(true)
+    } else {
+      setAccountIsEscalated(false)
+      setLinkToEscalation(false)
+    }
+    // Fetch the actual escalation record for linking
     getActiveEscalation(instance, account.accountid)
       .then((esc) => {
         setActiveEscalation(esc)
-        setLinkToEscalation(!!esc) // auto-link if escalation exists
+        setAccountIsEscalated(!!esc)
+        setLinkToEscalation(!!esc)
       })
-      .catch(() => setActiveEscalation(null))
+      .catch(() => {
+        setActiveEscalation(null)
+      })
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isEscalation = type === 'escalation'
@@ -171,8 +185,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
           />
         </div>
 
-        {/* Active escalation link banner — shown for non-escalation types when account has active escalation */}
-        {!isEscalation && activeEscalation && (
+        {/* Active escalation link banner — shown for non-escalation types when account is escalated */}
+        {!isEscalation && accountIsEscalated && (
           <div className="escalation-link-banner">
             <span className="icon">warning</span>
             <span>This account has an active escalation</span>
@@ -181,8 +195,9 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
                 type="checkbox"
                 checked={linkToEscalation}
                 onChange={(e) => setLinkToEscalation(e.target.checked)}
+                disabled={!activeEscalation}
               />
-              Link to escalation
+              {activeEscalation ? 'Link to escalation' : 'Loading escalation…'}
             </label>
           </div>
         )}

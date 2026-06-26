@@ -65,12 +65,19 @@ export const ESCALATION_STATUSES = [
 // ─── Escalation helpers ──────────────────────────────────────────────────────
 
 /**
- * Fetch the active escalation (open or in-progress) for an account.
- * Returns the single active escalation record or null.
+ * Check whether an account is currently escalated using the slc_isescalated field.
+ * If true, fetches the active escalation record for linking.
  * Business rule: an account can have at most ONE escalation that is open (1) or in-progress (2).
  */
 export async function getActiveEscalation(msalInstance, accountId) {
   if (!accountId) return null
+  // Fast check: read the boolean flag on the account
+  const acct = await dvFetch(
+    msalInstance,
+    `/accounts(${accountId})?$select=slc_isescalated`,
+  ).catch(() => null)
+  if (!acct?.slc_isescalated) return null
+  // Account is escalated — fetch the active escalation record for linking
   const filter = `_regardingobjectid_value eq ${accountId} and (slc_status eq 1 or slc_status eq 2)`
   const data = await dvFetch(
     msalInstance,
@@ -120,8 +127,8 @@ export async function searchAccounts(msalInstance, query) {
   const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
-    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
-    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name,slc_isescalated&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name,slc_isescalated&$orderby=name asc&$top=10`).catch(() => null),
   ])
   const seen = new Set()
   const results = []
