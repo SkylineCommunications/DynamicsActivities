@@ -69,6 +69,21 @@ function isInternalEmail(email) {
   return INTERNAL_DOMAINS.some((domain) => normalized.endsWith(domain))
 }
 
+function splitNameParts(displayName, fallbackEmail) {
+  const trimmed = String(displayName || '').trim()
+  if (!trimmed) {
+    return { firstname: null, lastname: fallbackEmail || 'Unknown' }
+  }
+  const parts = trimmed.split(/\s+/)
+  if (parts.length === 1) {
+    return { firstname: null, lastname: parts[0] }
+  }
+  return {
+    firstname: parts.slice(0, -1).join(' '),
+    lastname: parts[parts.length - 1],
+  }
+}
+
 function CalendarAddModal({ event, onClose, onImported }) {
   const { instance } = useMsal()
   const [regardingType, setRegardingType] = useState('account')
@@ -147,8 +162,10 @@ function CalendarAddModal({ event, onClose, onImported }) {
     setError(null)
     try {
       const resolvedAccountId = regardingType === 'account' ? regardingItem?.accountid || null : null
+      const { firstname, lastname } = splitNameParts(participant.name, participant.email)
       const contact = await createContact(instance, {
-        fullname: participant.name || participant.email,
+        firstname,
+        lastname,
         emailaddress1: participant.email,
         accountId: resolvedAccountId,
       })
@@ -427,15 +444,18 @@ export default function CalendarImportTab({ compact = false, onImported }) {
                 <div className="inbox-section">
                   <div className="inbox-section-label">Attendees</div>
                   <div className="inbox-participants">
-                    {selectedEvent.attendees.map((a) => (
-                      <div key={a.email} className="inbox-participant">
+                    {selectedEvent.attendees.map((a, index) => {
+                      const attendeeKey = `${a.email || 'no-email'}-${a.name || 'no-name'}-${index}`
+                      return (
+                      <div key={attendeeKey} className="inbox-participant">
                         <div>
                           <div className="inbox-participant-role">{a.type === 'optional' ? 'Optional' : 'Required'}</div>
                           <div className="inbox-participant-name">{a.name || a.email}</div>
                           <div className="inbox-participant-email">{a.email}</div>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )}
