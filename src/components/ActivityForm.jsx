@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { searchAccounts, searchContacts, resolveAttendees, createActivity, getActiveEscalation, ACTIVITY_TYPES } from '../api/dataverse'
+import { searchAccounts, searchContacts, resolveAttendees, createActivity, getActiveEscalation, getAccountLeads, getUserCanManageLeads, ACTIVITY_TYPES } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
 
@@ -39,25 +39,54 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
   const [activeEscalation, setActiveEscalation] = useState(null)
   const [linkToEscalation, setLinkToEscalation] = useState(false)
   const [accountIsEscalated, setAccountIsEscalated] = useState(false)
+  const [accountLeads, setAccountLeads] = useState([])
+  const [linkToLeadId, setLinkToLeadId] = useState('')
+  const [canManageLeads, setCanManageLeads] = useState(false)
 
-  // When account changes, check for active escalation
+  // Check if user has a sales license (can manage leads in Dynamics)
+  useEffect(() => {
+    if (!currentUserId) return
+    getUserCanManageLeads(instance, currentUserId)
+      .then(setCanManageLeads)
+      .catch(() => setCanManageLeads(false))
+  }, [instance, currentUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When account changes, check for active escalation and fetch leads
   useEffect(() => {
     if (!account?.accountid) {
       setActiveEscalation(null)
       setLinkToEscalation(false)
       setAccountIsEscalated(false)
+      setAccountLeads([])
+      setLinkToLeadId('')
       return
     }
+    // Reset lead/escalation state immediately so stale values from
+    // a previous account are never visible while requests are in-flight.
+    let active = true
+    setLinkToLeadId('')
+    setLinkToEscalation(false)
+    setActiveEscalation(null)
+    setAccountIsEscalated(false)
+    setAccountLeads([])
+
     getActiveEscalation(instance, account.accountid)
       .then((esc) => {
+        if (!active) return
         setActiveEscalation(esc)
         setAccountIsEscalated(!!esc)
         setLinkToEscalation(!!esc)
       })
       .catch(() => {
+        if (!active) return
         setActiveEscalation(null)
         setAccountIsEscalated(false)
       })
+    getAccountLeads(instance, account.accountid)
+      .then((leads) => { if (active) setAccountLeads(leads) })
+      .catch(() => { if (active) setAccountLeads([]) })
+
+    return () => { active = false }
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isNote = type === 'note'
@@ -106,7 +135,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
         note: note.trim(),
         attendees,
         currentUserId,
-        linkToEscalationId: (linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
+        linkToEscalationId: (!linkToLeadId && linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
+        linkToLeadId: linkToLeadId || undefined,
       })
       setSuccess(true)
       setNote('')
@@ -129,7 +159,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
 
         {/* Interaction type */}
         <div className="type-selector">
-          {ACTIVITY_TYPES.map((t) => (
+          {ACTIVITY_TYPES.filter((t) => !['slc_escalations', 'leads'].includes(t.entity)).map((t) => (
             <button
               key={t.id}
               type="button"
@@ -178,11 +208,39 @@ export default function ActivityForm({ currentUserId, onNoteCreated }) {
               <input
                 type="checkbox"
                 checked={linkToEscalation}
-                onChange={(e) => setLinkToEscalation(e.target.checked)}
+                onChange={(e) => { setLinkToEscalation(e.target.checked); if (e.target.checked) setLinkToLeadId('') }}
                 disabled={!activeEscalation}
               />
               {activeEscalation ? 'Link to escalation' : 'Loading escalation…'}
             </label>
+          </div>
+        )}
+
+        {/* BD Leads — show when account has open leads */}
+        {accountLeads.length > 0 && (
+          <div className="lead-link-banner">
+            <span className="icon icon-sm">trending_up</span>
+            <label className="lead-link-select">
+              <span>Link to BD lead</span>
+              <select
+                value={linkToLeadId}
+                onChange={(e) => { setLinkToLeadId(e.target.value); if (e.target.value) setLinkToEscalation(false) }}
+              >
+                <option value="">None</option>
+                {accountLeads.map((l) => (
+                  <option key={l.leadid} value={l.leadid}>
+                    {l.subject || '(Untitled)'} — {l.statusLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {canManageLeads && (
+              <span className="lead-hint">
+                <a href={`${import.meta.env.VITE_DATAVERSE_URL}main.aspx?pagetype=entitylist&etn=lead`} target="_blank" rel="noreferrer">
+                  Manage leads <span className="icon icon-sm">open_in_new</span>
+                </a>
+              </span>
+            )}
           </div>
         )}
 

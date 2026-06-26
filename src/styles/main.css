@@ -766,6 +766,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .type-email { background: color-mix(in srgb, var(--palette-color3) 20%, transparent); color: var(--palette-color3); }
 .type-escalation { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
 .type-note { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
+.type-lead { background: color-mix(in srgb, var(--palette-color1) 20%, transparent); color: var(--palette-color1); }
 
 .note-card-header-right {
   display: flex;
@@ -830,6 +831,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 .note-account { font-size: 14px; font-weight: 500; color: var(--color11); display: flex; align-items: center; gap: 6px; }
 .note-escalation-link { font-size: 13px; font-weight: 500; color: var(--error); display: flex; align-items: center; gap: 4px; }
+.note-lead-link { font-size: 13px; font-weight: 500; color: var(--focus-color); display: flex; align-items: center; gap: 4px; }
 
 .note-attendees { display: flex; flex-wrap: wrap; gap: 4px; }
 
@@ -902,6 +904,32 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   color: var(--color10);
 }
 
+/* ─── Lead status in browse ────────────────────────────────────────────────── */
+.note-lead-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lead-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lead-badge.lead-open { background: color-mix(in srgb, var(--palette-color1) 15%, transparent); color: var(--palette-color1); }
+.lead-badge.lead-qualified { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+.lead-badge.lead-disqualified { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
+
+.lead-followup {
+  font-size: 12px;
+  color: var(--color10);
+}
+
 /* ─── Escalation link banner ────────────────────────────────────────────────── */
 .escalation-link-banner {
   display: flex;
@@ -933,6 +961,31 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   accent-color: var(--focus-color);
   cursor: pointer;
 }
+
+/* Lead link banner */
+.lead-link-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--focus-color) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--focus-color) 25%, transparent);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--color12);
+}
+.lead-link-banner > .icon { color: var(--focus-color); }
+.lead-link-select { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.lead-link-select span { white-space: nowrap; color: var(--color11); }
+.lead-link-select select {
+  flex: 1; min-width: 0;
+  padding: 4px 8px; font-size: 13px;
+  border: 1px solid var(--color6); border-radius: var(--radius-sm);
+  background: var(--color1); color: var(--color12);
+}
+.lead-hint { margin-left: auto; white-space: nowrap; }
+.lead-hint a { font-size: 12px; color: var(--focus-color); text-decoration: none; display: inline-flex; align-items: center; gap: 2px; }
+.lead-hint a:hover { text-decoration: underline; }
 
 /* ─── Inbox ──────────────────────────────────────────────────────────────────── */
 /* When the inbox tab is active, app-main cedes padding/scroll to the inbox panes */
