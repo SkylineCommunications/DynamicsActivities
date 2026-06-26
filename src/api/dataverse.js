@@ -287,8 +287,8 @@ const BASE_SELECT = 'activityid,subject,description,createdon,scheduledend,sched
  *   2. Via opportunity  (_parentaccountid_value)
  *   3. Via contact      (_parentcustomerid_value)
  *   4. Via lead         (_parentaccountid_value)
- *   5. Via escalation   (active slc_escalations regarding the account)
- * Returns related entity IDs plus active escalation activity IDs (does NOT include accountId itself).
+ *   5. Via escalation   (slc_escalations regarding the account — active + resolved)
+ * Returns related entity IDs plus escalation activity IDs (does NOT include accountId itself).
  */
 async function getAccountRelatedEntityIds(msalInstance, accountId) {
   const [opportunitiesData, contactsData, leadsData, escalationsData] = await Promise.all([
