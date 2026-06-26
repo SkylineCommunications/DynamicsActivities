@@ -769,7 +769,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
   )
 }
 
-export default function InboxTab() {
+export default function InboxTab({ compact = false, onImported }) {
   const { instance } = useMsal()
   const [messages, setMessages] = useState([])
   const [nextLink, setNextLink] = useState(null)
@@ -867,7 +867,7 @@ export default function InboxTab() {
   }
 
   return (
-    <div className="inbox-container">
+    <div className={compact ? 'inbox-container inbox-container-embedded' : 'inbox-container'}>
       <div className="filter-panel inbox-toolbar">
         <div className="filter-row">
           <div className="filter-field">
@@ -997,6 +997,7 @@ export default function InboxTab() {
             if (knownIds.length) {
               setSyncedSet((prev) => new Set([...prev, ...knownIds]))
             }
+            onImported?.({ importedIds, allThreadIds })
             setAddingThread(null)
           }}
         />
