@@ -166,7 +166,9 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
             {note['statuscode@OData.Community.Display.V1.FormattedValue'] || (note.statecode === 0 ? 'Open' : note.statecode === 1 ? 'Won' : 'Lost')}
           </span>
           {note.estimatedvalue != null && (
-            <span className="opp-value">{Number(note.estimatedvalue).toLocaleString(undefined, { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })}</span>
+            <span className="opp-value">
+              {note['estimatedvalue@OData.Community.Display.V1.FormattedValue'] || Number(note.estimatedvalue).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
           )}
           {note.estimatedclosedate && (
             <span className="opp-close">Est. close: {fmtDate(note.estimatedclosedate)}</span>
