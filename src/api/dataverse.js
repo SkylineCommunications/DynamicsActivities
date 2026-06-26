@@ -459,7 +459,10 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   }
 
   if (wantAnnotations) {
+    // Annotations only link to accounts or escalations — use a smaller filter to avoid 400 errors
     const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds])).slice(0, 50) : []
+    const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
+    addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
     fetches.push(fetchAnnotations(msalInstance, annotationFilter))
   }
 
