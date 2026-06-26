@@ -88,7 +88,7 @@ jobs:
           $output = dataminer-catalog-upload --path-to-artifact "${{ steps.find_dmapp.outputs.dmapp_path }}" 2>&1
           $output | ForEach-Object { Write-Host $_ }
 
-          $artifactMatch = [regex]::Match(($output -join "`n"), "([a-zA-Z]+/[0-9a-fA-F-]{36})")
+          $artifactMatch = [regex]::Match(($output -join "`n"), '"artifactId":"([0-9a-fA-F-]{36})"')
           if (-not $artifactMatch.Success) {
             throw "Could not determine artifact-id from catalog-upload output."
           }
