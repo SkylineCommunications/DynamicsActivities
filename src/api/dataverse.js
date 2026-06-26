@@ -286,10 +286,11 @@ const BASE_SELECT = 'activityid,subject,description,createdon,scheduledend,sched
  *   2. Via opportunity  (_parentaccountid_value)
  *   3. Via contact      (_parentcustomerid_value)
  *   4. Via lead         (_parentaccountid_value)
- * Returns an array of GUID strings (does NOT include accountId itself).
+ *   5. Via escalation   (active slc_escalations regarding the account)
+ * Returns related entity IDs plus active escalation activity IDs (does NOT include accountId itself).
  */
 async function getAccountRelatedEntityIds(msalInstance, accountId) {
-  const [opportunitiesData, contactsData, leadsData] = await Promise.all([
+  const [opportunitiesData, contactsData, leadsData, escalationsData] = await Promise.all([
     dvFetch(
       msalInstance,
       `/opportunities?$filter=_parentaccountid_value eq ${accountId}&$select=opportunityid&$top=50`,
@@ -302,13 +303,21 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
       msalInstance,
       `/leads?$filter=_parentaccountid_value eq ${accountId}&$select=leadid&$top=50`,
     ).catch(() => null),
+    dvFetch(
+      msalInstance,
+      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId} and slc_status eq 1&$select=activityid&$top=50`,
+    ).catch(() => null),
   ])
 
-  const ids = []
-  for (const opp of opportunitiesData?.value ?? []) ids.push(opp.opportunityid)
-  for (const c of contactsData?.value ?? []) ids.push(c.contactid)
-  for (const lead of leadsData?.value ?? []) ids.push(lead.leadid)
-  return ids
+  const relatedIds = []
+  const escalationIds = []
+
+  for (const opp of opportunitiesData?.value ?? []) relatedIds.push(opp.opportunityid)
+  for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
+  for (const lead of leadsData?.value ?? []) relatedIds.push(lead.leadid)
+  for (const escalation of escalationsData?.value ?? []) escalationIds.push(escalation.activityid)
+
+  return { relatedIds, escalationIds }
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
@@ -337,6 +346,21 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
 
 // Escalations have custom columns and no activity parties — fetch with extended select
 const ESCALATION_SELECT = `${BASE_SELECT},slc_startdate,slc_resolveddate,slc_status`
+
+function buildLookupFilter(fieldName, ids) {
+  if (!ids.length) return ''
+  const filter = ids.map((id) => `${fieldName} eq ${id}`).join(' or ')
+  return ids.length > 1 ? `(${filter})` : filter
+}
+
+function addCreatedOnDateFilters(filterClauses, dateFrom, dateTo) {
+  if (dateFrom) filterClauses.push(`createdon ge ${new Date(dateFrom).toISOString()}`)
+  if (dateTo) {
+    const d = new Date(dateTo)
+    d.setDate(d.getDate() + 1)
+    filterClauses.push(`createdon lt ${d.toISOString()}`)
+  }
+}
 
 async function fetchEscalations(msalInstance, filterClauses) {
   const filterStr = filterClauses.length ? `&$filter=${filterClauses.join(' and ')}` : ''
@@ -379,21 +403,19 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   if (!accountId && !contactId && !activityType && !dateFrom && !dateTo) return []
 
   const base = []
+  const escalationBase = []
 
   if (accountId) {
-    // Fetch IDs of all related entities (opportunities, etc.) so their activities are included
-    const relatedIds = await getAccountRelatedEntityIds(msalInstance, accountId)
-    const allIds = Array.from(new Set([accountId, ...relatedIds])).slice(0, 50)
-    const regardingFilter = allIds.map((id) => `_regardingobjectid_value eq ${id}`).join(' or ')
-    base.push(allIds.length > 1 ? `(${regardingFilter})` : regardingFilter)
+    // Include active escalation IDs so child activities/notes linked to the escalation are returned too.
+    const { relatedIds, escalationIds } = await getAccountRelatedEntityIds(msalInstance, accountId)
+    const directIds = Array.from(new Set([accountId, ...relatedIds])).slice(0, 50)
+    const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
+    base.push(buildLookupFilter('_regardingobjectid_value', allIds))
+    escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
   }
 
-  if (dateFrom) base.push(`createdon ge ${new Date(dateFrom).toISOString()}`)
-  if (dateTo) {
-    const d = new Date(dateTo)
-    d.setDate(d.getDate() + 1)
-    base.push(`createdon lt ${d.toISOString()}`)
-  }
+  addCreatedOnDateFilters(base, dateFrom, dateTo)
+  addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
 
   const typeConfig = activityType ? ACTIVITY_TYPES.find((t) => t.id === activityType) : null
   const fetches = []
@@ -423,7 +445,7 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   }
 
   if (wantEscalations) {
-    const clauses = [...base]
+    const clauses = [...escalationBase]
     fetches.push(fetchEscalations(msalInstance, clauses))
   }
 
