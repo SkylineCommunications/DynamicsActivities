@@ -258,11 +258,47 @@ export async function findContactByEmail(msalInstance, email) {
   return data?.value?.[0] ?? null
 }
 
-export async function createContact(msalInstance, { fullname, emailaddress1, accountId = null }) {
-  if (!fullname && !emailaddress1) throw new Error('A contact needs a name or email')
+export async function suggestAccountByEmailDomain(msalInstance, email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+  const at = normalizedEmail.lastIndexOf('@')
+  if (at <= 0 || at === normalizedEmail.length - 1) return null
+  const domain = normalizedEmail.slice(at + 1)
+  if (!domain || domain.includes(' ')) return null
+  const domainFilter = encodeURIComponent(`@${domain}`.replace(/'/g, "''"))
+  const data = await dvFetch(
+    msalInstance,
+    `/contacts?$filter=contains(emailaddress1,'${domainFilter}') and _parentcustomerid_value ne null&$select=_parentcustomerid_value&$top=50`,
+  ).catch(() => null)
+  const accountCounts = new Map()
+  for (const contact of data?.value ?? []) {
+    const accountId = contact?._parentcustomerid_value
+    const accountType = contact?.['_parentcustomerid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+    if (!accountId || accountType !== 'account') continue
+    const accountName =
+      contact?.['_parentcustomerid_value@OData.Community.Display.V1.FormattedValue'] || 'Suggested account'
+    const current = accountCounts.get(accountId) || { accountid: accountId, name: accountName, count: 0 }
+    current.count += 1
+    accountCounts.set(accountId, current)
+  }
+  const best = [...accountCounts.values()].sort((a, b) => b.count - a.count)[0]
+  return best ? { accountid: best.accountid, name: best.name, count: best.count, domain } : null
+}
+
+export async function createContact(msalInstance, {
+  firstname = null,
+  lastname = null,
+  emailaddress1,
+  jobtitle = null,
+  telephone1 = null,
+  accountId = null,
+}) {
+  if (!firstname && !lastname && !emailaddress1) throw new Error('A contact needs a first name, last name, or email')
   const body = {
-    fullname: fullname || emailaddress1,
+    ...(firstname ? { firstname } : {}),
+    ...(lastname ? { lastname } : {}),
     ...(emailaddress1 ? { emailaddress1 } : {}),
+    ...(jobtitle ? { jobtitle } : {}),
+    ...(telephone1 ? { telephone1 } : {}),
     ...(accountId ? { 'parentcustomerid_account@odata.bind': `/accounts(${accountId})` } : {}),
   }
   return dvFetch(msalInstance, '/contacts', {

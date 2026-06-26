@@ -1501,6 +1501,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 /* ─── Modal (inbox) ──────────────────────────────────────────────────────────── */
 .inbox-modal { max-width: 820px; }
 .inbox-modal-body { gap: 0.85rem; }
+.contact-create-modal { max-width: 560px; }
+.contact-create-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
 .inbox-modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1610,6 +1616,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   .type-btn { padding: 0 8px; font-size: 12px; }
   .filter-row { flex-direction: column; }
   .filter-field { min-width: auto; }
+  .contact-create-modal { max-width: calc(100vw - 1.5rem); }
   .inbox-modal-actions { flex-direction: column; align-items: stretch; }
   .inbox-message-meta,
   .inbox-participant { align-items: flex-start; }
