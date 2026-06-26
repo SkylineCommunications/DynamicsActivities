@@ -765,6 +765,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 .type-appt { background: color-mix(in srgb, var(--palette-color4) 20%, transparent); color: var(--palette-color4); }
 .type-email { background: color-mix(in srgb, var(--palette-color3) 20%, transparent); color: var(--palette-color3); }
 .type-escalation { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
+.type-note { background: color-mix(in srgb, var(--color10) 15%, transparent); color: var(--color10); }
 
 .note-card-header-right {
   display: flex;

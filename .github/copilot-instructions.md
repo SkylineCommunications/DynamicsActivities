@@ -45,6 +45,15 @@ This prevents version conflicts in the DataMiner Catalog when multiple PRs are d
 
 **Always run `npm run build` (not `build:local`) before deploying.**
 
+### Versioning for Deployment
+
+A new deployment package requires a version bump. Update **both** files before creating a PR:
+
+1. `package.json` → `"version"` field
+2. `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj` → `<Version>` and `<VersionComment>`
+
+Use semver: patch for fixes, minor for features, major for breaking changes.
+
 ---
 
 ## Environment Variables
