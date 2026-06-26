@@ -884,8 +884,28 @@ export default function InboxTab({ compact = false, onImported }) {
     if (!initialMailboxSuggestions.length) return
     filterAccessibleMailboxes(instance, initialMailboxSuggestions)
       .then(setAccessibleSuggestions)
-      .catch(() => {/* keep unfiltered suggestions on error */})
+      .catch(() => {/* keep empty on error */})
   }, [instance, initialMailboxSuggestions])
+
+  // Search function: People API results filtered to only accessible mailboxes.
+  // Accessible mailboxes that match the query locally are always included first,
+  // so the user gets immediate results even if People API is slow.
+  async function searchMailboxes(q) {
+    const lq = q.toLowerCase()
+    const localMatches = accessibleSuggestions.filter(
+      (m) => m.email.toLowerCase().includes(lq) || m.label.toLowerCase().includes(lq),
+    )
+    try {
+      const people = await searchPeopleMailboxes(instance, q)
+      const accessibleEmails = new Set(accessibleSuggestions.map((m) => m.email.toLowerCase()))
+      const remoteMatches = people.filter((p) => accessibleEmails.has(p.email.toLowerCase()))
+      // Merge: local first, then remote results with richer labels (deduped by email)
+      const seen = new Set(localMatches.map((m) => m.email.toLowerCase()))
+      return [...localMatches, ...remoteMatches.filter((r) => !seen.has(r.email.toLowerCase()))]
+    } catch {
+      return localMatches
+    }
+  }
 
   function saveMailboxToRecents(address) {
     if (!address) return
@@ -908,7 +928,7 @@ export default function InboxTab({ compact = false, onImported }) {
             <label className="filter-label">Mailbox</label>
             <div className="mailbox-field">
               <AutocompletePicker
-                searchFn={(q) => searchPeopleMailboxes(instance, q)}
+                searchFn={searchMailboxes}
                 getKey={(item) => item.email}
                 getLabel={(item) => item.label && item.label !== item.email ? item.label : item.email}
                 getSublabel={(item) => item.label && item.label !== item.email ? item.email : null}
