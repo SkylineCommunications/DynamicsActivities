@@ -75,8 +75,19 @@ jobs:
 
       - name: Install DataMiner CI/CD tools
         run: |
+          dotnet tool update --global Skyline.DataMiner.CICD.Tools.CatalogUpload
           dotnet tool update --global Skyline.DataMiner.CICD.Tools.DataMinerDeploy
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Upload package to Catalog
+        shell: pwsh
+        env:
+          DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
+        run: |
+          Write-Host "Uploading DynamicsActivitiesPackage v1.0.0 to Catalog..."
+          $uploadOutput = dataminer-catalog-upload --path-to-artifact "${{ steps.find_dmapp.outputs.dmapp_path }}" 2>&1
+          $uploadOutput | ForEach-Object { Write-Host $_ }
+          Write-Host "Package uploaded to Catalog."
 
       - name: Deploy package from Catalog
         shell: pwsh
