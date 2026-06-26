@@ -5,3 +5,8 @@ dataminer-dist/
 .env
 .env.dataminer
 *.local
+.vs/
+bin/
+obj/
+*.csproj.user
+.DS_Store
