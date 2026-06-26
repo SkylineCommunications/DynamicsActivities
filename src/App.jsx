@@ -2,10 +2,12 @@ import { useState } from 'react'
 import AuthGuard from './components/AuthGuard'
 import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
+import SubscriptionsPanel from './components/SubscriptionsPanel'
 
 const TABS = [
   { id: 'new', label: '+ New Activity' },
   { id: 'browse', label: '📋 Browse' },
+  { id: 'subscriptions', label: '🔔 Subscriptions' },
 ]
 
 export default function App() {
@@ -51,6 +53,9 @@ export default function App() {
               )}
               {activeTab === 'browse' && (
                 <NotesList refreshKey={refreshKey} />
+              )}
+              {activeTab === 'subscriptions' && (
+                <SubscriptionsPanel />
               )}
             </>
           )}
