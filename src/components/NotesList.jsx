@@ -10,18 +10,21 @@ import {
   getDynamicsUrl,
   deleteActivity,
   ACTIVITY_TYPES,
+  ESCALATION_STATUSES,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
-const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.icon]))
+const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.iconLigature || t.icon]))
 const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cssClass]))
 
 // Fallbacks for activities not created by this app
-TYPE_ICONS['Call'] ??= '📞'
-TYPE_ICONS['Meeting'] ??= '📅'
+TYPE_ICONS['Call'] ??= 'contact_phone'
+TYPE_ICONS['Meeting'] ??= 'calendar_today'
+TYPE_ICONS['Escalation'] ??= 'warning'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
+TYPE_CLASSES['Escalation'] ??= 'type-escalation'
 
 const FILTER_TYPES = [{ value: '', label: 'All' }, ...ACTIVITY_TYPES.map((t) => ({ value: t.id, label: t.label }))]
 
@@ -67,7 +70,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
     <div className={`note-card ${expanded ? 'expanded' : ''}`} onClick={onToggle}>
       <div className="note-card-header">
         <span className={`type-badge ${TYPE_CLASSES[label] || ''}`}>
-          {TYPE_ICONS[label]} {label}
+          <span className="icon icon-sm">{TYPE_ICONS[label]}</span> {label}
         </span>
         <div className="note-card-header-right">
           <span className="note-date">{fmtDate(date)}</span>
@@ -78,7 +81,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
           >
-            Open in Dynamics ↗
+            Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
           </a>
           {confirmDelete ? (
             <>
@@ -105,20 +108,35 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
               onClick={handleDelete}
               title="Delete activity"
             >
-              🗑
+              <span className="icon icon-sm">delete</span>
             </button>
           )}
         </div>
       </div>
 
       {note.subject && <div className="note-subject">{note.subject}</div>}
-      {accountName && <div className="note-account">🏢 Regarding: {accountName}</div>}
+      {accountName && <div className="note-account"><span className="icon icon-sm">business_center</span> Regarding: {accountName}</div>}
+
+      {/* Escalation status badge */}
+      {note._entityType === 'slc_escalations' && note.slc_status && (
+        <div className="note-escalation-status">
+          <span className={`escalation-badge ${(ESCALATION_STATUSES.find((s) => s.value === note.slc_status) || {}).cssClass || ''}`}>
+            {(ESCALATION_STATUSES.find((s) => s.value === note.slc_status) || {}).label || `Status ${note.slc_status}`}
+          </span>
+          {note.slc_startdate && (
+            <span className="escalation-start">Started: {fmtDate(note.slc_startdate)}</span>
+          )}
+          {note.slc_resolveddate && (
+            <span className="escalation-resolved">Resolved: {fmtDate(note.slc_resolveddate)}</span>
+          )}
+        </div>
+      )}
 
       {attendees.length > 0 && (
         <div className="note-attendees">
           {attendees.map((a, i) => (
             <span key={i} className={`chip-sm ${a.type === 'external' ? 'chip-unlinked' : 'chip-linked'}`}>
-              {a.type !== 'external' ? '✓' : '○'} {a.name}
+              <span className="icon icon-sm">{a.type !== 'external' ? 'check_circle' : 'radio_button_unchecked'}</span> {a.name}
             </span>
           ))}
         </div>
@@ -216,7 +234,7 @@ export default function NotesList({ refreshKey }) {
                   className={`filter-type-btn ${activityType === t.value ? 'active' : ''}`}
                   onClick={() => setActivityType(t.value)}
                 >
-                  {t.value ? `${TYPE_ICONS[t.label]} ` : ''}{t.label}
+                  {t.value && <span className="icon icon-sm">{TYPE_ICONS[t.label]}</span>}{t.label}
                 </button>
               ))}
             </div>
@@ -256,7 +274,7 @@ export default function NotesList({ refreshKey }) {
 
       {notes === null && !loading && (
         <div className="empty-state">
-          <div className="empty-icon">🔍</div>
+          <div className="empty-icon"><span className="icon icon-lg">search</span></div>
           <div className="empty-title">Set filters to search activities</div>
           <div className="empty-sub">Use the filters above to find activities across the organisation.</div>
         </div>
@@ -264,7 +282,7 @@ export default function NotesList({ refreshKey }) {
 
       {notes !== null && !loading && notes.length === 0 && (
         <div className="empty-state">
-          <div className="empty-icon">📋</div>
+          <div className="empty-icon"><span className="icon icon-lg">checklist</span></div>
           <div className="empty-title">No activities found</div>
           <div className="empty-sub">Try adjusting your filters.</div>
         </div>

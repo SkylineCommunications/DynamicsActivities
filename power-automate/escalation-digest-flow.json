@@ -1,0 +1,620 @@
+{
+  "name": "escalation-digest-flow",
+  "displayName": "Weekly PO Escalation Digest",
+  "description": "Scheduled Power Automate cloud flow definition that groups Dataverse escalation activities by account and account owner, then emails each PO a weekly digest.",
+  "connectionReferences": {
+    "shared_commondataserviceforapps": {
+      "connectionName": "shared_commondataserviceforapps",
+      "source": "Invoker",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+      "tier": "NotSpecified",
+      "apiName": "commondataserviceforapps"
+    },
+    "shared_office365": {
+      "connectionName": "shared_office365",
+      "source": "Invoker",
+      "id": "/providers/Microsoft.PowerApps/apis/shared_office365",
+      "tier": "NotSpecified",
+      "apiName": "office365"
+    }
+  },
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "$connections": {
+        "defaultValue": {},
+        "type": "Object"
+      },
+      "dataverseBaseUrl": {
+        "defaultValue": "https://skyline365-qa.crm4.dynamics.com",
+        "type": "String"
+      },
+      "sharedMailboxAddress": {
+        "defaultValue": "",
+        "type": "String"
+      },
+      "digestLookbackDays": {
+        "defaultValue": 7,
+        "type": "Int"
+      },
+      "maxDescriptionLength": {
+        "defaultValue": 200,
+        "type": "Int"
+      }
+    },
+    "triggers": {
+      "Recurrence": {
+        "type": "Recurrence",
+        "recurrence": {
+          "frequency": "Week",
+          "interval": 1,
+          "timeZone": "W. Europe Standard Time",
+          "schedule": {
+            "weekDays": [
+              "Monday"
+            ],
+            "hours": [
+              8
+            ],
+            "minutes": [
+              0
+            ]
+          }
+        }
+      }
+    },
+    "actions": {
+      "Try": {
+        "type": "Scope",
+        "actions": {
+          "Initialize_Base_Url": {
+            "type": "InitializeVariable",
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Base_Url",
+                  "type": "string",
+                  "value": "@parameters('dataverseBaseUrl')"
+                }
+              ]
+            }
+          },
+          "Initialize_Date_Range_Label": {
+            "type": "InitializeVariable",
+            "runAfter": {
+              "Initialize_Base_Url": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Date_Range_Label",
+                  "type": "string",
+                  "value": "@concat(formatDateTime(addDays(utcNow(), sub(0, int(parameters('digestLookbackDays')))), 'dd MMM yyyy'), ' - ', formatDateTime(utcNow(), 'dd MMM yyyy'))"
+                }
+              ]
+            }
+          },
+          "Initialize_Account_Digests": {
+            "type": "InitializeVariable",
+            "runAfter": {
+              "Initialize_Date_Range_Label": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Account_Digests",
+                  "type": "array",
+                  "value": []
+                }
+              ]
+            }
+          },
+          "Initialize_Owner_Ids": {
+            "type": "InitializeVariable",
+            "runAfter": {
+              "Initialize_Account_Digests": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Owner_Ids",
+                  "type": "array",
+                  "value": []
+                }
+              ]
+            }
+          },
+          "Initialize_Current_Account_Rows_Html": {
+            "type": "InitializeVariable",
+            "runAfter": {
+              "Initialize_Owner_Ids": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Current_Account_Rows_Html",
+                  "type": "string",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "Initialize_Current_Owner_Email_Body": {
+            "type": "InitializeVariable",
+            "runAfter": {
+              "Initialize_Current_Account_Rows_Html": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Current_Owner_Email_Body",
+                  "type": "string",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "Initialize_Current_Owner_Active_Count": {
+            "type": "InitializeVariable",
+            "runAfter": {
+              "Initialize_Current_Owner_Email_Body": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Current_Owner_Active_Count",
+                  "type": "integer",
+                  "value": 0
+                }
+              ]
+            }
+          },
+          "Initialize_Current_Owner_Account_Count": {
+            "type": "InitializeVariable",
+            "runAfter": {
+              "Initialize_Current_Owner_Active_Count": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "variables": [
+                {
+                  "name": "Current_Owner_Account_Count",
+                  "type": "integer",
+                  "value": 0
+                }
+              ]
+            }
+          },
+          "List_Escalations": {
+            "type": "OpenApiConnection",
+            "runAfter": {
+              "Initialize_Current_Owner_Account_Count": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "host": {
+                "connectionName": "shared_commondataserviceforapps",
+                "operationId": "ListRecords",
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+              },
+              "parameters": {
+                "entityName": "slc_escalations",
+                "$select": "activityid,subject,description,slc_status,slc_startdate,modifiedon,_regardingobjectid_value",
+                "$filter": "@concat('((slc_status eq 1 or slc_status eq 2) or modifiedon ge ', '''', formatDateTime(addDays(utcNow(), sub(0, int(parameters('digestLookbackDays')))), 'yyyy-MM-ddTHH:mm:ssZ'), '''', ')')",
+                "$orderby": "modifiedon desc"
+              }
+            },
+            "runtimeConfiguration": {
+              "paginationPolicy": {
+                "minimumItemCount": 5000
+              }
+            }
+          },
+          "Filter_to_Account_Regarding": {
+            "type": "Query",
+            "runAfter": {
+              "List_Escalations": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "from": "@body('List_Escalations')?['value']",
+              "where": "@and(not(empty(item()?['_regardingobjectid_value'])), equals(item()?['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'], 'account'))"
+            }
+          },
+          "Select_Account_Ids": {
+            "type": "Select",
+            "runAfter": {
+              "Filter_to_Account_Regarding": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "from": "@body('Filter_to_Account_Regarding')",
+              "select": "@item()?['_regardingobjectid_value']"
+            }
+          },
+          "Compose_Unique_Account_Ids": {
+            "type": "Compose",
+            "runAfter": {
+              "Select_Account_Ids": [
+                "Succeeded"
+              ]
+            },
+            "inputs": "@union(body('Select_Account_Ids'), body('Select_Account_Ids'))"
+          },
+          "Apply_to_each_Account": {
+            "type": "Foreach",
+            "runAfter": {
+              "Compose_Unique_Account_Ids": [
+                "Succeeded"
+              ]
+            },
+            "foreach": "@outputs('Compose_Unique_Account_Ids')",
+            "runtimeConfiguration": {
+              "concurrency": {
+                "repetitions": 1
+              }
+            },
+            "actions": {
+              "Set_Current_Account_Rows_Html_Empty": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "Current_Account_Rows_Html",
+                  "value": ""
+                }
+              },
+              "Filter_Escalations_For_Account": {
+                "type": "Query",
+                "runAfter": {
+                  "Set_Current_Account_Rows_Html_Empty": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "from": "@body('Filter_to_Account_Regarding')",
+                  "where": "@equals(item()?['_regardingobjectid_value'], items('Apply_to_each_Account'))"
+                }
+              },
+              "Filter_Active_Escalations_For_Account": {
+                "type": "Query",
+                "runAfter": {
+                  "Filter_Escalations_For_Account": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "from": "@body('Filter_Escalations_For_Account')",
+                  "where": "@or(equals(item()?['slc_status'], 1), equals(item()?['slc_status'], 2))"
+                }
+              },
+              "Get_Account": {
+                "type": "OpenApiConnection",
+                "runAfter": {
+                  "Filter_Active_Escalations_For_Account": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "host": {
+                    "connectionName": "shared_commondataserviceforapps",
+                    "operationId": "GetRecord",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                  },
+                  "parameters": {
+                    "entityName": "accounts",
+                    "recordId": "@items('Apply_to_each_Account')",
+                    "$select": "accountid,name,_ownerid_value"
+                  }
+                }
+              },
+              "If_Account_Owner_Is_User": {
+                "type": "If",
+                "runAfter": {
+                  "Get_Account": [
+                    "Succeeded"
+                  ]
+                },
+                "expression": "@equals(outputs('Get_Account')?['body/_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname'], 'systemuser')",
+                "actions": {
+                  "Get_Owning_User": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_commondataserviceforapps",
+                        "operationId": "GetRecord",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps"
+                      },
+                      "parameters": {
+                        "entityName": "systemusers",
+                        "recordId": "@outputs('Get_Account')?['body/_ownerid_value']",
+                        "$select": "systemuserid,fullname,internalemailaddress"
+                      }
+                    }
+                  },
+                  "If_Owner_Has_Email": {
+                    "type": "If",
+                    "runAfter": {
+                      "Get_Owning_User": [
+                        "Succeeded"
+                      ]
+                    },
+                    "expression": "@not(empty(outputs('Get_Owning_User')?['body/internalemailaddress']))",
+                    "actions": {
+                      "Apply_to_each_Escalation_For_Account": {
+                        "type": "Foreach",
+                        "foreach": "@body('Filter_Escalations_For_Account')",
+                        "runtimeConfiguration": {
+                          "concurrency": {
+                            "repetitions": 1
+                          }
+                        },
+                        "actions": {
+                          "Append_Row_Html": {
+                            "type": "AppendToStringVariable",
+                            "inputs": {
+                              "name": "Current_Account_Rows_Html",
+                              "value": "@concat('<tr><td style=\"padding:8px;border:1px solid #e1dfdd;vertical-align:top;\">', replace(replace(replace(coalesce(item()?['subject'], '(no subject)'), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), '</td><td style=\"padding:8px;border:1px solid #e1dfdd;vertical-align:top;\">', replace(replace(replace(if(greater(length(coalesce(item()?['description'], '')), int(parameters('maxDescriptionLength'))), concat(substring(coalesce(item()?['description'], ''), 0, int(parameters('maxDescriptionLength'))), '...'), coalesce(item()?['description'], '')), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), '</td><td style=\"padding:8px;border:1px solid #e1dfdd;vertical-align:top;white-space:nowrap;\">', coalesce(item()?['slc_status@OData.Community.Display.V1.FormattedValue'], if(equals(item()?['slc_status'], 1), 'Open', if(equals(item()?['slc_status'], 2), 'In Progress', if(equals(item()?['slc_status'], 3), 'Resolved', 'Cancelled')))), '</td><td style=\"padding:8px;border:1px solid #e1dfdd;vertical-align:top;white-space:nowrap;\">', if(empty(item()?['slc_startdate']), '', formatDateTime(item()?['slc_startdate'], 'dd MMM yyyy')), '</td><td style=\"padding:8px;border:1px solid #e1dfdd;vertical-align:top;white-space:nowrap;\"><a href=\"', variables('Base_Url'), '/main.aspx?etn=slc_escalation&id=', item()?['activityid'], '&pagetype=entityrecord\">Open</a></td></tr>')"
+                            }
+                          }
+                        }
+                      },
+                      "Append_Owner_Id": {
+                        "type": "AppendToArrayVariable",
+                        "runAfter": {
+                          "Apply_to_each_Escalation_For_Account": [
+                            "Succeeded"
+                          ]
+                        },
+                        "inputs": {
+                          "name": "Owner_Ids",
+                          "value": "@outputs('Get_Owning_User')?['body/systemuserid']"
+                        }
+                      },
+                      "Append_Account_Digest": {
+                        "type": "AppendToArrayVariable",
+                        "runAfter": {
+                          "Append_Owner_Id": [
+                            "Succeeded"
+                          ]
+                        },
+                        "inputs": {
+                          "name": "Account_Digests",
+                          "value": {
+                            "ownerId": "@outputs('Get_Owning_User')?['body/systemuserid']",
+                            "ownerName": "@outputs('Get_Owning_User')?['body/fullname']",
+                            "ownerEmail": "@outputs('Get_Owning_User')?['body/internalemailaddress']",
+                            "accountId": "@outputs('Get_Account')?['body/accountid']",
+                            "accountName": "@coalesce(outputs('Get_Account')?['body/name'], '(Unnamed account)')",
+                            "activeCount": "@length(body('Filter_Active_Escalations_For_Account'))",
+                            "accountHtml": "@concat('<h3 style=\"margin:24px 0 8px;font-family:Segoe UI,Arial,sans-serif;color:#201f1e;\">', replace(replace(replace(coalesce(outputs('Get_Account')?['body/name'], '(Unnamed account)'), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), '</h3><table style=\"border-collapse:collapse;width:100%;font-family:Segoe UI,Arial,sans-serif;font-size:13px;\"><thead><tr><th style=\"text-align:left;padding:8px;border:1px solid #e1dfdd;background:#f3f2f1;\">Subject</th><th style=\"text-align:left;padding:8px;border:1px solid #e1dfdd;background:#f3f2f1;\">Description</th><th style=\"text-align:left;padding:8px;border:1px solid #e1dfdd;background:#f3f2f1;\">Status</th><th style=\"text-align:left;padding:8px;border:1px solid #e1dfdd;background:#f3f2f1;\">Start date</th><th style=\"text-align:left;padding:8px;border:1px solid #e1dfdd;background:#f3f2f1;\">Link</th></tr></thead><tbody>', variables('Current_Account_Rows_Html'), '</tbody></table>')"
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {}
+                }
+              }
+            }
+          },
+          "Compose_Unique_Owner_Ids": {
+            "type": "Compose",
+            "runAfter": {
+              "Apply_to_each_Account": [
+                "Succeeded"
+              ]
+            },
+            "inputs": "@union(variables('Owner_Ids'), variables('Owner_Ids'))"
+          },
+          "Apply_to_each_Owner": {
+            "type": "Foreach",
+            "runAfter": {
+              "Compose_Unique_Owner_Ids": [
+                "Succeeded"
+              ]
+            },
+            "foreach": "@outputs('Compose_Unique_Owner_Ids')",
+            "runtimeConfiguration": {
+              "concurrency": {
+                "repetitions": 1
+              }
+            },
+            "actions": {
+              "Set_Current_Owner_Email_Body_Empty": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "Current_Owner_Email_Body",
+                  "value": ""
+                }
+              },
+              "Set_Current_Owner_Active_Count_Zero": {
+                "type": "SetVariable",
+                "runAfter": {
+                  "Set_Current_Owner_Email_Body_Empty": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "name": "Current_Owner_Active_Count",
+                  "value": 0
+                }
+              },
+              "Set_Current_Owner_Account_Count_Zero": {
+                "type": "SetVariable",
+                "runAfter": {
+                  "Set_Current_Owner_Active_Count_Zero": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "name": "Current_Owner_Account_Count",
+                  "value": 0
+                }
+              },
+              "Filter_Accounts_For_Owner": {
+                "type": "Query",
+                "runAfter": {
+                  "Set_Current_Owner_Account_Count_Zero": [
+                    "Succeeded"
+                  ]
+                },
+                "inputs": {
+                  "from": "@variables('Account_Digests')",
+                  "where": "@equals(item()?['ownerId'], items('Apply_to_each_Owner'))"
+                }
+              },
+              "Apply_to_each_Accounts_For_Owner": {
+                "type": "Foreach",
+                "runAfter": {
+                  "Filter_Accounts_For_Owner": [
+                    "Succeeded"
+                  ]
+                },
+                "foreach": "@body('Filter_Accounts_For_Owner')",
+                "runtimeConfiguration": {
+                  "concurrency": {
+                    "repetitions": 1
+                  }
+                },
+                "actions": {
+                  "Append_Account_Html_To_Owner_Body": {
+                    "type": "AppendToStringVariable",
+                    "inputs": {
+                      "name": "Current_Owner_Email_Body",
+                      "value": "@items('Apply_to_each_Accounts_For_Owner')?['accountHtml']"
+                    }
+                  },
+                  "Increment_Current_Owner_Active_Count": {
+                    "type": "IncrementVariable",
+                    "runAfter": {
+                      "Append_Account_Html_To_Owner_Body": [
+                        "Succeeded"
+                      ]
+                    },
+                    "inputs": {
+                      "name": "Current_Owner_Active_Count",
+                      "value": "@int(items('Apply_to_each_Accounts_For_Owner')?['activeCount'])"
+                    }
+                  },
+                  "Increment_Current_Owner_Account_Count": {
+                    "type": "IncrementVariable",
+                    "runAfter": {
+                      "Increment_Current_Owner_Active_Count": [
+                        "Succeeded"
+                      ]
+                    },
+                    "inputs": {
+                      "name": "Current_Owner_Account_Count",
+                      "value": 1
+                    }
+                  }
+                }
+              },
+              "If_Use_Shared_Mailbox": {
+                "type": "If",
+                "runAfter": {
+                  "Apply_to_each_Accounts_For_Owner": [
+                    "Succeeded"
+                  ]
+                },
+                "expression": "@not(empty(parameters('sharedMailboxAddress')))",
+                "actions": {
+                  "Send_Email_From_Shared_Mailbox": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_office365",
+                        "operationId": "SendEmailFromSharedMailboxV2",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                      },
+                      "parameters": {
+                        "mailboxAddress": "@parameters('sharedMailboxAddress')",
+                        "to": "@first(body('Filter_Accounts_For_Owner'))?['ownerEmail']",
+                        "subject": "@concat('Weekly Escalation Digest — ', variables('Date_Range_Label'))",
+                        "body": "@concat('<div style=\"font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:#201f1e;\"><p>Hello ', replace(replace(replace(first(body('Filter_Accounts_For_Owner'))?['ownerName'], '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), ',</p><p><strong>', string(variables('Current_Owner_Active_Count')), ' active escalations across ', string(variables('Current_Owner_Account_Count')), ' accounts</strong></p><p>This digest includes all open or in-progress escalations plus any escalations updated in the last ', string(parameters('digestLookbackDays')), ' days.</p>', variables('Current_Owner_Email_Body'), '<p style=\"margin-top:24px;color:#605e5c;\">Generated automatically from Dataverse account ownership. Future subscription-based routing can replace the owner lookup without changing the email assembly step.</p></div>')",
+                        "importance": "Normal"
+                      }
+                    }
+                  }
+                },
+                "else": {
+                  "actions": {
+                    "Send_Email": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "host": {
+                          "connectionName": "shared_office365",
+                          "operationId": "SendEmailV2",
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365"
+                        },
+                        "parameters": {
+                          "to": "@first(body('Filter_Accounts_For_Owner'))?['ownerEmail']",
+                          "subject": "@concat('Weekly Escalation Digest — ', variables('Date_Range_Label'))",
+                          "body": "@concat('<div style=\"font-family:Segoe UI,Arial,sans-serif;font-size:13px;color:#201f1e;\"><p>Hello ', replace(replace(replace(first(body('Filter_Accounts_For_Owner'))?['ownerName'], '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), ',</p><p><strong>', string(variables('Current_Owner_Active_Count')), ' active escalations across ', string(variables('Current_Owner_Account_Count')), ' accounts</strong></p><p>This digest includes all open or in-progress escalations plus any escalations updated in the last ', string(parameters('digestLookbackDays')), ' days.</p>', variables('Current_Owner_Email_Body'), '<p style=\"margin-top:24px;color:#605e5c;\">Generated automatically from Dataverse account ownership. Future subscription-based routing can replace the owner lookup without changing the email assembly step.</p></div>')",
+                          "importance": "Normal"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Catch": {
+        "type": "Scope",
+        "runAfter": {
+          "Try": [
+            "Failed",
+            "TimedOut"
+          ]
+        },
+        "actions": {
+          "Compose_Failure_Message": {
+            "type": "Compose",
+            "inputs": "@concat('Weekly PO escalation digest failed at ', utcNow(), '. Inspect the failed action in the Try scope for connector details.')"
+          },
+          "Terminate_Flow": {
+            "type": "Terminate",
+            "runAfter": {
+              "Compose_Failure_Message": [
+                "Succeeded"
+              ]
+            },
+            "inputs": {
+              "runStatus": "Failed",
+              "runError": {
+                "code": "EscalationDigestFailed",
+                "message": "@outputs('Compose_Failure_Message')"
+              }
+            }
+          }
+        }
+      }
+    },
+    "outputs": {}
+  }
+}
+

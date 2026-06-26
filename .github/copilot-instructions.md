@@ -51,15 +51,23 @@ VITE_REDIRECT_URI=...
 
 ## Data Model
 
-**No custom Dynamics fields.** All data lives in native Dynamics 365 activity entities:
+**Native Dynamics 365 activity entities plus one custom activity:**
 
 | Type | Entity table | `_entityType` value |
 |---|---|---|
 | Phone Call | `phonecalls` | `phonecalls` |
 | Appointment | `appointments` | `appointments` |
 | Email | `emails` | `emails` |
+| Escalation | `slc_escalations` | `slc_escalations` |
 
-`createQuickNote` writes to the correct entity table — no `category` field, no custom columns.
+`createActivity` writes to the correct entity table based on type.
+
+### Escalation entity & business rules
+
+See the **dataverse-api** skill for the full `slc_escalation` entity schema, account escalation fields (`slc_activeescalationcount`, `slc_inescalation`), and business rules.
+
+App-specific behavior:
+- **Auto-link default** — The UI auto-checks "Link to escalation" when an active escalation is detected for the selected account. Users can uncheck to link directly to the account instead.
 
 ---
 
