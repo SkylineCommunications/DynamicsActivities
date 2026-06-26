@@ -14,7 +14,7 @@ function AttendeeChip({ attendee, onRemove }) {
       <span className="icon icon-sm">{isLinked ? 'check_circle' : 'radio_button_unchecked'}</span>
       <span>{attendee.name || attendee.email}</span>
       <button type="button" className="chip-remove" onClick={onRemove} aria-label="Remove attendee">
-        <span className="icon icon-sm">close</span>
+        <span className="icon icon-sm" aria-hidden="true">close</span>
       </button>
     </span>
   )
