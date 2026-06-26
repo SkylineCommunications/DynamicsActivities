@@ -1,0 +1,235 @@
+import { useState } from 'react'
+import { useMsal } from '@azure/msal-react'
+import { searchAccounts } from '../api/dataverse'
+import { createSubscription, updateSubscription } from '../api/subscriptions'
+import AutocompletePicker from './AutocompletePicker'
+
+const SCOPE_TYPES = [
+  { value: 'account', label: '🏢 Account' },
+  { value: 'country', label: '🌍 Country' },
+  { value: 'region', label: '📍 Region' },
+  { value: 'escalation', label: '🚨 Escalation' },
+]
+
+const FREQUENCIES = [
+  { value: 'instant', label: '⚡ Instant', hint: 'Sent within minutes of a new activity (with a 15-min burst guard).' },
+  { value: 'daily', label: '📅 Daily', hint: 'One summary email per day (06:00 UTC).' },
+  { value: 'weekly', label: '📆 Weekly', hint: 'One summary email per week (Monday 07:00 UTC).' },
+  { value: 'monthly', label: '🗓 Monthly', hint: 'One summary email per month (1st at 08:00 UTC).' },
+]
+
+function BestPracticeHint({ scopeType, frequency }) {
+  if (!scopeType || !frequency) return null
+
+  const isDirectScope = scopeType === 'account'
+  const isFastFreq = frequency === 'instant' || frequency === 'daily'
+  const isSlowFreq = frequency === 'weekly' || frequency === 'monthly'
+
+  if (isDirectScope && isFastFreq) {
+    return (
+      <div className="best-practice-hint hint-good">
+        ✅ Good choice — Instant or Daily works well for accounts you're directly involved with.
+      </div>
+    )
+  }
+  if (isDirectScope && isSlowFreq) {
+    return (
+      <div className="best-practice-hint hint-tip">
+        💡 Tip: For accounts you work with closely, Daily or Instant keeps you more up-to-date.
+      </div>
+    )
+  }
+  if (!isDirectScope && isSlowFreq) {
+    return (
+      <div className="best-practice-hint hint-good">
+        ✅ Good choice — Weekly or Monthly is ideal for broader country or region monitoring.
+      </div>
+    )
+  }
+  if (!isDirectScope && isFastFreq) {
+    return (
+      <div className="best-practice-hint hint-tip">
+        💡 Tip: For broad scopes (countries/regions), Weekly or Monthly avoids email overload.
+      </div>
+    )
+  }
+  return null
+}
+
+/**
+ * Form for creating or editing a subscription.
+ * @param {{ subscription?: object, onSaved: (sub) => void, onCancel: () => void }} props
+ */
+export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
+  const { instance } = useMsal()
+  const editing = !!subscription
+
+  const [scopeType, setScopeType] = useState(subscription?.scopeType ?? 'account')
+  const [frequency, setFrequency] = useState(subscription?.frequency ?? 'daily')
+  const [account, setAccount] = useState(
+    subscription?.scopeType === 'account'
+      ? { accountid: subscription.scopeValue, name: subscription.scopeLabel }
+      : null,
+  )
+  const [countryInput, setCountryInput] = useState(
+    subscription?.scopeType === 'country' ? subscription.scopeValue : '',
+  )
+  const [regionInput, setRegionInput] = useState(
+    subscription?.scopeType === 'region' ? subscription.scopeValue : '',
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  const selectedFreq = FREQUENCIES.find((f) => f.value === frequency)
+
+  function getScopeValue() {
+    if (scopeType === 'account') return account?.accountid ?? ''
+    if (scopeType === 'country') return countryInput.trim()
+    if (scopeType === 'region') return regionInput.trim()
+    return '' // escalation has no value
+  }
+
+  function getScopeLabel() {
+    if (scopeType === 'account') return account?.name ?? ''
+    if (scopeType === 'country') return countryInput.trim()
+    if (scopeType === 'region') return regionInput.trim()
+    return 'All Escalations'
+  }
+
+  function isValid() {
+    if (scopeType === 'account') return !!account?.accountid
+    if (scopeType === 'country') return countryInput.trim().length > 0
+    if (scopeType === 'region') return regionInput.trim().length > 0
+    return true // escalation
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!isValid()) return
+    setSaving(true)
+    setError(null)
+    try {
+      const payload = {
+        scopeType,
+        scopeValue: getScopeValue(),
+        scopeLabel: getScopeLabel(),
+        frequency,
+      }
+      let saved
+      if (editing) {
+        saved = await updateSubscription(instance, subscription.id, payload)
+        saved = { ...subscription, ...saved }
+      } else {
+        saved = await createSubscription(instance, payload)
+      }
+      onSaved(saved)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="subscription-form" onSubmit={handleSubmit} noValidate>
+      <div className="sub-form-title">{editing ? 'Edit Subscription' : 'New Subscription'}</div>
+
+      {/* Scope type */}
+      <div className="field">
+        <label className="field-label">Scope Type</label>
+        <div className="filter-type-btns">
+          {SCOPE_TYPES.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              className={`filter-type-btn ${scopeType === s.value ? 'active' : ''}`}
+              onClick={() => setScopeType(s.value)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Scope value */}
+      {scopeType === 'account' && (
+        <div className="field">
+          <label className="field-label">Account <span className="required">*</span></label>
+          <AutocompletePicker
+            searchFn={(q) => searchAccounts(instance, q)}
+            getKey={(a) => a.accountid}
+            getLabel={(a) => a.name}
+            getSublabel={(a) => [a.address1_country, a.address1_stateorprovince].filter(Boolean).join(' · ')}
+            value={account}
+            onChange={setAccount}
+            placeholder="Search accounts…"
+            autoSelectSingle
+          />
+        </div>
+      )}
+      {scopeType === 'country' && (
+        <div className="field">
+          <label className="field-label">Country <span className="required">*</span></label>
+          <input
+            className="input"
+            type="text"
+            value={countryInput}
+            onChange={(e) => setCountryInput(e.target.value)}
+            placeholder="e.g. Belgium"
+          />
+          <div className="hint-text">Must match the country name as stored on Account records in Dynamics.</div>
+        </div>
+      )}
+      {scopeType === 'region' && (
+        <div className="field">
+          <label className="field-label">Region / State <span className="required">*</span></label>
+          <input
+            className="input"
+            type="text"
+            value={regionInput}
+            onChange={(e) => setRegionInput(e.target.value)}
+            placeholder="e.g. Flanders"
+          />
+          <div className="hint-text">Must match the state/province value as stored on Account records in Dynamics.</div>
+        </div>
+      )}
+      {scopeType === 'escalation' && (
+        <div className="hint-text">
+          You will be notified about <strong>all</strong> escalation activities, regardless of account.
+        </div>
+      )}
+
+      {/* Frequency */}
+      <div className="field">
+        <label className="field-label">Notification Frequency</label>
+        <div className="filter-type-btns">
+          {FREQUENCIES.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              className={`filter-type-btn ${frequency === f.value ? 'active' : ''}`}
+              onClick={() => setFrequency(f.value)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {selectedFreq && <div className="hint-text" style={{ marginTop: 6 }}>{selectedFreq.hint}</div>}
+      </div>
+
+      {/* Best-practice hint */}
+      <BestPracticeHint scopeType={scopeType} frequency={frequency} />
+
+      {error && <div className="alert alert-error">{error}</div>}
+
+      <div className="sub-form-actions">
+        <button type="submit" className="btn btn-primary" disabled={!isValid() || saving}>
+          {saving ? 'Saving…' : editing ? 'Save Changes' : 'Subscribe'}
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={saving}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}

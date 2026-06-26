@@ -4,10 +4,12 @@ import AuthGuard from './components/AuthGuard'
 import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
+import SubscriptionsPanel from './components/SubscriptionsPanel'
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
   { id: 'browse', label: 'Browse', icon: 'search' },
+  { id: 'subscriptions', label: 'Subscriptions', icon: 'notifications' },
 ]
 
 function getInitialTheme() {
@@ -123,6 +125,9 @@ function cycleTheme() {
                   managedAccounts={managedAccounts}
                   tamLoading={tamLoading}
                 />
+              )}
+              {activeTab === 'subscriptions' && (
+                <SubscriptionsPanel />
               )}
             </>
           )}
