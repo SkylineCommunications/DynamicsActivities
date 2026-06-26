@@ -114,7 +114,7 @@ app.http('actionsMarkRead', {
     if (!activityId) return { status: 400, body: 'activityId is required' }
     await markRead(user.userId, activityId)
     return { status: 204 }
-  },
+  }),
 })
 
 // ─── Follow-up ────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ app.http('actionsFollowUp', {
     const id = await createFollowUp(userId, activityId, actionText)
     context.log(`actionsFollowUp: created follow-up ${id} for activity ${activityId}`)
     return { status: 201, jsonBody: { id } }
-  },
+  }),
 })
 
 
