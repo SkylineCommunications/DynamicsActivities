@@ -82,6 +82,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
             onClick={(e) => e.stopPropagation()}
           >
             Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
+          </a>
           {confirmDelete ? (
             <>
               <button

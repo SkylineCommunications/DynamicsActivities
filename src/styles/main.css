@@ -860,10 +860,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 .status-btn:hover { border-color: var(--focus-color); color: var(--color12); }
 .status-btn.active { border-color: currentColor; }
-.status-btn.status-open.active { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); border-color: var(--error); }
-.status-btn.status-inprogress.active { background: color-mix(in srgb, var(--major) 15%, transparent); color: var(--major); border-color: var(--major); }
+.status-btn.status-active.active { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); border-color: var(--error); }
 .status-btn.status-resolved.active { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); border-color: var(--success); }
-.status-btn.status-cancelled.active { background: var(--color4); color: var(--color9); border-color: var(--color6); }
 
 /* ─── Escalation display in notes list ──────────────────────────────────────── */
 .note-escalation-status {
@@ -882,10 +880,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   font-weight: 600;
 }
 
-.escalation-badge.status-open { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
-.escalation-badge.status-inprogress { background: color-mix(in srgb, var(--major) 15%, transparent); color: var(--major); }
+.escalation-badge.status-active { background: color-mix(in srgb, var(--error) 15%, transparent); color: var(--error); }
 .escalation-badge.status-resolved { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
-.escalation-badge.status-cancelled { background: var(--color4); color: var(--color9); }
 
 .escalation-start, .escalation-resolved {
   font-size: 12px;

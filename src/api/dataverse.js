@@ -54,12 +54,10 @@ export const ACTIVITY_TYPES = [
   },
 ]
 
-// Escalation status OptionSet values
+// Escalation status OptionSet values (Active=1, Resolved=2)
 export const ESCALATION_STATUSES = [
-  { value: 1, label: 'Open', cssClass: 'status-open' },
-  { value: 2, label: 'In Progress', cssClass: 'status-inprogress' },
-  { value: 3, label: 'Resolved', cssClass: 'status-resolved' },
-  { value: 4, label: 'Cancelled', cssClass: 'status-cancelled' },
+  { value: 1, label: 'Active', cssClass: 'status-active' },
+  { value: 2, label: 'Resolved', cssClass: 'status-resolved' },
 ]
 
 // ─── Escalation helpers ──────────────────────────────────────────────────────
@@ -78,8 +76,8 @@ export async function getActiveEscalation(msalInstance, accountId) {
   } catch {
     // Field doesn't exist yet — fall through to query escalations directly
   }
-  // Query for active escalation record
-  const filter = `_regardingobjectid_value eq ${accountId} and (slc_status eq 1 or slc_status eq 2)`
+  // Query for active escalation record (slc_status=1 means Active)
+  const filter = `_regardingobjectid_value eq ${accountId} and slc_status eq 1`
   const data = await dvFetch(
     msalInstance,
     `/slc_escalations?$filter=${filter}&$select=activityid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
@@ -233,10 +231,10 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
   // Escalation uses a different payload structure
   if (type === 'escalation') {
-    // Business rule: max one active (open/in-progress) escalation per account
+    // Business rule: max one active escalation per account
     const existing = await getActiveEscalation(msalInstance, accountId)
-    if (existing && (escalationStatus === 1 || escalationStatus === 2)) {
-      throw new Error('This account already has an active escalation. Resolve or cancel it before creating a new one.')
+    if (existing && escalationStatus === 1) {
+      throw new Error('This account already has an active escalation. Resolve it before creating a new one.')
     }
     const body = {
       description: note,

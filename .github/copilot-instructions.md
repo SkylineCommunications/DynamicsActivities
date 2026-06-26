@@ -62,19 +62,12 @@ VITE_REDIRECT_URI=...
 
 `createActivity` writes to the correct entity table based on type.
 
-### Escalation entity (`slc_escalation`)
+### Escalation entity & business rules
 
-- Custom Activity entity (extends `activitypointer`, PK `activityid`)
-- Entity set: `slc_escalations`
-- Custom columns: `slc_startdate` (Date), `slc_resolveddate` (Date), `slc_status` (OptionSet: 1=open, 2=in-progress, 3=resolved, 4=cancelled)
-- Linked via `regardingobjectid` → Account
+See the **dataverse-api** skill for the full `slc_escalation` entity schema, account escalation fields (`slc_activeescalationcount`, `slc_inescalation`), and business rules.
 
-### Business rules
-
-1. **Max ONE active escalation per account** — An account cannot have more than one escalation with `slc_status` of 1 (open) or 2 (in-progress). Enforced client-side in `createActivity()` before POST.
-2. **`slc_inescalation` (boolean on account)** — Dynamics maintains this field to indicate whether an account currently has an active escalation. Used as a fast check before querying `slc_escalations`.
-3. **Linking notes to active escalation** — When an account has an active escalation, non-escalation notes (phonecall/appointment/email) can be linked to it by setting `regardingobjectid_slc_escalation@odata.bind` to `/slc_escalations({activityid})`. This makes the note appear in the escalation's timeline.
-4. **Auto-link default** — The UI auto-checks "Link to escalation" when an active escalation is detected for the selected account. Users can uncheck to link directly to the account instead.
+App-specific behavior:
+- **Auto-link default** — The UI auto-checks "Link to escalation" when an active escalation is detected for the selected account. Users can uncheck to link directly to the account instead.
 
 ---
 
