@@ -317,7 +317,7 @@ export default function NotesList({ refreshKey, initialAccount }) {
                     return next
                   })}
                 >
-                  <span className="icon icon-sm">{TYPE_ICONS[t.label]}</span>{t.label}
+<span className="icon icon-sm" aria-hidden="true">{TYPE_ICONS[t.label]}</span>{t.label}
                 </button>
               ))}
             </div>
