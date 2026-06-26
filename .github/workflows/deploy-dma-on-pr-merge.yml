@@ -75,37 +75,28 @@ jobs:
 
       - name: Install DataMiner CI/CD tools
         run: |
-          dotnet tool update --global Skyline.DataMiner.CICD.Tools.CatalogUpload
           dotnet tool update --global Skyline.DataMiner.CICD.Tools.DataMinerDeploy
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-      - name: Upload volatile artifact
-        id: upload_volatile
+      - name: Deploy package from Catalog
         shell: pwsh
         env:
           DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
         run: |
-          $output = dataminer-catalog-upload --path-to-artifact "${{ steps.find_dmapp.outputs.dmapp_path }}" 2>&1
-          $output | ForEach-Object { Write-Host $_ }
-
-          $artifactMatch = [regex]::Match(($output -join "`n"), "([a-zA-Z0-9]+/[0-9a-fA-F-]{36})")
-          if (-not $artifactMatch.Success) {
-            throw "Could not determine artifact-id from catalog-upload output."
-          }
-
-          $artifactId = $artifactMatch.Groups[1].Value
-          "id=$artifactId" >> $env:GITHUB_OUTPUT
-          Write-Host "Captured artifact-id: $artifactId"
-
-      - name: Deploy volatile artifact to DMA
-        shell: pwsh
-        run: |
-          Write-Host "Deploying artifact: ${{ steps.upload_volatile.outputs.id }}"
-          dataminer-package-deploy from-volatile --artifact-id "${{ steps.upload_volatile.outputs.id }}" --dm-system-token "${{ secrets.DATAMINER_SYSTEM_TOKEN }}"
-          Write-Host "Deployment complete."
+          Write-Host "Deploying DynamicsActivitiesPackage v1.0.0 to DataMiner..."
+          dataminer-package-deploy from-catalog `
+            --catalog-id "b6dc92d4-401e-42fd-b7bd-87d1ff562420" `
+            --catalog-version "1.0.0" `
+            --agent-destination-id "e21dbc3e-7592-48f8-867b-d81d4ff06bee" `
+            --dm-catalog-token "$env:DATAMINER_CATALOG_TOKEN"
+          Write-Host "Deployment complete. Package installed to DataMiner."
 
       - name: Summary
         run: |
-          echo "Volatile artifact deployed to DMA."
-          echo "Artifact id: ${{ steps.upload_volatile.outputs.artifact_id }}"
-          echo "Note: volatile artifacts are temporary and intended for testing/staging deployments."
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "Manual workflow_dispatch run executed."
+            echo "Manual note: ${{ inputs.manual_run_note }}"
+          fi
+          echo "✓ DynamicsActivitiesPackage deployed to DataMiner Catalog"
+          echo "Catalog ID: b6dc92d4-401e-42fd-b7bd-87d1ff562420"
+          echo "Version: 1.0.0"
