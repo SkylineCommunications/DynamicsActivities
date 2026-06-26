@@ -42,7 +42,8 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const date = noteDate(note)
   const attendees = extractAttendees(note)
   const accountName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
-  const preview = note.notetext || note.description || ''
+  const rawPreview = note.notetext || note.description || ''
+  const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const recordId = note.activityid || note.annotationid
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -117,8 +118,13 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
         </div>
       </div>
 
-      {note.subject && <div className="note-subject">{note.subject}</div>}
+      {note.subject && note.subject !== label && <div className="note-subject">{note.subject}</div>}
       {accountName && <div className="note-account"><span className="icon icon-sm">business_center</span> Regarding: {accountName}</div>}
+      {note._linkedToEscalation && (
+        <div className="note-escalation-link">
+          <span className="icon icon-sm">link</span> Linked to escalation
+        </div>
+      )}
 
       {/* Escalation status badge */}
       {note._entityType === 'slc_escalations' && note.slc_status && (

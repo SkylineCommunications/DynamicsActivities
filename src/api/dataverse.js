@@ -240,13 +240,14 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
   const parties = buildParties(type, currentUserId, attendees)
 
-  // If linking to an escalation, set regardingobjectid to the escalation instead of the account
-  const regardingBind = linkToEscalationId
-    ? { 'regardingobjectid_slc_escalation@odata.bind': `/slc_escalations(${linkToEscalationId})` }
-    : { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
+  // Activities always regard the account — escalation link is tracked in the description
+  const regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
+  const desc = linkToEscalationId
+    ? `[Linked to escalation]\n${note}`
+    : note
 
   const base = {
-    description: note,
+    description: desc,
     subject: typeConfig.label,
     scheduledend: dateStr,
     ...regardingBind,
@@ -305,7 +306,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
     ).catch(() => null),
     dvFetch(
       msalInstance,
-      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId} and slc_status eq 1&$select=activityid&$top=50`,
+      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId}&$select=activityid&$top=50`,
     ).catch(() => null),
   ])
 
@@ -341,7 +342,12 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
     msalInstance,
     `/${entity}?$select=${BASE_SELECT}${filterStr}${expandOrTop}&$orderby=createdon desc`,
   )
-  return (data?.value ?? []).map((r) => ({ ...r, _entityType: entity }))
+  return (data?.value ?? []).map((r) => ({
+    ...r,
+    _linkedToEscalation: r['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'] === 'slc_escalation'
+      || (r.description && r.description.startsWith('[Linked to escalation]')),
+    _entityType: entity,
+  }))
 }
 
 // Escalations have custom columns and no activity parties — fetch with extended select
@@ -373,7 +379,7 @@ async function fetchEscalations(msalInstance, filterClauses) {
 }
 
 // Annotations (notes)
-const ANNOTATION_SELECT = 'annotationid,subject,notetext,createdon,_objectid_value'
+const ANNOTATION_SELECT = 'annotationid,subject,notetext,createdon,_objectid_value,objecttypecode'
 
 async function fetchAnnotations(msalInstance, filterClauses) {
   // Annotations use _objectid_value instead of _regardingobjectid_value
@@ -390,6 +396,7 @@ async function fetchAnnotations(msalInstance, filterClauses) {
     description: r.notetext,
     _regardingobjectid_value: r._objectid_value,
     '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': r['_objectid_value@OData.Community.Display.V1.FormattedValue'],
+    _linkedToEscalation: r.objecttypecode === 'slc_escalation',
     _entityType: 'annotations',
   }))
 }
@@ -404,11 +411,13 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
 
   const base = []
   const escalationBase = []
+  let escalationIds = []
 
   if (accountId) {
-    // Include active escalation IDs so child activities/notes linked to the escalation are returned too.
-    const { relatedIds, escalationIds } = await getAccountRelatedEntityIds(msalInstance, accountId)
-    const directIds = Array.from(new Set([accountId, ...relatedIds])).slice(0, 50)
+    // Include escalation IDs so child activities/notes linked to the escalation are returned too.
+    const related = await getAccountRelatedEntityIds(msalInstance, accountId)
+    escalationIds = related.escalationIds
+    const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
     const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
     base.push(buildLookupFilter('_regardingobjectid_value', allIds))
     escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
@@ -450,7 +459,11 @@ export async function searchActivities(msalInstance, { accountId, contactId, act
   }
 
   if (wantAnnotations) {
-    fetches.push(fetchAnnotations(msalInstance, base))
+    // Annotations only link to accounts or escalations — use a smaller filter to avoid 400 errors
+    const annotationIds = accountId ? [accountId, ...escalationIds] : []
+    const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
+    addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
+    fetches.push(fetchAnnotations(msalInstance, annotationFilter))
   }
 
   const results = await Promise.all(fetches)
