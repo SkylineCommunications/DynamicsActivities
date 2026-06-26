@@ -59,6 +59,18 @@ jobs:
           sudo apt update
           sudo apt install -y mono-complete
 
+      - name: Extract version from csproj
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$csproj = Get-Content "DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj"
+          $version = $csproj.Project.PropertyGroup.Version | Select-Object -First 1
+          if (-not $version) {
+            throw "Could not extract version from csproj"
+          }
+          "number=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Extracted version: $version"
+
       - name: Build DataMiner package
         run: dotnet build "DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj" -c Release
 
@@ -94,10 +106,10 @@ jobs:
         env:
           DATAMINER_CATALOG_TOKEN: ${{ secrets.DATAMINER_TOKEN }}
         run: |
-          Write-Host "Deploying DynamicsActivitiesPackage v1.0.0 to DataMiner..."
+          Write-Host "Deploying DynamicsActivitiesPackage v${{ steps.version.outputs.number }} to DataMiner..."
           dataminer-package-deploy from-catalog `
             --catalog-id "b6dc92d4-401e-42fd-b7bd-87d1ff562420" `
-            --catalog-version "1.0.0" `
+            --catalog-version "${{ steps.version.outputs.number }}" `
             --agent-destination-id "e21dbc3e-7592-48f8-867b-d81d4ff06bee" `
             --dm-catalog-token "$env:DATAMINER_CATALOG_TOKEN"
           Write-Host "Deployment complete. Package installed to DataMiner."
@@ -108,6 +120,6 @@ jobs:
             echo "Manual workflow_dispatch run executed."
             echo "Manual note: ${{ inputs.manual_run_note }}"
           fi
-          echo "✓ DynamicsActivitiesPackage deployed to DataMiner Catalog"
+          echo "✓ DynamicsActivitiesPackage v${{ steps.version.outputs.number }} deployed to DataMiner Catalog"
           echo "Catalog ID: b6dc92d4-401e-42fd-b7bd-87d1ff562420"
-          echo "Version: 1.0.0"
+          echo "Version: ${{ steps.version.outputs.number }}"
