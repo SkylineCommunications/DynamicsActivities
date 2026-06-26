@@ -44,6 +44,15 @@ export const ACTIVITY_TYPES = [
     tooltip: 'Previously known as: Email / Chat',
   },
   {
+    id: 'escalation',
+    label: 'Escalation',
+    icon: '🚨',
+    iconLigature: 'warning',
+    entity: 'slc_escalations',
+    cssClass: 'type-escalation',
+    tooltip: 'Escalation activity',
+  },
+  {
     id: 'note',
     label: 'Note',
     icon: '📝',
@@ -116,10 +125,11 @@ export async function whoAmI(msalInstance) {
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
   const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+  const select = 'accountid,name,address1_country,address1_stateorprovince'
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
-    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
-    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=accountid,name&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
   ])
   const seen = new Set()
   const results = []
@@ -449,6 +459,9 @@ export function extractAttendees(note) {
   } else if (note._entityType === 'appointments') {
     key = 'appointment_activity_parties'
     skipMasks = new Set([7, 9]) // skip organizer and owner
+  } else if (note._entityType === 'slc_escalations') {
+    key = 'slc_escalation_activity_parties'
+    skipMasks = new Set([1, 9]) // skip sender and owner
   } else {
     key = 'email_activity_parties'
     skipMasks = new Set([1, 9]) // skip sender (from) and owner

@@ -22,7 +22,7 @@ const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cs
 TYPE_ICONS['Call'] ??= 'contact_phone'
 TYPE_ICONS['Meeting'] ??= 'calendar_today'
 TYPE_ICONS['Escalation'] ??= 'warning'
-TYPE_CLASSES['Call'] ??= 'type-call'
+TYPE_ICONS['Note'] ??= 'edit_note'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 TYPE_CLASSES['Escalation'] ??= 'type-escalation'
 
