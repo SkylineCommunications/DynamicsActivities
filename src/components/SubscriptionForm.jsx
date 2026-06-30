@@ -5,17 +5,17 @@ import { createSubscription, updateSubscription } from '../api/subscriptions'
 import AutocompletePicker from './AutocompletePicker'
 
 const SCOPE_TYPES = [
-  { value: 'account', label: '🏢 Account' },
-  { value: 'country', label: '🌍 Country' },
-  { value: 'region', label: '📍 Region' },
-  { value: 'escalation', label: '🚨 Escalation' },
+  { value: 'account', icon: 'apartment', label: 'Account' },
+  { value: 'country', icon: 'public', label: 'Country' },
+  { value: 'region', icon: 'location_on', label: 'Region' },
+  { value: 'escalation', icon: 'flag', label: 'Escalation' },
 ]
 
 const FREQUENCIES = [
-  { value: 'instant', label: '⚡ Instant', hint: 'Sent within minutes of a new activity (with a 15-min burst guard).' },
-  { value: 'daily', label: '📅 Daily', hint: 'One summary email per day (06:00 UTC).' },
-  { value: 'weekly', label: '📆 Weekly', hint: 'One summary email per week (Monday 07:00 UTC).' },
-  { value: 'monthly', label: '🗓 Monthly', hint: 'One summary email per month (1st at 08:00 UTC).' },
+  { value: 'instant', icon: 'bolt', label: 'Instant', hint: 'Sent within minutes of a new activity (with a 15-min burst guard).' },
+  { value: 'daily', icon: 'calendar_today', label: 'Daily', hint: 'One summary email per day (06:00 UTC).' },
+  { value: 'weekly', icon: 'calendar_view_week', label: 'Weekly', hint: 'One summary email per week (Monday 07:00 UTC).' },
+  { value: 'monthly', icon: 'calendar_month', label: 'Monthly', hint: 'One summary email per month (1st at 08:00 UTC).' },
 ]
 
 function BestPracticeHint({ scopeType, frequency }) {
@@ -28,28 +28,28 @@ function BestPracticeHint({ scopeType, frequency }) {
   if (isDirectScope && isFastFreq) {
     return (
       <div className="best-practice-hint hint-good">
-        ✅ Good choice — Instant or Daily works well for accounts you're directly involved with.
+        <span className="icon icon-sm" style={{color:'var(--success)'}}>check_circle</span> Good choice — Instant or Daily works well for accounts you're directly involved with.
       </div>
     )
   }
   if (isDirectScope && isSlowFreq) {
     return (
       <div className="best-practice-hint hint-tip">
-        💡 Tip: For accounts you work with closely, Daily or Instant keeps you more up-to-date.
+        <span className="icon icon-sm" style={{color:'var(--palette-color5)'}}>lightbulb</span> Tip: For accounts you work with closely, Daily or Instant keeps you more up-to-date.
       </div>
     )
   }
   if (!isDirectScope && isSlowFreq) {
     return (
       <div className="best-practice-hint hint-good">
-        ✅ Good choice — Weekly or Monthly is ideal for broader country or region monitoring.
+        <span className="icon icon-sm" style={{color:'var(--success)'}}>check_circle</span> Good choice — Weekly or Monthly is ideal for broader country or region monitoring.
       </div>
     )
   }
   if (!isDirectScope && isFastFreq) {
     return (
       <div className="best-practice-hint hint-tip">
-        💡 Tip: For broad scopes (countries/regions), Weekly or Monthly avoids email overload.
+        <span className="icon icon-sm" style={{color:'var(--palette-color5)'}}>lightbulb</span> Tip: For broad scopes (countries/regions), Weekly or Monthly avoids email overload.
       </div>
     )
   }
@@ -145,7 +145,7 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
               className={`filter-type-btn ${scopeType === s.value ? 'active' : ''}`}
               onClick={() => setScopeType(s.value)}
             >
-              {s.label}
+              <span className="icon icon-sm">{s.icon}</span> {s.label}
             </button>
           ))}
         </div>
@@ -212,7 +212,7 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
               className={`filter-type-btn ${frequency === f.value ? 'active' : ''}`}
               onClick={() => setFrequency(f.value)}
             >
-              {f.label}
+              <span className="icon icon-sm">{f.icon}</span> {f.label}
             </button>
           ))}
         </div>

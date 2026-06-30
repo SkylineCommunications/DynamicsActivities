@@ -4,17 +4,24 @@ import { getSubscriptions, deleteSubscription } from '../api/subscriptions'
 import SubscriptionForm from './SubscriptionForm'
 
 const FREQ_LABELS = {
-  instant: '⚡ Instant',
-  daily: '📅 Daily',
-  weekly: '📆 Weekly',
-  monthly: '🗓 Monthly',
+  instant: 'Instant',
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+}
+
+const FREQ_ICONS = {
+  instant: 'bolt',
+  daily: 'calendar_today',
+  weekly: 'calendar_view_week',
+  monthly: 'calendar_month',
 }
 
 const SCOPE_ICONS = {
-  account: '🏢',
-  country: '🌍',
-  region: '📍',
-  escalation: '🚨',
+  account: 'apartment',
+  country: 'public',
+  region: 'location_on',
+  escalation: 'flag',
 }
 
 function fmtDate(d) {
@@ -39,7 +46,7 @@ function SubscriptionCard({ sub, onEdit, onDelete }) {
     <div className="sub-card">
       <div className="sub-card-header">
         <div className="sub-card-scope">
-          <span className="sub-scope-icon">{SCOPE_ICONS[sub.scopeType] ?? '📌'}</span>
+          <span className="icon sub-scope-icon">{SCOPE_ICONS[sub.scopeType] ?? 'bookmark'}</span>
           <span className="sub-scope-label">{sub.scopeLabel || 'All Escalations'}</span>
           <span className="sub-scope-type">{sub.scopeType}</span>
         </div>
@@ -65,17 +72,20 @@ function SubscriptionCard({ sub, onEdit, onDelete }) {
           ) : (
             <>
               <button type="button" className="btn-card-action btn-open" onClick={() => onEdit(sub)}>
-                Edit
+                <span className="icon icon-sm">edit</span> Edit
               </button>
               <button type="button" className="btn-card-action btn-delete" onClick={handleDelete} title="Delete subscription">
-                🗑
+                <span className="icon icon-sm">delete</span>
               </button>
             </>
           )}
         </div>
       </div>
       <div className="sub-card-meta">
-        <span className="sub-freq-badge">{FREQ_LABELS[sub.frequency] ?? sub.frequency}</span>
+        <span className="sub-freq-badge">
+          <span className="icon icon-sm">{FREQ_ICONS[sub.frequency] ?? 'schedule'}</span>
+          {FREQ_LABELS[sub.frequency] ?? sub.frequency}
+        </span>
         <span className="sub-last-sent">Last sent: {fmtDate(sub.lastSentAt)}</span>
       </div>
     </div>
@@ -130,7 +140,7 @@ export default function SubscriptionsPanel() {
     <div className="subscriptions-container">
       {/* Best practice banner */}
       <div className="best-practice-banner">
-        <div className="bp-icon">💡</div>
+        <div className="bp-icon"><span className="icon" style={{fontSize:'20px',color:'var(--palette-color5)'}}>lightbulb</span></div>
         <div>
           <strong>Recommended:</strong> Use <em>Instant</em> or <em>Daily</em> for accounts you're directly involved with.
           For broader interests (countries, regions), <em>Weekly</em> or <em>Monthly</em> prevents email overload.
@@ -145,7 +155,7 @@ export default function SubscriptionsPanel() {
           onClick={() => { setEditingSub(null); setShowForm(true) }}
           disabled={showForm}
         >
-          + New Subscription
+          <span className="icon icon-sm">add</span> New Subscription
         </button>
       </div>
 
@@ -162,7 +172,7 @@ export default function SubscriptionsPanel() {
 
       {!loading && subs !== null && subs.length === 0 && !showForm && (
         <div className="empty-state">
-          <div className="empty-icon">🔔</div>
+          <div className="empty-icon"><span className="icon" style={{fontSize:'32px'}}>notifications</span></div>
           <div className="empty-title">No subscriptions yet</div>
           <div className="empty-sub">Subscribe to accounts, countries, or regions to receive email notifications about new activities.</div>
         </div>
