@@ -89,7 +89,7 @@ export async function createSubscription(userId, data) {
   return entityToSubscription(entity)
 }
 
-/** Update a subscription by id. Only allows updating frequency and cooldownMinutes. */
+/** Update a subscription by id. Only allows updating certain fields. */
 export async function updateSubscription(userId, id, patch) {
   const client = getClient(TABLES.SUBSCRIPTIONS)
   const allowed = ['frequency', 'cooldownMinutes', 'scopeType', 'scopeValue', 'scopeLabel']
@@ -97,13 +97,31 @@ export async function updateSubscription(userId, id, patch) {
   for (const key of allowed) {
     if (patch[key] !== undefined) update[key] = patch[key]
   }
-  await client.updateEntity({ partitionKey: userId, rowKey: id, ...update }, 'Merge')
+  try {
+    await client.updateEntity({ partitionKey: userId, rowKey: id, ...update }, 'Merge')
+  } catch (e) {
+    if (e.statusCode === 404) {
+      const err = new Error('Subscription not found')
+      err.status = 404
+      throw err
+    }
+    throw e
+  }
   return { id, ...update }
 }
 
 /** Delete a subscription by id. */
 export async function deleteSubscription(userId, id) {
-  await getClient(TABLES.SUBSCRIPTIONS).deleteEntity(userId, id)
+  try {
+    await getClient(TABLES.SUBSCRIPTIONS).deleteEntity(userId, id)
+  } catch (e) {
+    if (e.statusCode === 404) {
+      const err = new Error('Subscription not found')
+      err.status = 404
+      throw err
+    }
+    throw e
+  }
 }
 
 /** Update lastSentAt on a subscription. */

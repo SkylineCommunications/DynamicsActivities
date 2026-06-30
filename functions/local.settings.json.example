@@ -14,6 +14,7 @@
     "SENDGRID_API_KEY": "<sendgrid-api-key>",
     "SENDGRID_FROM_EMAIL": "notifications@example.com",
     "SENDGRID_FROM_NAME": "Skyline Activities",
+    "SENDGRID_TEST_EMAIL": "",
 
     "AZURE_OPENAI_ENDPOINT": "https://<resource>.openai.azure.com/",
     "AZURE_OPENAI_KEY": "<azure-openai-key>",
@@ -25,6 +26,7 @@
     "INSTANT_COOLDOWN_MINUTES": "1",
 
     "SPA_BASE_URL": "http://localhost:5173/",
+    "FUNCTIONS_BASE_URL": "http://localhost:7071/api",
 
     "ENTRA_TENANT_ID": "5f175691-8d1c-4932-b7c8-ce990839ac40",
     "ENTRA_AUDIENCE": "https://skyline365-qa.crm4.dynamics.com"

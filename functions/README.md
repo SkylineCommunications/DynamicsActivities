@@ -113,6 +113,7 @@ The frontend dev server (`npm run dev` from the repo root) connects to the Funct
 | `SENDGRID_API_KEY` | SendGrid API key |
 | `SENDGRID_FROM_EMAIL` | Verified sender email address |
 | `SENDGRID_FROM_NAME` | Sender display name (default: "Skyline Activities") |
+| `SENDGRID_TEST_EMAIL` | If set, all emails are redirected here (for safe testing) |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL |
 | `AZURE_OPENAI_KEY` | Azure OpenAI API key |
 | `AZURE_OPENAI_DEPLOYMENT` | Deployment name, e.g. `gpt-4o` |
@@ -120,6 +121,7 @@ The frontend dev server (`npm run dev` from the repo root) connects to the Funct
 | `ACTION_TOKEN_SECRET` | HMAC secret for signing email action links (min 32 chars) |
 | `INSTANT_COOLDOWN_MINUTES` | Cooldown window for instant notifications (default: 15) |
 | `SPA_BASE_URL` | Public URL of the DynamicsActivities SPA |
+| `FUNCTIONS_BASE_URL` | Public URL of the Functions API (used in email action links) |
 | `ENTRA_TENANT_ID` | Azure AD tenant ID (for validating user tokens from the SPA) |
 | `ENTRA_AUDIENCE` | Dataverse org URL — must match the `aud` claim of the token the SPA sends (e.g. `https://skyline365-qa.crm4.dynamics.com`) |
 

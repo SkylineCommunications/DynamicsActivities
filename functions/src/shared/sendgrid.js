@@ -13,6 +13,10 @@ if (SENDGRID_CONFIGURED) {
 }
 
 function resolveRecipient(email, name, subject) {
+  const testEmail = process.env.SENDGRID_TEST_EMAIL
+  if (testEmail) {
+    return { to: { email: testEmail, name: `[TEST] ${name}` }, subject: `[TEST] ${subject}` }
+  }
   return { to: { email, name }, subject }
 }
 
@@ -161,7 +165,6 @@ export async function sendInstantEmail(toEmail, toName, activities, sub, tokenFo
     return
   }
   const { to, subject: resolvedSubject } = resolveRecipient(toEmail, toName, subject)
-  if (TEST_EMAIL) console.log(`[sendgrid] TEST MODE — redirecting to ${TEST_EMAIL}`)
   await sgMail.send({ to, from: FROM, subject: resolvedSubject, html })
   console.log(`[sendgrid] Instant email sent to ${to.email} — ${resolvedSubject}`)
 }
@@ -200,7 +203,6 @@ export async function sendDigestEmail(toEmail, toName, activities, sub, summaryT
     return
   }
   const { to, subject: resolvedSubject } = resolveRecipient(toEmail, toName, subject)
-  if (TEST_EMAIL) console.log(`[sendgrid] TEST MODE — redirecting to ${TEST_EMAIL}`)
   await sgMail.send({ to, from: FROM, subject: resolvedSubject, html })
   console.log(`[sendgrid] Digest email sent to ${to.email} — ${resolvedSubject}`)
 }

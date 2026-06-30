@@ -70,14 +70,19 @@ export async function getAccount(accountId) {
  * @returns {Array} combined, date-sorted activity records
  */
 export async function fetchActivitiesSince(regardingIds, since) {
-  if (!regardingIds?.length) return []
-
   const SELECT = 'activityid,subject,description,createdon,scheduledend,scheduledstart,actualend,_regardingobjectid_value'
-  const regardingFilter = regardingIds
-    .map((id) => `_regardingobjectid_value eq ${id}`)
-    .join(' or ')
   const dateFilter = `createdon ge ${new Date(since).toISOString()}`
-  const filter = `(${regardingFilter}) and ${dateFilter}`
+
+  let filter
+  if (regardingIds?.length) {
+    const regardingFilter = regardingIds
+      .map((id) => `_regardingobjectid_value eq ${id}`)
+      .join(' or ')
+    filter = `(${regardingFilter}) and ${dateFilter}`
+  } else {
+    // Broad fetch — no regarding filter (used for geo/escalation subscriptions)
+    filter = dateFilter
+  }
 
   const entities = ['phonecalls', 'appointments', 'emails', 'slc_escalations']
   const results = await Promise.allSettled(
