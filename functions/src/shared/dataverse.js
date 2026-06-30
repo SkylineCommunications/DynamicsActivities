@@ -100,7 +100,11 @@ export async function fetchActivitiesSince(regardingIds, since) {
   const activityResults = await Promise.allSettled(
     activityEntities.map((e) =>
       dvFetch(`/${e}?$select=${SELECT}&$filter=${activityFilter}&$orderby=createdon desc`).then(
-        (d) => (d?.value ?? []).map((r) => ({ ...r, _entityType: e })),
+        (d) => (d?.value ?? []).map((r) => ({
+          ...r,
+          _entityType: e,
+          _regardingType: r['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'] ?? null,
+        })),
       ),
     ),
   )
@@ -114,6 +118,7 @@ export async function fetchActivitiesSince(regardingIds, since) {
     description: r.notetext ?? '',
     createdon: r.createdon,
     _regardingobjectid_value: r._objectid_value,
+    _regardingType: r.objecttypecode ?? null,
     _entityType: 'annotations',
   }))).catch(() => [])
 

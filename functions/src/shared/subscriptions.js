@@ -34,7 +34,8 @@ export function activityMatchesSubscription(activity, account, sub) {
       )
 
     case 'escalation':
-      return activity._entityType === 'slc_escalations'
+      // Match if the activity IS an escalation, or if it's regarding an escalation
+      return activity._entityType === 'slc_escalations' || activity._regardingType === 'slc_escalation'
 
     default:
       return false
