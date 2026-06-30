@@ -44,13 +44,17 @@ function entityTypeLabel(entityType) {
   if (entityType === 'phonecalls') return '📞 Phone Call'
   if (entityType === 'appointments') return '📅 Appointment'
   if (entityType === 'slc_escalations') return '🚨 Escalation'
-  return '✉️ Email'
+  if (entityType === 'annotations') return '📝 Note'
+  if (entityType === 'emails') return '✉️ Email'
+  return '📋 Activity'
 }
 
 function entityTypeColor(entityType) {
   if (entityType === 'phonecalls') return '#4ade80'
   if (entityType === 'appointments') return '#60a5fa'
   if (entityType === 'slc_escalations') return '#f87171'
+  if (entityType === 'annotations') return '#fbbf24'
+  if (entityType === 'emails') return '#a78bfa'
   return '#fb923c'
 }
 

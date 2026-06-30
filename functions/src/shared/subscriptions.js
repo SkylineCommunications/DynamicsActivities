@@ -4,14 +4,19 @@
  */
 
 /**
- * Test whether an activity matches a subscription's scope.
+ * Test whether an activity matches a subscription's scope and type filter.
  *
  * @param {object} activity  - Dataverse activity record (includes _entityType, _regardingobjectid_value)
  * @param {object} account   - Account record (address1_country, address1_stateorprovince) or null
- * @param {object} sub       - Subscription record (scopeType, scopeValue)
+ * @param {object} sub       - Subscription record (scopeType, scopeValue, activityTypes)
  * @returns {boolean}
  */
 export function activityMatchesSubscription(activity, account, sub) {
+  // Activity type filter — if set, only match selected types
+  if (sub.activityTypes && sub.activityTypes.length > 0) {
+    if (!sub.activityTypes.includes(activity._entityType)) return false
+  }
+
   switch (sub.scopeType) {
     case 'account':
       return activity._regardingobjectid_value === sub.scopeValue

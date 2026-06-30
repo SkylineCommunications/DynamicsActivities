@@ -79,6 +79,7 @@ export async function createSubscription(userId, data) {
     scopeValue: data.scopeValue ?? '',
     scopeLabel: data.scopeLabel ?? '',
     frequency: data.frequency,
+    activityTypes: data.activityTypes ? JSON.stringify(data.activityTypes) : '',
     userEmail: data.userEmail ?? '',
     userName: data.userName ?? '',
     userId,
@@ -93,10 +94,12 @@ export async function createSubscription(userId, data) {
 /** Update a subscription by id. Only allows updating certain fields. */
 export async function updateSubscription(userId, id, patch) {
   const client = getClient(TABLES.SUBSCRIPTIONS)
-  const allowed = ['frequency', 'cooldownMinutes', 'scopeType', 'scopeValue', 'scopeLabel']
+  const allowed = ['frequency', 'cooldownMinutes', 'scopeType', 'scopeValue', 'scopeLabel', 'activityTypes']
   const update = {}
   for (const key of allowed) {
-    if (patch[key] !== undefined) update[key] = patch[key]
+    if (patch[key] !== undefined) {
+      update[key] = key === 'activityTypes' && Array.isArray(patch[key]) ? JSON.stringify(patch[key]) : patch[key]
+    }
   }
   try {
     await client.updateEntity({ partitionKey: userId, rowKey: id, ...update }, 'Merge')
@@ -134,6 +137,10 @@ export async function touchLastSentAt(userId, id) {
 }
 
 function entityToSubscription(e) {
+  let activityTypes = null
+  if (e.activityTypes) {
+    try { activityTypes = JSON.parse(e.activityTypes) } catch { activityTypes = null }
+  }
   return {
     id: e.rowKey,
     userId: e.userId ?? e.partitionKey,
@@ -141,6 +148,7 @@ function entityToSubscription(e) {
     scopeValue: e.scopeValue,
     scopeLabel: e.scopeLabel,
     frequency: e.frequency,
+    activityTypes,
     userEmail: e.userEmail,
     userName: e.userName,
     createdAt: e.createdAt,

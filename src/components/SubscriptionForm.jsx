@@ -11,6 +11,16 @@ const SCOPE_TYPES = [
   { value: 'escalation', icon: 'flag', label: 'Escalation' },
 ]
 
+const ACTIVITY_TYPE_OPTIONS = [
+  { value: 'phonecalls', icon: 'contact_phone', label: 'Phone Call' },
+  { value: 'appointments', icon: 'calendar_today', label: 'Appointment' },
+  { value: 'emails', icon: 'mail', label: 'Email' },
+  { value: 'slc_escalations', icon: 'warning', label: 'Escalation' },
+  { value: 'annotations', icon: 'edit_note', label: 'Note' },
+]
+
+const ALL_ACTIVITY_TYPES = ACTIVITY_TYPE_OPTIONS.map((t) => t.value)
+
 const FREQUENCIES = [
   { value: 'instant', icon: 'bolt', label: 'Instant', hint: 'Sent within minutes of a new activity (with a 15-min burst guard).' },
   { value: 'daily', icon: 'calendar_today', label: 'Daily', hint: 'One summary email per day (06:00 UTC).' },
@@ -66,6 +76,9 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
 
   const [scopeType, setScopeType] = useState(subscription?.scopeType ?? 'account')
   const [frequency, setFrequency] = useState(subscription?.frequency ?? 'daily')
+  const [activityTypes, setActivityTypes] = useState(
+    subscription?.activityTypes ?? ALL_ACTIVITY_TYPES,
+  )
   const [account, setAccount] = useState(
     subscription?.scopeType === 'account'
       ? { accountid: subscription.scopeValue, name: subscription.scopeLabel }
@@ -97,6 +110,7 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
   }
 
   function isValid() {
+    if (activityTypes.length === 0) return false
     if (scopeType === 'account') return !!account?.accountid
     if (scopeType === 'country') return !!countryInput?.id
     if (scopeType === 'region') return !!regionInput?.id
@@ -114,6 +128,7 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
         scopeValue: getScopeValue(),
         scopeLabel: getScopeLabel(),
         frequency,
+        activityTypes: activityTypes.length === ALL_ACTIVITY_TYPES.length ? null : activityTypes,
       }
       let saved
       if (editing) {
@@ -217,6 +232,33 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
           ))}
         </div>
         {selectedFreq && <div className="hint-text" style={{ marginTop: 6 }}>{selectedFreq.hint}</div>}
+      </div>
+
+      {/* Activity types */}
+      <div className="field">
+        <label className="field-label">Activity Types</label>
+        <div className="activity-type-checks">
+          {ACTIVITY_TYPE_OPTIONS.map((t) => (
+            <label key={t.value} className="activity-type-check">
+              <input
+                type="checkbox"
+                checked={activityTypes.includes(t.value)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setActivityTypes((prev) => [...prev, t.value])
+                  } else {
+                    setActivityTypes((prev) => prev.filter((v) => v !== t.value))
+                  }
+                }}
+              />
+              <span className="icon icon-sm">{t.icon}</span>
+              <span>{t.label}</span>
+            </label>
+          ))}
+        </div>
+        {activityTypes.length === 0 && (
+          <div className="hint-text" style={{ color: 'var(--error)' }}>Select at least one activity type.</div>
+        )}
       </div>
 
       {/* Best-practice hint */}

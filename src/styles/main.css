@@ -1807,6 +1807,47 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 .sub-last-sent { font-size: 11px; color: var(--color10); }
 
+/* Activity type checkboxes */
+.activity-type-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.activity-type-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color11);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color5);
+  background: var(--color1);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.activity-type-check:has(input:checked) {
+  border-color: var(--focus-color);
+  background: color-mix(in srgb, var(--focus-color) 8%, transparent);
+  color: var(--color12);
+}
+
+.activity-type-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--focus-color);
+  margin: 0;
+}
+
+.sub-types-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--color10);
+}
+
 /* Subscription form */
 .subscription-form {
   background: var(--color2);

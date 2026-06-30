@@ -24,6 +24,14 @@ const SCOPE_ICONS = {
   escalation: 'flag',
 }
 
+const TYPE_ICONS = {
+  phonecalls: 'contact_phone',
+  appointments: 'calendar_today',
+  emails: 'mail',
+  slc_escalations: 'warning',
+  annotations: 'edit_note',
+}
+
 function fmtDate(d) {
   if (!d) return 'Never'
   return new Date(d).toLocaleString(undefined, {
@@ -86,6 +94,13 @@ function SubscriptionCard({ sub, onEdit, onDelete }) {
           <span className="icon icon-sm">{FREQ_ICONS[sub.frequency] ?? 'schedule'}</span>
           {FREQ_LABELS[sub.frequency] ?? sub.frequency}
         </span>
+        {sub.activityTypes && sub.activityTypes.length < 5 && (
+          <span className="sub-types-badge">
+            {sub.activityTypes.map((t) => (
+              <span key={t} className="icon icon-sm" title={t}>{TYPE_ICONS[t] ?? 'description'}</span>
+            ))}
+          </span>
+        )}
         <span className="sub-last-sent">Last sent: {fmtDate(sub.lastSentAt)}</span>
       </div>
     </div>
