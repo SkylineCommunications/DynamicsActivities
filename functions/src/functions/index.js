@@ -10,6 +10,7 @@ ensureTables().then(() => {
 
 import './subscriptionsCrud.js'
 import './notifyWebhook.js'
+import './instantPoller.js'
 import './digestDaily.js'
 import './digestWeekly.js'
 import './digestMonthly.js'

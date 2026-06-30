@@ -22,6 +22,7 @@ export const TABLES = {
   NOTIFICATION_LOG: 'NotificationLog',
   READ_RECEIPTS: 'ReadReceipts',
   FOLLOW_UPS: 'FollowUps',
+  POLL_STATE: 'PollState',
 }
 
 // ─── Lazy table clients ───────────────────────────────────────────────────────
@@ -239,4 +240,25 @@ export async function createFollowUp(userId, activityId, actionText) {
     createdAt: new Date().toISOString(),
   })
   return id
+}
+
+// ─── PollState ────────────────────────────────────────────────────────────────
+
+/** Get the last poll timestamp for a given poll key (e.g. 'instant'). */
+export async function getLastPollTimestamp(key) {
+  try {
+    const entity = await getClient(TABLES.POLL_STATE).getEntity('poll', key)
+    return entity.timestamp ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Set the last poll timestamp for a given poll key. */
+export async function setLastPollTimestamp(key, timestamp) {
+  await getClient(TABLES.POLL_STATE).upsertEntity({
+    partitionKey: 'poll',
+    rowKey: key,
+    timestamp,
+  }, 'Replace')
 }
