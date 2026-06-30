@@ -200,6 +200,38 @@ export async function searchAccounts(msalInstance, query) {
 }
 
 /**
+ * Fetch the current Dataverse system user's profile.
+ * @returns {{ systemuserid, fullname, internalemailaddress, domainname }}
+ */
+export async function getCurrentSystemUser(msalInstance, userId) {
+  return dvFetch(
+    msalInstance,
+    `/systemusers(${userId})?$select=systemuserid,fullname,internalemailaddress,domainname`,
+  )
+}
+
+/**
+ * Search accounts owned by a specific user (by slc_spownername).
+ * Optionally filters by name substring.
+ */
+export async function searchMyAccounts(msalInstance, query, ownerName) {
+  if (!ownerName) return []
+  const clauses = [`slc_spownername eq '${ownerName.replace(/'/g, "''")}'`]
+
+  if (query?.trim()) {
+    const q = query.trim().replace(/'/g, "''")
+    clauses.push(`contains(name,'${q}')`)
+  }
+
+  const data = await dvFetch(
+    msalInstance,
+    `/accounts?$filter=${clauses.join(' and ')}&$select=accountid,name&$orderby=name asc&$top=50`,
+  )
+
+  return data?.value ?? []
+}
+
+/**
  * Resolve an array of Skyline customers to Dataverse accounts.
  * Strategy: exact name match first, fall back to acronym match.
  * @param {Array<{ name: string, acronym: string }>} customers

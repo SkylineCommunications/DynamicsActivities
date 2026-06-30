@@ -122,6 +122,7 @@ function cycleTheme() {
                   initialAccount={browseAccount}
                   managedAccounts={managedAccounts}
                   tamLoading={tamLoading}
+                  currentUserId={currentUserId}
                 />
               )}
             </>
