@@ -17,8 +17,14 @@ async function getSkylineToken(msalInstance) {
     return r.accessToken
   } catch (e) {
     if (e instanceof InteractionRequiredAuthError) {
-      const r = await msalInstance.acquireTokenPopup({ ...skylineRequest, account })
-      return r.accessToken
+      // Consent needed — trigger popup once
+      try {
+        const r = await msalInstance.acquireTokenPopup({ ...skylineRequest, account })
+        return r.accessToken
+      } catch (popupErr) {
+        console.warn('[Skyline] Popup consent failed:', popupErr.message)
+        return null
+      }
     }
     console.warn('[Skyline] Token acquisition failed:', e.message)
     return null
@@ -49,7 +55,10 @@ export async function getCurrentSkylineUser(msalInstance) {
 }
 
 /**
- * Fetch the list of customers the current user is TAM for.
+ * Fetch the customers managed by the current user.
+ * Combines two sources:
+ * 1. api/Customers → filter where user is in TAMs list
+ * 2. api/Projects/Mine → extract customers from assigned projects
  * @returns {Array<{ name: string, acronym: string }>}
  */
 export async function getMyManagedCustomers(msalInstance) {
@@ -57,12 +66,40 @@ export async function getMyManagedCustomers(msalInstance) {
     const user = await getCurrentSkylineUser(msalInstance)
     if (!user?.ID) return []
 
-    const customers = await skyFetch(msalInstance, 'api/Customers')
-    if (!Array.isArray(customers)) return []
+    const userId = String(user.ID)
+    const seen = new Set()
+    const customers = []
+
+    const addCustomer = (name, acronym) => {
+      if (name && !seen.has(name)) {
+        seen.add(name)
+        customers.push({ name, acronym: acronym || '' })
+      }
+    }
+
+    // Source 1: Customers where user is listed as TAM
+    const [allCustomers, projects] = await Promise.all([
+      skyFetch(msalInstance, 'api/Customers').catch(() => null),
+      skyFetch(msalInstance, 'api/Projects/Mine').catch(() => null),
+    ])
+
+    if (Array.isArray(allCustomers)) {
+      for (const c of allCustomers) {
+        const tams = c.TAMs || []
+        if (tams.some(t => String(t.ID) === userId || String(t.$ref) === userId)) {
+          addCustomer(c.Name, c.Acronym)
+        }
+      }
+    }
+
+    // Source 2: Customers from projects where user is TAM/Lead/PM/Contact
+    if (Array.isArray(projects)) {
+      for (const p of projects) {
+        addCustomer(p.Customer?.Name, p.Customer?.Acronym)
+      }
+    }
 
     return customers
-      .filter(c => Array.isArray(c.TAMs) && c.TAMs.some(t => String(t.ID) === String(user.ID)))
-      .map(c => ({ name: c.Name, acronym: c.Acronym }))
   } catch (e) {
     console.warn('[Skyline] getMyManagedCustomers failed:', e.message)
     return []
