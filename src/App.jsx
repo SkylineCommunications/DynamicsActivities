@@ -5,6 +5,7 @@ import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
 import SubscriptionsPanel from './components/SubscriptionsPanel'
+import { signOut as dmaSignOut, isDataMinerHost } from './api/dataminer'
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
@@ -82,7 +83,7 @@ function cycleTheme() {
           <button
             type="button"
             className="sign-out-btn"
-            onClick={() => instance.logoutRedirect()}
+            onClick={() => isDataMinerHost() ? dmaSignOut() : instance.logoutRedirect()}
             title="Sign out"
           >
             <span className="icon">logout</span>
