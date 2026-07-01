@@ -195,7 +195,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   )
 }
 
-export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false, currentUserId }) {
+export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false }) {
   const { instance } = useMsal()
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
@@ -276,7 +276,6 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               minChars={2}
               clearOnPick
               autoSelectSingle
-              clearOnPick
             />
           </div>
           <div className="filter-field">

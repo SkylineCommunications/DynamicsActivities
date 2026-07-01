@@ -48,8 +48,9 @@ export default function AutocompletePicker({
   function handleInput(e) {
     const q = e.target.value
     setQuery(q)
-    if (!q && minChars > 0) {
+    if (!q) {
       onChange(null)
+      clearTimeout(timer.current)
       setResults([])
       setOpen(false)
       return
@@ -132,7 +133,6 @@ export default function AutocompletePicker({
         onFocus={() => {
           if (results.length > 0) { setOpen(true); return }
           if (showOnFocus && !value && query.trim().length >= minChars) {
-            // Trigger a search with current (possibly empty) query
             ;(async () => {
               setLoading(true)
               try {

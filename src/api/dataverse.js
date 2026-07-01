@@ -223,9 +223,10 @@ export async function searchMyAccounts(msalInstance, query, ownerName) {
     clauses.push(`contains(name,'${q}')`)
   }
 
+  const filter = encodeURIComponent(clauses.join(' and '))
   const data = await dvFetch(
     msalInstance,
-    `/accounts?$filter=${clauses.join(' and ')}&$select=accountid,name&$orderby=name asc&$top=50`,
+    `/accounts?$filter=${filter}&$select=accountid,name&$orderby=name asc&$top=50`,
   )
 
   return data?.value ?? []
@@ -233,38 +234,36 @@ export async function searchMyAccounts(msalInstance, query, ownerName) {
 
 /**
  * Resolve an array of Skyline customers to Dataverse accounts.
- * Strategy: exact name match first, fall back to acronym match.
+ * Strategy: batch exact name matches with acronym exact/starts-with matches.
  * @param {Array<{ name: string, acronym: string }>} customers
  * @returns {Promise<Array<{ accountid: string, name: string }>>}
  */
 export async function resolveAccountsByNames(msalInstance, customers) {
   if (!customers?.length) return []
-  const resolved = new Map()
+  const clauses = []
 
   for (const { name, acronym } of customers) {
-    // Try exact name match
-    const safeName = name.replace(/'/g, "''")
-    const byName = await dvFetch(
-      msalInstance,
-      `/accounts?$filter=name eq '${encodeURIComponent(safeName)}'&$select=accountid,name&$top=1`,
-    ).catch(() => null)
-    if (byName?.value?.[0]) {
-      const a = byName.value[0]
-      if (!resolved.has(a.accountid)) resolved.set(a.accountid, a)
-      continue
+    if (name?.trim()) {
+      clauses.push(`name eq '${name.trim().replace(/'/g, "''")}'`)
     }
-    // Fallback: acronym match (startswith on name or exact name = acronym)
-    if (acronym) {
-      const safeAcronym = acronym.replace(/'/g, "''")
-      const byAcronym = await dvFetch(
-        msalInstance,
-        `/accounts?$filter=name eq '${encodeURIComponent(safeAcronym)}'&$select=accountid,name&$top=1`,
-      ).catch(() => null)
-      if (byAcronym?.value?.[0]) {
-        const a = byAcronym.value[0]
-        if (!resolved.has(a.accountid)) resolved.set(a.accountid, a)
-      }
+    if (acronym?.trim()) {
+      const safeAcronym = acronym.trim().replace(/'/g, "''")
+      clauses.push(`name eq '${safeAcronym}'`)
+      clauses.push(`startswith(name,'${safeAcronym}')`)
     }
+  }
+
+  if (!clauses.length) return []
+
+  const filter = encodeURIComponent(clauses.join(' or '))
+  const data = await dvFetch(
+    msalInstance,
+    `/accounts?$filter=${filter}&$select=accountid,name&$orderby=name asc&$top=100`,
+  ).catch(() => null)
+
+  const resolved = new Map()
+  for (const account of data?.value ?? []) {
+    if (!resolved.has(account.accountid)) resolved.set(account.accountid, account)
   }
   return Array.from(resolved.values())
 }

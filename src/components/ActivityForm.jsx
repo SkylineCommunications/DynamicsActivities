@@ -38,6 +38,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const [emailMode, setEmailMode] = useState('create')
   const [appointmentMode, setAppointmentMode] = useState('create')
   const [account, setAccount] = useState(null)
+  const [accountMode, setAccountMode] = useState('managed')
   const [date, setDate] = useState(() => {
     const d = new Date()
     d.setSeconds(0, 0)
@@ -119,13 +120,28 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const isCalendarImportMode = isAppointment && appointmentMode === 'import'
   const charsLeft = NOTE_LIMIT - note.length
   const canSubmit = !isInboxImportMode && !isCalendarImportMode && account && note.trim().length > 0 && !submitting
+  const hasManagedAccounts = managedAccounts.length > 0
+  const useManagedAccounts = accountMode === 'managed' && hasManagedAccounts
 
   const dateLabel = type === 'appointment' ? 'Start Time' : 'Due Date'
   const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
 
   // ─── Search functions for pickers ──────────────────────────────────────────
   function searchAccountsFn(q) {
+    if (useManagedAccounts) {
+      const query = q.trim().toLowerCase()
+      const matches = query
+        ? managedAccounts.filter((a) => a.name?.toLowerCase().includes(query))
+        : managedAccounts
+      return Promise.resolve(matches.slice(0, 50))
+    }
     return searchAccounts(instance, q)
+  }
+
+  function handleAccountModeChange(mode) {
+    if (mode === accountMode) return
+    setAccount(null)
+    setAccountMode(mode)
   }
   function searchContactsFn(q) { return searchContacts(instance, q) }
 
@@ -254,19 +270,44 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         <>
         {/* Account (required) */}
         <div className="field">
-          <label className="field-label">
-            Account <span className="required">*</span>
-          </label>
+          <div className="field-label-row">
+            <label className="field-label">
+              Account <span className="required">*</span>
+            </label>
+            {hasManagedAccounts && (
+              <div className="filter-mode-toggle account-mode-toggle" role="group" aria-label="Account search scope">
+                <button
+                  type="button"
+                  className={`filter-mode-btn ${accountMode === 'managed' ? 'active' : ''}`}
+                  onClick={() => handleAccountModeChange('managed')}
+                >
+                  My accounts
+                </button>
+                <button
+                  type="button"
+                  className={`filter-mode-btn ${accountMode === 'all' ? 'active' : ''}`}
+                  onClick={() => handleAccountModeChange('all')}
+                >
+                  All accounts
+                </button>
+              </div>
+            )}
+          </div>
           <AutocompletePicker
             searchFn={searchAccountsFn}
             getKey={(a) => a.accountid}
             getLabel={(a) => a.name}
             value={account}
             onChange={setAccount}
-            placeholder="Search accounts…"
+            placeholder={useManagedAccounts ? 'Search my accounts…' : 'Search accounts…'}
             autoSelectSingle
-            minChars={2}
+            minChars={useManagedAccounts ? 0 : 2}
+            showOnFocus={useManagedAccounts}
           />
+          {tamLoading && <p className="hint-text">Loading your managed accounts…</p>}
+          {useManagedAccounts && (
+            <p className="hint-text">Showing your managed accounts. Switch to All accounts to search everyone.</p>
+          )}
         </div>
 
         {/* Active escalation link banner */}

@@ -1,4 +1,4 @@
-﻿import { InteractionRequiredAuthError } from '@azure/msal-browser'
+import { InteractionRequiredAuthError } from '@azure/msal-browser'
 import { skylineRequest, skylineApiUrl } from '../authConfig'
 
 // ─── Skyline Collaboration API client ────────────────────────────────────────
