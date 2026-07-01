@@ -35,8 +35,17 @@ internal class Script
             var installer = new AppInstaller(Engine.SLNetRaw, context);
             installer.InstallDefaultContent();
 
-            // Set up the DOM module and definitions
-            SetupDomModule(engine);
+            engine.GenerateInformation("Companion files installed successfully.");
+
+            // Set up the DOM module (non-fatal — don't roll back the install if this fails)
+            try
+            {
+                SetupDomModule(engine);
+            }
+            catch (Exception domEx)
+            {
+                engine.GenerateInformation($"DOM setup failed (non-fatal): {domEx.Message}");
+            }
         }
         catch (Exception e)
         {
