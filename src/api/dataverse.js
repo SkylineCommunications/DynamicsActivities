@@ -199,16 +199,6 @@ export async function searchAccounts(msalInstance, query) {
   return results
 }
 
-/**
- * Fetch the current Dataverse system user's profile.
- * @returns {{ systemuserid, fullname, internalemailaddress, domainname }}
- */
-export async function getCurrentSystemUser(msalInstance, userId) {
-  return dvFetch(
-    msalInstance,
-    `/systemusers(${userId})?$select=systemuserid,fullname,internalemailaddress,domainname`,
-  )
-}
 
 /**
  * Search accounts owned by a specific user (by slc_spownername).
