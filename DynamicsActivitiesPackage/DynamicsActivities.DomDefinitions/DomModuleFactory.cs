@@ -10,7 +10,7 @@ namespace DynamicsActivities.DomDefinitions
 	public static class DomModuleFactory
 	{
 		/// <summary>
-		/// Creates the Subscription section definition.
+		/// Creates the Subscription section definition with all fields.
 		/// </summary>
 		public static CustomSectionDefinition CreateSubscriptionSectionDefinition()
 		{
@@ -20,6 +20,7 @@ namespace DynamicsActivities.DomDefinitions
 				Name = "Subscription",
 			};
 
+			// Subscriber identity
 			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
 			{
 				ID = new FieldDescriptorID(DomIds.Subscription.UserEmail),
@@ -34,20 +35,29 @@ namespace DynamicsActivities.DomDefinitions
 				FieldType = typeof(string),
 			});
 
+			// Scope — what to watch
 			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
 			{
-				ID = new FieldDescriptorID(DomIds.Subscription.AccountId),
-				Name = "Account ID",
+				ID = new FieldDescriptorID(DomIds.Subscription.ScopeType),
+				Name = "Scope Type",
 				FieldType = typeof(string),
 			});
 
 			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
 			{
-				ID = new FieldDescriptorID(DomIds.Subscription.AccountName),
-				Name = "Account Name",
+				ID = new FieldDescriptorID(DomIds.Subscription.ScopeValue),
+				Name = "Scope Value",
 				FieldType = typeof(string),
 			});
 
+			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
+			{
+				ID = new FieldDescriptorID(DomIds.Subscription.ScopeLabel),
+				Name = "Scope Label",
+				FieldType = typeof(string),
+			});
+
+			// Notification settings
 			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
 			{
 				ID = new FieldDescriptorID(DomIds.Subscription.Frequency),
@@ -57,9 +67,24 @@ namespace DynamicsActivities.DomDefinitions
 
 			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
 			{
-				ID = new FieldDescriptorID(DomIds.Subscription.IsActive),
-				Name = "Is Active",
+				ID = new FieldDescriptorID(DomIds.Subscription.ActivityTypes),
+				Name = "Activity Types",
+				FieldType = typeof(string), // JSON array: ["phonecalls","emails",...]
+			});
+
+			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
+			{
+				ID = new FieldDescriptorID(DomIds.Subscription.Enabled),
+				Name = "Enabled",
 				FieldType = typeof(bool),
+			});
+
+			// State tracking
+			sectionDefinition.AddOrReplaceFieldDescriptor(new FieldDescriptor
+			{
+				ID = new FieldDescriptorID(DomIds.Subscription.LastSentAt),
+				Name = "Last Sent At",
+				FieldType = typeof(string), // ISO 8601 timestamp
 			});
 
 			return sectionDefinition;
@@ -67,7 +92,6 @@ namespace DynamicsActivities.DomDefinitions
 
 		/// <summary>
 		/// Creates the Subscription DOM definition.
-		/// Section definition linking is handled by the install script after creation.
 		/// </summary>
 		public static DomDefinition CreateSubscriptionDomDefinition()
 		{
