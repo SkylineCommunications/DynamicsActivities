@@ -64,7 +64,8 @@ export async function listSubscriptionsByFrequency(frequency) {
   const client = getClient(TABLES.SUBSCRIPTIONS)
   const rows = []
   for await (const entity of client.listEntities({ queryOptions: { filter: `frequency eq '${frequency}'` } })) {
-    rows.push(entityToSubscription(entity))
+    const sub = entityToSubscription(entity)
+    if (sub.enabled) rows.push(sub)
   }
   return rows
 }
@@ -80,6 +81,7 @@ export async function createSubscription(userId, data) {
     scopeLabel: data.scopeLabel ?? '',
     frequency: data.frequency,
     activityTypes: data.activityTypes ? JSON.stringify(data.activityTypes) : '',
+    enabled: true,
     userEmail: data.userEmail ?? '',
     userName: data.userName ?? '',
     userId,
@@ -94,7 +96,7 @@ export async function createSubscription(userId, data) {
 /** Update a subscription by id. Only allows updating certain fields. */
 export async function updateSubscription(userId, id, patch) {
   const client = getClient(TABLES.SUBSCRIPTIONS)
-  const allowed = ['frequency', 'cooldownMinutes', 'scopeType', 'scopeValue', 'scopeLabel', 'activityTypes']
+  const allowed = ['frequency', 'cooldownMinutes', 'scopeType', 'scopeValue', 'scopeLabel', 'activityTypes', 'enabled']
   const update = {}
   for (const key of allowed) {
     if (patch[key] !== undefined) {
@@ -149,6 +151,7 @@ function entityToSubscription(e) {
     scopeLabel: e.scopeLabel,
     frequency: e.frequency,
     activityTypes,
+    enabled: e.enabled !== false,
     userEmail: e.userEmail,
     userName: e.userName,
     createdAt: e.createdAt,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useMsal } from '@azure/msal-react'
-import { getSubscriptions, deleteSubscription } from '../api/subscriptions'
+import { getSubscriptions, deleteSubscription, updateSubscription } from '../api/subscriptions'
 import SubscriptionForm from './SubscriptionForm'
 
 const FREQ_LABELS = {
@@ -40,9 +40,10 @@ function fmtDate(d) {
   })
 }
 
-function SubscriptionCard({ sub, onEdit, onDelete }) {
+function SubscriptionCard({ sub, onEdit, onDelete, onToggle }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [toggling, setToggling] = useState(false)
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return }
@@ -50,13 +51,31 @@ function SubscriptionCard({ sub, onEdit, onDelete }) {
     await onDelete(sub.id)
   }
 
+  async function handleToggle() {
+    setToggling(true)
+    await onToggle(sub.id, !sub.enabled)
+    setToggling(false)
+  }
+
   return (
-    <div className="sub-card">
+    <div className={`sub-card${sub.enabled === false ? ' sub-card-disabled' : ''}`}>
       <div className="sub-card-header">
         <div className="sub-card-scope">
+          <button
+            type="button"
+            className={`sub-toggle${sub.enabled !== false ? ' sub-toggle-on' : ''}`}
+            onClick={handleToggle}
+            disabled={toggling}
+            title={sub.enabled !== false ? 'Pause subscription' : 'Resume subscription'}
+          >
+            <span className="sub-toggle-track">
+              <span className="sub-toggle-thumb" />
+            </span>
+          </button>
           <span className="icon sub-scope-icon">{SCOPE_ICONS[sub.scopeType] ?? 'bookmark'}</span>
           <span className="sub-scope-label">{sub.scopeLabel || 'All Escalations'}</span>
           <span className="sub-scope-type">{sub.scopeType}</span>
+          {sub.enabled === false && <span className="sub-paused-label">Paused</span>}
         </div>
         <div className="sub-card-actions">
           {confirmDelete ? (
@@ -131,6 +150,15 @@ export default function SubscriptionsPanel() {
     setSubs((prev) => prev.filter((s) => s.id !== id))
   }
 
+  async function handleToggle(id, enabled) {
+    try {
+      await updateSubscription(instance, id, { enabled })
+      setSubs((prev) => prev.map((s) => (s.id === id ? { ...s, enabled } : s)))
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
   function handleEdit(sub) {
     setEditingSub(sub)
     setShowForm(true)
@@ -201,6 +229,7 @@ export default function SubscriptionsPanel() {
               sub={sub}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onToggle={handleToggle}
             />
           ))}
         </div>
