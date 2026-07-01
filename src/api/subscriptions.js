@@ -88,12 +88,13 @@ async function runSubscriptionScript(action, payload = {}) {
     },
   })
 
-  if (!result || result.ErrorCode !== 0) {
-    throw new Error(`Script failed: ${JSON.stringify(result)}`)
+  // Errors come as HTTP 500 (caught by jsonPost). A successful response has ScriptOutput.
+  if (!result || !result.ScriptOutput) {
+    throw new Error(`Script returned no output: ${JSON.stringify(result)}`)
   }
 
-  // Extract the "result" output from the script
-  const output = result.Output?.find(o => o.Name === 'result')
+  // Extract the "result" key from ScriptOutput [{Key, Value}]
+  const output = result.ScriptOutput.find(o => o.Key === 'result')
   if (!output) return null
   return JSON.parse(output.Value)
 }

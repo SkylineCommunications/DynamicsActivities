@@ -129,9 +129,9 @@ namespace DynamicsActivitiesManageSubscriptions
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeValue), new ValueWrapper<string>(dto.ScopeValue ?? string.Empty)));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeLabel), new ValueWrapper<string>(dto.ScopeLabel ?? string.Empty)));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldFrequency), new ValueWrapper<string>(dto.Frequency ?? "daily")));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(dto.ActivityTypes != null ? JsonConvert.SerializeObject(dto.ActivityTypes) : null)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(dto.ActivityTypes != null ? JsonConvert.SerializeObject(dto.ActivityTypes) : "[]")));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(true)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(null)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(string.Empty)));
 
 			instance.Sections.Add(section);
 			var created = domHelper.DomInstances.Create(instance);
