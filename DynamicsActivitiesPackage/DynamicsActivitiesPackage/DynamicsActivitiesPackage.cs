@@ -3,6 +3,7 @@ using Skyline.DataMiner.Automation;
 using Skyline.DataMiner.Net.AppPackages;
 using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
 using Skyline.DataMiner.Net.Apps.Modules;
+using Skyline.DataMiner.Net.Apps.Sections.SectionDefinitions;
 using Skyline.DataMiner.Net.Messages.SLDataGateway;
 using Skyline.DataMiner.Net.Sections;
 using System;
@@ -118,15 +119,29 @@ internal class Script
         if (existing == null)
         {
             engine.GenerateInformation("Creating Subscription DOM definition...");
-            domHelper.DomDefinitions.Create(new DomDefinition
+            var domDef = new DomDefinition
             {
                 ID = new DomDefinitionId(DomDefinitionId),
                 Name = "Activity Subscription",
-            });
+            };
+
+            domDef.SectionDefinitionLinks.Add(new SectionDefinitionLink(new SectionDefinitionID(SectionDefinitionId)));
+            domHelper.DomDefinitions.Create(domDef);
         }
         else
         {
-            engine.GenerateInformation("Subscription DOM definition already exists.");
+            // Ensure section link exists
+            var link = new SectionDefinitionLink(new SectionDefinitionID(SectionDefinitionId));
+            if (!existing.SectionDefinitionLinks.Any(l => l.SectionDefinitionID.Id == SectionDefinitionId))
+            {
+                engine.GenerateInformation("Adding missing section link to DOM definition...");
+                existing.SectionDefinitionLinks.Add(link);
+                domHelper.DomDefinitions.Update(existing);
+            }
+            else
+            {
+                engine.GenerateInformation("Subscription DOM definition already exists with correct links.");
+            }
         }
     }
 

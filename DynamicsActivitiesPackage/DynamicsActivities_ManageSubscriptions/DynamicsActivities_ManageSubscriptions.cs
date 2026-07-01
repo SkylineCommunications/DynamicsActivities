@@ -7,6 +7,7 @@ namespace DynamicsActivitiesManageSubscriptions
 	using Skyline.DataMiner.Automation;
 	using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
 	using Skyline.DataMiner.Net.Apps.Modules;
+	using Skyline.DataMiner.Net.Apps.Sections.SectionDefinitions;
 	using Skyline.DataMiner.Net.Messages.SLDataGateway;
 	using Skyline.DataMiner.Net.Sections;
 
@@ -61,6 +62,7 @@ namespace DynamicsActivitiesManageSubscriptions
 		{
 			EnsureModuleExists(engine);
 			domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
+			EnsureDomDefinitionHasSectionLink();
 
 			var action = engine.GetScriptParam("Action")?.Value?.Trim().ToLowerInvariant() ?? string.Empty;
 			var payload = engine.GetScriptParam("Payload")?.Value?.Trim() ?? "{}";
@@ -100,6 +102,18 @@ namespace DynamicsActivitiesManageSubscriptions
 			if (existing == null)
 			{
 				helper.ModuleSettings.Create(new ModuleSettings(ModuleId));
+			}
+		}
+
+		private void EnsureDomDefinitionHasSectionLink()
+		{
+			var domDef = domHelper.DomDefinitions
+				.Read(DomDefinitionExposers.Id.Equal(DomDefinitionId)).FirstOrDefault();
+
+			if (domDef != null && !domDef.SectionDefinitionLinks.Any(l => l.SectionDefinitionID.Id == SectionDefinitionId))
+			{
+				domDef.SectionDefinitionLinks.Add(new SectionDefinitionLink(new SectionDefinitionID(SectionDefinitionId)));
+				domHelper.DomDefinitions.Update(domDef);
 			}
 		}
 
