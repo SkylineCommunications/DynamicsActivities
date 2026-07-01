@@ -35,6 +35,23 @@ This prevents version conflicts in the DataMiner Catalog when multiple PRs are d
 
 ---
 
+## Local Development
+
+**When starting a Copilot session, run the app locally on port 5173.** Kill any existing process on that port first, then start the dev server:
+
+```powershell
+# Kill whatever is on port 5173
+Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue |
+  Select-Object OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+
+# Start the dev server
+cd C:\GIT\DynamicsActivities
+npx vite --port 5173
+```
+
+---
+
 ## Build Commands
 
 | Command | Purpose |

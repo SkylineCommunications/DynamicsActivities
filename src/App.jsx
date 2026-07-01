@@ -3,6 +3,7 @@ import { useMsal } from '@azure/msal-react'
 import AuthGuard from './components/AuthGuard'
 import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
+import useTamContext from './hooks/useTamContext'
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
@@ -27,6 +28,7 @@ function resolveTheme(pref) {
 
 export default function App() {
   const { instance } = useMsal()
+  const { managedAccounts, loading: tamLoading } = useTamContext()
   const [activeTab, setActiveTab] = useState('new')
   const [refreshKey, setRefreshKey] = useState(0)
   const [browseAccount, setBrowseAccount] = useState(null)
@@ -110,10 +112,17 @@ function cycleTheme() {
                 <ActivityForm
                   currentUserId={currentUserId}
                   onNoteCreated={handleNoteCreated}
+                  managedAccounts={managedAccounts}
+                  tamLoading={tamLoading}
                 />
               )}
               {activeTab === 'browse' && (
-                <NotesList refreshKey={refreshKey} initialAccount={browseAccount} />
+                <NotesList
+                  refreshKey={refreshKey}
+                  initialAccount={browseAccount}
+                  managedAccounts={managedAccounts}
+                  tamLoading={tamLoading}
+                />
               )}
             </>
           )}

@@ -199,6 +199,44 @@ export async function searchAccounts(msalInstance, query) {
   return results
 }
 
+
+
+/**
+ * Resolve an array of Skyline customers to Dataverse accounts.
+ * Strategy: batch exact name matches with acronym exact/starts-with matches.
+ * @param {Array<{ name: string, acronym: string }>} customers
+ * @returns {Promise<Array<{ accountid: string, name: string }>>}
+ */
+export async function resolveAccountsByNames(msalInstance, customers) {
+  if (!customers?.length) return []
+  const clauses = []
+
+  for (const { name, acronym } of customers) {
+    if (name?.trim()) {
+      clauses.push(`name eq '${name.trim().replace(/'/g, "''")}'`)
+    }
+    if (acronym?.trim()) {
+      const safeAcronym = acronym.trim().replace(/'/g, "''")
+      clauses.push(`name eq '${safeAcronym}'`)
+      clauses.push(`startswith(name,'${safeAcronym}')`)
+    }
+  }
+
+  if (!clauses.length) return []
+
+  const filter = encodeURIComponent(clauses.join(' or '))
+  const data = await dvFetch(
+    msalInstance,
+    `/accounts?$filter=${filter}&$select=accountid,name&$orderby=name asc&$top=100`,
+  ).catch(() => null)
+
+  const resolved = new Map()
+  for (const account of data?.value ?? []) {
+    if (!resolved.has(account.accountid)) resolved.set(account.accountid, account)
+  }
+  return Array.from(resolved.values())
+}
+
 // ─── Contacts ────────────────────────────────────────────────────────────────
 export async function searchContacts(msalInstance, query, accountId = null) {
   if (!query || query.trim().length < 2) return []

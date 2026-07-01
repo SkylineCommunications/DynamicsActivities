@@ -195,12 +195,13 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   )
 }
 
-export default function NotesList({ refreshKey, initialAccount }) {
+export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false }) {
   const { instance } = useMsal()
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
+  const [tamAutoApplied, setTamAutoApplied] = useState(false)
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
@@ -218,6 +219,15 @@ export default function NotesList({ refreshKey, initialAccount }) {
       })
     }
   }, [initialAccount])
+
+  // TAM auto-select: pre-fill managed accounts when they change
+  useEffect(() => {
+    if (tamLoading) return
+    if (!managedAccounts.length) return
+    if (initialAccount) return // don't override when navigated from Create
+    setAccounts(managedAccounts)
+    setTamAutoApplied(true)
+  }, [tamLoading, managedAccounts, initialAccount])
 
   const runSearch = useCallback(() => {
     setLoading(true)
@@ -239,6 +249,11 @@ export default function NotesList({ refreshKey, initialAccount }) {
     if (initialAccount || notes !== null) runSearch()
   }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-search after TAM accounts were auto-applied
+  useEffect(() => {
+    if (tamAutoApplied && accounts.length && notes === null) runSearch()
+  }, [tamAutoApplied]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="notes-container">
       {/* Filter panel */}
@@ -257,10 +272,10 @@ export default function NotesList({ refreshKey, initialAccount }) {
                 }
               }}
               onEnter={runSearch}
-              placeholder="Search account…"
+              placeholder="Search accounts…"
               minChars={2}
-              autoSelectSingle
               clearOnPick
+              autoSelectSingle
             />
           </div>
           <div className="filter-field">
