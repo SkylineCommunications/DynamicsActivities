@@ -6,6 +6,7 @@ namespace DynamicsActivitiesManageSubscriptions
 	using Newtonsoft.Json;
 	using Skyline.DataMiner.Automation;
 	using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
+	using Skyline.DataMiner.Net.Apps.Modules;
 	using Skyline.DataMiner.Net.Messages.SLDataGateway;
 	using Skyline.DataMiner.Net.Sections;
 
@@ -58,6 +59,7 @@ namespace DynamicsActivitiesManageSubscriptions
 
 		private void RunSafe(IEngine engine)
 		{
+			EnsureModuleExists(engine);
 			domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
 
 			var action = engine.GetScriptParam("Action")?.Value?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -87,6 +89,18 @@ namespace DynamicsActivitiesManageSubscriptions
 			}
 
 			engine.AddScriptOutput("result", result);
+		}
+
+		private void EnsureModuleExists(IEngine engine)
+		{
+			var helper = new ModuleSettingsHelper(engine.SendSLNetMessages);
+			var existing = helper.ModuleSettings.Read(
+				ModuleSettingsExposers.ModuleId.Equal(ModuleId)).FirstOrDefault();
+
+			if (existing == null)
+			{
+				helper.ModuleSettings.Create(new ModuleSettings(ModuleId));
+			}
 		}
 
 		private string HandleList(string userEmail)

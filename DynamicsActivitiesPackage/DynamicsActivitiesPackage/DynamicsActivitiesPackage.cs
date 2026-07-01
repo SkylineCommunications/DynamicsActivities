@@ -2,6 +2,7 @@ using Skyline.AppInstaller;
 using Skyline.DataMiner.Automation;
 using Skyline.DataMiner.Net.AppPackages;
 using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
+using Skyline.DataMiner.Net.Apps.Modules;
 using Skyline.DataMiner.Net.Messages.SLDataGateway;
 using Skyline.DataMiner.Net.Sections;
 using System;
@@ -63,6 +64,23 @@ internal class Script
     private void SetupDomModule(IEngine engine)
     {
         engine.GenerateInformation("Setting up DynamicsActivities DOM module...");
+
+        // Create module settings if they don't exist (required before DomHelper can operate)
+        var moduleSettingsHelper = new ModuleSettingsHelper(engine.SendSLNetMessages);
+        var existingSettings = moduleSettingsHelper.ModuleSettings.Read(
+            ModuleSettingsExposers.ModuleId.Equal(ModuleId)).FirstOrDefault();
+
+        if (existingSettings == null)
+        {
+            engine.GenerateInformation("Creating DOM module settings...");
+            var settings = new ModuleSettings(ModuleId);
+            moduleSettingsHelper.ModuleSettings.Create(settings);
+        }
+        else
+        {
+            engine.GenerateInformation("DOM module settings already exist.");
+        }
+
         var domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
 
         EnsureSubscriptionSectionDefinition(engine, domHelper);
