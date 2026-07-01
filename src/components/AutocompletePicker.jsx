@@ -131,7 +131,7 @@ export default function AutocompletePicker({
         onBlur={() => setTimeout(() => { setOpen(false); setActiveIndex(-1) }, 150)}
         onFocus={() => {
           if (results.length > 0) { setOpen(true); return }
-          if (showOnFocus && !value) {
+          if (showOnFocus && !value && query.trim().length >= minChars) {
             // Trigger a search with current (possibly empty) query
             ;(async () => {
               setLoading(true)
