@@ -1,4 +1,3 @@
-using DynamicsActivities.DomDefinitions;
 using Skyline.AppInstaller;
 using Skyline.DataMiner.Automation;
 using Skyline.DataMiner.Net.AppPackages;
@@ -10,9 +9,27 @@ using System.Linq;
 
 /// <summary>
 /// DataMiner Script Class.
+/// NOTE: This install script must NOT reference the DomDefinitions library project.
+/// If it did, the SDK would add a scriptRef, causing the install script to fail loading
+/// when the library already exists on the DMA with a conflicting Exe id.
+/// Instead, DOM GUIDs are hardcoded here (kept in sync with DomIds.cs).
 /// </summary>
 internal class Script
 {
+    // DOM IDs — must stay in sync with DynamicsActivities.DomDefinitions.DomIds
+    private const string ModuleId = "dynamics_activities";
+    private static readonly Guid SectionDefinitionId = new Guid("a1e2f3d4-5b6c-7d8e-9f0a-1b2c3d4e5f60");
+    private static readonly Guid DomDefinitionId = new Guid("b2f3e4d5-6c7d-8e9f-0a1b-2c3d4e5f6071");
+    private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
+    private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
+    private static readonly Guid FieldScopeType = new Guid("e5c6d7e8-9f0a-1b2c-3d4e-5f6071829304");
+    private static readonly Guid FieldScopeValue = new Guid("f6d7e8f9-0a1b-2c3d-4e5f-607182930415");
+    private static readonly Guid FieldScopeLabel = new Guid("07e8f9a0-1b2c-3d4e-5f60-718293041526");
+    private static readonly Guid FieldFrequency = new Guid("18f9a0b1-2c3d-4e5f-6071-829304152637");
+    private static readonly Guid FieldActivityTypes = new Guid("29a0b1c2-3d4e-5f60-7182-930415263748");
+    private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
+    private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
+
     /// <summary>
     /// The script entry point.
     /// </summary>
@@ -48,7 +65,7 @@ internal class Script
     private void SetupDomModule(IEngine engine)
     {
         engine.GenerateInformation("Setting up DynamicsActivities DOM module...");
-        var domHelper = new DomHelper(engine.SendSLNetMessages, DomIds.ModuleId);
+        var domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
 
         EnsureSubscriptionSectionDefinition(engine, domHelper);
         EnsureSubscriptionDomDefinition(engine, domHelper);
@@ -59,18 +76,18 @@ internal class Script
     private void EnsureSubscriptionSectionDefinition(IEngine engine, DomHelper domHelper)
     {
         var existing = domHelper.SectionDefinitions
-            .Read(SectionDefinitionExposers.ID.Equal(DomIds.Subscription.SectionDefinitionId))
+            .Read(SectionDefinitionExposers.ID.Equal(SectionDefinitionId))
             .FirstOrDefault();
 
         if (existing == null)
         {
             engine.GenerateInformation("Creating Subscription section definition...");
-            domHelper.SectionDefinitions.Create(DomModuleFactory.CreateSubscriptionSectionDefinition());
+            domHelper.SectionDefinitions.Create(CreateSubscriptionSectionDefinition());
         }
         else
         {
             engine.GenerateInformation("Subscription section definition already exists, updating...");
-            var updated = DomModuleFactory.CreateSubscriptionSectionDefinition();
+            var updated = CreateSubscriptionSectionDefinition();
             updated.ID = existing.GetID();
             domHelper.SectionDefinitions.Update(updated);
         }
@@ -79,17 +96,42 @@ internal class Script
     private void EnsureSubscriptionDomDefinition(IEngine engine, DomHelper domHelper)
     {
         var existing = domHelper.DomDefinitions
-            .Read(DomDefinitionExposers.Id.Equal(DomIds.Subscription.DomDefinitionId))
+            .Read(DomDefinitionExposers.Id.Equal(DomDefinitionId))
             .FirstOrDefault();
 
         if (existing == null)
         {
             engine.GenerateInformation("Creating Subscription DOM definition...");
-            domHelper.DomDefinitions.Create(DomModuleFactory.CreateSubscriptionDomDefinition());
+            domHelper.DomDefinitions.Create(new DomDefinition
+            {
+                ID = new DomDefinitionId(DomDefinitionId),
+                Name = "Activity Subscription",
+            });
         }
         else
         {
             engine.GenerateInformation("Subscription DOM definition already exists.");
         }
+    }
+
+    private static CustomSectionDefinition CreateSubscriptionSectionDefinition()
+    {
+        var section = new CustomSectionDefinition
+        {
+            ID = new SectionDefinitionID(SectionDefinitionId),
+            Name = "Subscription",
+        };
+
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldUserEmail), Name = "User Email", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldUserName), Name = "User Name", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldScopeType), Name = "Scope Type", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldScopeValue), Name = "Scope Value", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldScopeLabel), Name = "Scope Label", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldFrequency), Name = "Frequency", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldActivityTypes), Name = "Activity Types", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldEnabled), Name = "Enabled", FieldType = typeof(bool) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldLastSentAt), Name = "Last Sent At", FieldType = typeof(string) });
+
+        return section;
     }
 }
