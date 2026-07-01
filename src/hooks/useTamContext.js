@@ -25,6 +25,7 @@ export default function useTamContext() {
       return
     }
     ran.current = true
+    setLoading(true)
 
     ;(async () => {
       try {
