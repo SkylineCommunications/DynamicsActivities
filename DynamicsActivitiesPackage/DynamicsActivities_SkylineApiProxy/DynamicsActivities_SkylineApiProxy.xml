@@ -15,10 +15,10 @@
 	</Memory>
 
 	<Parameters>
-		<ScriptParameter id="1" type="string" values="">
+		<ScriptParameter id="10" type="string" values="">
 			<Description>Path</Description>
 		</ScriptParameter>
-		<ScriptParameter id="2" type="string" values="">
+		<ScriptParameter id="11" type="string" values="">
 			<Description>Token</Description>
 		</ScriptParameter>
 	</Parameters>
