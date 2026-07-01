@@ -7,27 +7,39 @@ import { skylineRequest, skylineApiUrl } from '../authConfig'
 // warning — the app continues without TAM features.
 
 const API = skylineApiUrl
+let skylineTokenPromise = null
 
 async function getSkylineToken(msalInstance) {
-  const accounts = msalInstance.getAllAccounts()
-  if (!accounts.length) return null
-  const account = accounts[0]
-  try {
-    const r = await msalInstance.acquireTokenSilent({ ...skylineRequest, account })
-    return r.accessToken
-  } catch (e) {
-    if (e instanceof InteractionRequiredAuthError) {
-      // Consent needed — trigger popup once
-      try {
-        const r = await msalInstance.acquireTokenPopup({ ...skylineRequest, account })
-        return r.accessToken
-      } catch (popupErr) {
-        console.warn('[Skyline] Popup consent failed:', popupErr.message)
-        return null
+  if (skylineTokenPromise) return skylineTokenPromise
+
+  skylineTokenPromise = (async () => {
+    const accounts = msalInstance.getAllAccounts()
+    if (!accounts.length) return null
+    const account = accounts[0]
+
+    try {
+      const r = await msalInstance.acquireTokenSilent({ ...skylineRequest, account })
+      return r.accessToken
+    } catch (e) {
+      if (e instanceof InteractionRequiredAuthError) {
+        // Consent needed — trigger popup (deduped while in-flight)
+        try {
+          const r = await msalInstance.acquireTokenPopup({ ...skylineRequest, account })
+          return r.accessToken
+        } catch (popupErr) {
+          console.warn('[Skyline] Popup consent failed:', popupErr?.message ?? popupErr)
+          return null
+        }
       }
+      console.warn('[Skyline] Token acquisition failed:', e?.message ?? e)
+      return null
     }
-    console.warn('[Skyline] Token acquisition failed:', e.message)
-    return null
+  })()
+
+  try {
+    return await skylineTokenPromise
+  } finally {
+    skylineTokenPromise = null
   }
 }
 
