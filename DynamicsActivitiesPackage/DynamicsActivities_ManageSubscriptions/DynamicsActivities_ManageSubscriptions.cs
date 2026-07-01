@@ -3,7 +3,6 @@ namespace DynamicsActivitiesManageSubscriptions
 	using System;
 	using System.Collections.Generic;
 	using System.Linq;
-	using DynamicsActivities.DomDefinitions;
 	using Newtonsoft.Json;
 	using Skyline.DataMiner.Automation;
 	using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
@@ -17,6 +16,20 @@ namespace DynamicsActivitiesManageSubscriptions
 	/// </summary>
 	public class Script
 	{
+		// DOM IDs — keep in sync across: NotifySubscribers, install script, and this script.
+		private const string ModuleId = "dynamics_activities";
+		private static readonly Guid DomDefinitionId = new Guid("b2f3e4d5-6c7d-8e9f-0a1b-2c3d4e5f6071");
+		private static readonly Guid SectionDefinitionId = new Guid("a1e2f3d4-5b6c-7d8e-9f0a-1b2c3d4e5f60");
+		private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
+		private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
+		private static readonly Guid FieldScopeType = new Guid("e5c6d7e8-9f0a-1b2c-3d4e-5f6071829304");
+		private static readonly Guid FieldScopeValue = new Guid("f6d7e8f9-0a1b-2c3d-4e5f-607182930415");
+		private static readonly Guid FieldScopeLabel = new Guid("07e8f9a0-1b2c-3d4e-5f60-718293041526");
+		private static readonly Guid FieldFrequency = new Guid("18f9a0b1-2c3d-4e5f-6071-829304152637");
+		private static readonly Guid FieldActivityTypes = new Guid("29a0b1c2-3d4e-5f60-7182-930415263748");
+		private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
+		private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
+
 		private DomHelper domHelper;
 
 		public void Run(IEngine engine)
@@ -45,7 +58,7 @@ namespace DynamicsActivitiesManageSubscriptions
 
 		private void RunSafe(IEngine engine)
 		{
-			domHelper = new DomHelper(engine.SendSLNetMessages, DomIds.ModuleId);
+			domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
 
 			var action = engine.GetScriptParam("Action")?.Value?.Trim().ToLowerInvariant() ?? string.Empty;
 			var payload = engine.GetScriptParam("Payload")?.Value?.Trim() ?? "{}";
@@ -79,7 +92,7 @@ namespace DynamicsActivitiesManageSubscriptions
 		private string HandleList(string userEmail)
 		{
 			var filter = DomInstanceExposers.FieldValues.DomInstanceField(
-				new FieldDescriptorID(DomIds.Subscription.UserEmail)).Equal(userEmail);
+				new FieldDescriptorID(FieldUserEmail)).Equal(userEmail);
 
 			var instances = domHelper.DomInstances.Read(filter);
 			var subs = instances.Select(MapToDto).ToList();
@@ -92,19 +105,19 @@ namespace DynamicsActivitiesManageSubscriptions
 
 			var instance = new DomInstance
 			{
-				DomDefinitionId = new DomDefinitionId(DomIds.Subscription.DomDefinitionId),
+				DomDefinitionId = new DomDefinitionId(DomDefinitionId),
 			};
 
-			var section = new Section(new SectionDefinitionID(DomIds.Subscription.SectionDefinitionId));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.UserEmail), new ValueWrapper<string>(userEmail)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.UserName), new ValueWrapper<string>(userName)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ScopeType), new ValueWrapper<string>(dto.ScopeType ?? string.Empty)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ScopeValue), new ValueWrapper<string>(dto.ScopeValue ?? string.Empty)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ScopeLabel), new ValueWrapper<string>(dto.ScopeLabel ?? string.Empty)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.Frequency), new ValueWrapper<string>(dto.Frequency ?? "daily")));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ActivityTypes), new ValueWrapper<string>(dto.ActivityTypes != null ? JsonConvert.SerializeObject(dto.ActivityTypes) : null)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.Enabled), new ValueWrapper<bool>(true)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.LastSentAt), new ValueWrapper<string>(null)));
+			var section = new Section(new SectionDefinitionID(SectionDefinitionId));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldUserEmail), new ValueWrapper<string>(userEmail)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldUserName), new ValueWrapper<string>(userName)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeType), new ValueWrapper<string>(dto.ScopeType ?? string.Empty)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeValue), new ValueWrapper<string>(dto.ScopeValue ?? string.Empty)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeLabel), new ValueWrapper<string>(dto.ScopeLabel ?? string.Empty)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldFrequency), new ValueWrapper<string>(dto.Frequency ?? "daily")));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(dto.ActivityTypes != null ? JsonConvert.SerializeObject(dto.ActivityTypes) : null)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(true)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(null)));
 
 			instance.Sections.Add(section);
 			var created = domHelper.DomInstances.Create(instance);
@@ -131,17 +144,17 @@ namespace DynamicsActivitiesManageSubscriptions
 			if (section == null) return JsonConvert.SerializeObject(new { error = "No section" });
 
 			if (dto.ScopeType != null)
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ScopeType), new ValueWrapper<string>(dto.ScopeType)));
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeType), new ValueWrapper<string>(dto.ScopeType)));
 			if (dto.ScopeValue != null)
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ScopeValue), new ValueWrapper<string>(dto.ScopeValue)));
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeValue), new ValueWrapper<string>(dto.ScopeValue)));
 			if (dto.ScopeLabel != null)
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ScopeLabel), new ValueWrapper<string>(dto.ScopeLabel)));
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeLabel), new ValueWrapper<string>(dto.ScopeLabel)));
 			if (dto.Frequency != null)
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.Frequency), new ValueWrapper<string>(dto.Frequency)));
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldFrequency), new ValueWrapper<string>(dto.Frequency)));
 			if (dto.ActivityTypes != null)
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.ActivityTypes), new ValueWrapper<string>(JsonConvert.SerializeObject(dto.ActivityTypes))));
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(JsonConvert.SerializeObject(dto.ActivityTypes))));
 			if (dto.Enabled.HasValue)
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(DomIds.Subscription.Enabled), new ValueWrapper<bool>(dto.Enabled.Value)));
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(dto.Enabled.Value)));
 
 			var updated = domHelper.DomInstances.Update(existing);
 			return JsonConvert.SerializeObject(MapToDto(updated));
@@ -171,15 +184,15 @@ namespace DynamicsActivitiesManageSubscriptions
 			return new SubscriptionDto
 			{
 				Id = instance.ID?.Id.ToString(),
-				ScopeType = GetFieldValue<string>(section, DomIds.Subscription.ScopeType),
-				ScopeValue = GetFieldValue<string>(section, DomIds.Subscription.ScopeValue),
-				ScopeLabel = GetFieldValue<string>(section, DomIds.Subscription.ScopeLabel),
-				Frequency = GetFieldValue<string>(section, DomIds.Subscription.Frequency),
-				ActivityTypes = ParseActivityTypes(GetFieldValue<string>(section, DomIds.Subscription.ActivityTypes)),
-				Enabled = GetFieldValue<bool>(section, DomIds.Subscription.Enabled),
-				LastSentAt = GetFieldValue<string>(section, DomIds.Subscription.LastSentAt),
-				UserEmail = GetFieldValue<string>(section, DomIds.Subscription.UserEmail),
-				UserName = GetFieldValue<string>(section, DomIds.Subscription.UserName),
+				ScopeType = GetFieldValue<string>(section, FieldScopeType),
+				ScopeValue = GetFieldValue<string>(section, FieldScopeValue),
+				ScopeLabel = GetFieldValue<string>(section, FieldScopeLabel),
+				Frequency = GetFieldValue<string>(section, FieldFrequency),
+				ActivityTypes = ParseActivityTypes(GetFieldValue<string>(section, FieldActivityTypes)),
+				Enabled = GetFieldValue<bool>(section, FieldEnabled),
+				LastSentAt = GetFieldValue<string>(section, FieldLastSentAt),
+				UserEmail = GetFieldValue<string>(section, FieldUserEmail),
+				UserName = GetFieldValue<string>(section, FieldUserName),
 			};
 		}
 

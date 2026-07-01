@@ -4,7 +4,6 @@ namespace DynamicsActivitiesNotifySubscribers
 	using System.Collections.Generic;
 	using System.Linq;
 	using System.Text;
-	using DynamicsActivities.DomDefinitions;
 	using Newtonsoft.Json;
 	using Skyline.DataMiner.Automation;
 	using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
@@ -19,12 +18,20 @@ namespace DynamicsActivitiesNotifySubscribers
 	/// </summary>
 	public class Script
 	{
+		// DOM IDs — keep in sync across: ManageSubscriptions, install script, and this script.
+		private const string ModuleId = "dynamics_activities";
+		private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
+		private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
+		private static readonly Guid FieldScopeType = new Guid("e5c6d7e8-9f0a-1b2c-3d4e-5f6071829304");
+		private static readonly Guid FieldScopeValue = new Guid("f6d7e8f9-0a1b-2c3d-4e5f-607182930415");
+		private static readonly Guid FieldScopeLabel = new Guid("07e8f9a0-1b2c-3d4e-5f60-718293041526");
+		private static readonly Guid FieldFrequency = new Guid("18f9a0b1-2c3d-4e5f-6071-829304152637");
+		private static readonly Guid FieldActivityTypes = new Guid("29a0b1c2-3d4e-5f60-7182-930415263748");
+		private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
+		private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
+
 		private DomHelper domHelper;
 
-		/// <summary>
-		/// The script entry point.
-		/// </summary>
-		/// <param name="engine">Link with SLAutomation process.</param>
 		public void Run(IEngine engine)
 		{
 			try
@@ -51,16 +58,15 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private void RunSafe(IEngine engine)
 		{
-			domHelper = new DomHelper(engine.SendSLNetMessages, DomIds.ModuleId);
+			domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
 
 			var frequency = engine.GetScriptParam("Frequency")?.Value?.Trim().ToLowerInvariant() ?? "daily";
 			var now = DateTime.UtcNow;
 
-			// Get all enabled subscriptions matching the requested frequency
 			var enabledFilter = DomInstanceExposers.FieldValues.DomInstanceField(
-				new FieldDescriptorID(DomIds.Subscription.Enabled)).Equal(true);
+				new FieldDescriptorID(FieldEnabled)).Equal(true);
 			var frequencyFilter = DomInstanceExposers.FieldValues.DomInstanceField(
-				new FieldDescriptorID(DomIds.Subscription.Frequency)).Equal(frequency);
+				new FieldDescriptorID(FieldFrequency)).Equal(frequency);
 
 			var allInstances = domHelper.DomInstances.Read(enabledFilter.AND(frequencyFilter));
 			engine.GenerateInformation($"[NotifySubscribers] Found {allInstances.Count} enabled '{frequency}' subscription(s).");
@@ -72,22 +78,20 @@ namespace DynamicsActivitiesNotifySubscribers
 				var section = instance.Sections.FirstOrDefault();
 				if (section == null) continue;
 
-				var userEmail = GetField<string>(section, DomIds.Subscription.UserEmail);
-				var userName = GetField<string>(section, DomIds.Subscription.UserName);
-				var scopeType = GetField<string>(section, DomIds.Subscription.ScopeType);
-				var scopeValue = GetField<string>(section, DomIds.Subscription.ScopeValue);
-				var scopeLabel = GetField<string>(section, DomIds.Subscription.ScopeLabel);
-				var activityTypesJson = GetField<string>(section, DomIds.Subscription.ActivityTypes);
-				var lastSentAtStr = GetField<string>(section, DomIds.Subscription.LastSentAt);
+				var userEmail = GetField<string>(section, FieldUserEmail);
+				var userName = GetField<string>(section, FieldUserName);
+				var scopeType = GetField<string>(section, FieldScopeType);
+				var scopeValue = GetField<string>(section, FieldScopeValue);
+				var scopeLabel = GetField<string>(section, FieldScopeLabel);
+				var activityTypesJson = GetField<string>(section, FieldActivityTypes);
+				var lastSentAtStr = GetField<string>(section, FieldLastSentAt);
 
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
 
-				// Skip if not enough time has elapsed since last send
 				if (!ShouldSend(frequency, lastSentAt, now)) continue;
 
-				// Build notification email
 				var subject = $"[DynamicsActivities] Activity digest for {scopeLabel ?? scopeValue}";
 				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, lastSentAt, now);
 
@@ -96,9 +100,8 @@ namespace DynamicsActivitiesNotifySubscribers
 					engine.SendEmail(body, subject, userEmail);
 					emailsSent++;
 
-					// Update lastSentAt
 					section.AddOrReplaceFieldValue(new FieldValue(
-						new FieldDescriptorID(DomIds.Subscription.LastSentAt),
+						new FieldDescriptorID(FieldLastSentAt),
 						new ValueWrapper<string>(now.ToString("o"))));
 					domHelper.DomInstances.Update(instance);
 				}
@@ -116,7 +119,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			switch (frequency)
 			{
 				case "instant":
-					return true; // Always send
+					return true;
 				case "daily":
 					return (now - lastSent).TotalHours >= 23;
 				case "weekly":

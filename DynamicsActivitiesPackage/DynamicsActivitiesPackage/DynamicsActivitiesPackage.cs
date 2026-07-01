@@ -9,14 +9,12 @@ using System.Linq;
 
 /// <summary>
 /// DataMiner Script Class.
-/// NOTE: This install script must NOT reference the DomDefinitions library project.
-/// If it did, the SDK would add a scriptRef, causing the install script to fail loading
-/// when the library already exists on the DMA with a conflicting Exe id.
-/// Instead, DOM GUIDs are hardcoded here (kept in sync with DomIds.cs).
+/// DOM GUIDs are inlined in each script that needs them (ManageSubscriptions,
+/// NotifySubscribers, and this install script). Change one → change all three.
 /// </summary>
 internal class Script
 {
-    // DOM IDs — must stay in sync with DynamicsActivities.DomDefinitions.DomIds
+    // DOM IDs — keep in sync across: ManageSubscriptions, NotifySubscribers, and this install script
     private const string ModuleId = "dynamics_activities";
     private static readonly Guid SectionDefinitionId = new Guid("a1e2f3d4-5b6c-7d8e-9f0a-1b2c3d4e5f60");
     private static readonly Guid DomDefinitionId = new Guid("b2f3e4d5-6c7d-8e9f-0a1b-2c3d4e5f6071");

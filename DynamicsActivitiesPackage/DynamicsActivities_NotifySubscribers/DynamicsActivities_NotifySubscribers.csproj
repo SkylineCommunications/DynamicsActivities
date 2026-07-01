@@ -21,6 +21,5 @@
 		</PackageReference>
 	</ItemGroup>
 	<ItemGroup>
-	  <ProjectReference Include="..\DynamicsActivities.DomDefinitions\DynamicsActivities.DomDefinitions.csproj" />
 	</ItemGroup>
 </Project>
