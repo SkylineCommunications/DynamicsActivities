@@ -17,7 +17,7 @@
 	</Parameters>
 
 	<Script>
-		<Exe id="63000" type="csharp">
+		<Exe id="2" type="csharp">
 			<Value><![CDATA[[Project:DynamicsActivities.DomDefinitions]]]></Value>
 			<Param type="libraryName">DynamicsActivities.DomDefinitions</Param>
 			<Message></Message>
