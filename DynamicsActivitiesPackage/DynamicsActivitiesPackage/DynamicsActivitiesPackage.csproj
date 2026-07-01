@@ -15,12 +15,15 @@
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Skyline.DataMiner.Core.AppPackageInstaller" Version="3.3.0" />
+		<PackageReference Include="Skyline.DataMiner.Core.AppPackageInstaller" Version="4.0.0" />
 		<PackageReference Include="Skyline.DataMiner.Dev.Automation" Version="10.3.0.25" />
 		<PackageReference Include="Skyline.DataMiner.Utils.SecureCoding.Analyzers" Version="2.2.1">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\DynamicsActivities.DomDefinitions\DynamicsActivities.DomDefinitions.csproj" />
 	</ItemGroup>
 
 	<!--
@@ -52,7 +55,7 @@
 		<!-- Clean the destination first so removed/renamed assets don't linger. -->
 		<RemoveDir Directories="$(WebAppCompanionDir)" />
 		<MakeDir Directories="$(WebAppCompanionDir)" />
-		<Copy SourceFiles="@(DynamicsActivitiesWebAppFiles)" DestinationFiles="@(DynamicsActivitiesWebAppFiles-&gt;'$(WebAppCompanionDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="false" />
+		<Copy SourceFiles="@(DynamicsActivitiesWebAppFiles)" DestinationFiles="@(DynamicsActivitiesWebAppFiles->'$(WebAppCompanionDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="false" />
 		<Message Importance="high" Text="Copied web app files from '$(WebAppDistDir)' into companion folder '$(WebAppCompanionDir)'." />
 	</Target>
 </Project>

@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="DynamicsActivities.DomDefinitions/DynamicsActivities.DomDefinitions.csproj" />
   <Project Path="DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj" />
+  <Project Path="DynamicsActivities_NotifySubscribers/DynamicsActivities_NotifySubscribers.csproj" />
 </Solution>
