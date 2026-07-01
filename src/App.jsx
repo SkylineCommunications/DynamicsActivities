@@ -5,7 +5,7 @@ import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
 import SubscriptionsPanel from './components/SubscriptionsPanel'
-import { signOut as dmaSignOut, isDataMinerHost } from './api/dataminer'
+import { signOut as dmaSignOut, isDataMinerHost, getDmaUser } from './api/dataminer'
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
@@ -57,6 +57,8 @@ function cycleTheme() {
   try { localStorage.setItem('dm-theme', next) } catch {}
 }
 
+  const dmaUser = isDataMinerHost() ? getDmaUser() : null
+
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
 
   function handleNoteCreated(account) {
@@ -71,6 +73,12 @@ function cycleTheme() {
       <header className="app-header">
         <span className="header-title">Activities</span>
         <div className="header-right">
+          {dmaUser?.FullName && (
+            <span className="dma-user-name">
+              <span className="icon icon-sm" aria-hidden="true">person</span>
+              {dmaUser.FullName}
+            </span>
+          )}
           <button
             type="button"
             className="theme-toggle"

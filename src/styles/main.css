@@ -158,6 +158,15 @@ body {
   gap: 8px;
 }
 
+.dma-user-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color9);
+  white-space: nowrap;
+}
+
 /* ─── Theme toggle ───────────────────────────────────────────────────────────── */
 .theme-toggle {
   display: inline-flex;

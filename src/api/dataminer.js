@@ -9,6 +9,16 @@ export function getConnectionFromCookie() {
   return match ? decodeURIComponent(match[1]) : null
 }
 
+export function getDmaUser() {
+  const match = document.cookie.match(/(?:^|;\s*)DMAUser=([^;]+)/)
+  if (!match) return null
+  try {
+    return JSON.parse(decodeURIComponent(match[1]))
+  } catch {
+    return null
+  }
+}
+
 export function redirectToAuth() {
   const target = location.pathname + location.search
   location.replace('/auth/?url=' + encodeURIComponent(target))
