@@ -30,8 +30,9 @@ The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge
 - `@azure/msal-browser` + `@azure/msal-react` for Dynamics 365 and Skyline API tokens
 - Dataverse Web API v9.2 for all activity data
 - Microsoft Graph API v1.0 for calendar events (attendee prefill)
-- Skyline Collaboration API (`api.skyline.be`) for TAM account resolution
-- Azure Functions backend for notification subscriptions
+- Skyline Collaboration API (`api.skyline.be`) — proxied via automation script on DMA, direct on localhost
+- DataMiner DOM (Object Model) for notification subscriptions (CRUD + scheduled notifications)
+- DataMiner Automation Scripts for server-side logic (subscription CRUD, email notifications, API proxy)
 - DataMiner design system (CSS custom properties, Inter font, DataMinerIcons)
 
 ---
@@ -92,8 +93,7 @@ VITE_DATAVERSE_URL          — Dataverse environment URL
 VITE_CLIENT_ID              — Entra app registration client ID
 VITE_TENANT_ID              — Entra tenant ID
 VITE_REDIRECT_URI           — MSAL redirect URI (must match Entra registration exactly)
-VITE_SKYLINE_API_URL        — Skyline API base URL (or /skyline-api for local proxy)
-VITE_FUNCTIONS_BASE_URL     — Azure Functions backend URL
+VITE_SKYLINE_API_URL        — Skyline API base URL (proxied on DMA, direct on localhost)
 ```
 
 ---
@@ -135,8 +135,8 @@ App-specific behavior:
 | `src/api/dataminer.js` | DataMiner session management — cookie bootstrap, `IsConnectionAlive`, sign-out, `getDmaUser` |
 | `src/api/dataverse.js` | All Dataverse ops — auth, search, create, delete |
 | `src/api/graph.js` | Graph calendar fetch for attendee prefill |
-| `src/api/skyline.js` | Skyline Collaboration API — TAM customer/project resolution |
-| `src/api/subscriptions.js` | Azure Functions backend for notification subscriptions |
+| `src/api/skyline.js` | Skyline Collaboration API — proxied via DMA automation script to avoid CORS |
+| `src/api/subscriptions.js` | Subscription CRUD via DataMiner Automation (DOM-backed) |
 | `src/authConfig.js` | MSAL config, scopes for Dataverse/Graph/Skyline |
 | `src/components/AuthGuard.jsx` | Triple-auth gate: DMA session → MSAL ssoSilent/popup → WhoAmI |
 | `src/components/ActivityForm.jsx` | Activity creation (4 types, account/attendee pickers, calendar) |
@@ -148,5 +148,22 @@ App-specific behavior:
 | `src/styles/main.css` | DataMiner design system CSS variables + component styles |
 | `vite.config.js` | Build config (dual mode) + Skyline API dev proxy |
 | `public/web.config` | IIS SPA rewrite rule for DataMiner/IIS hosting |
-| `DynamicsActivitiesPackage/` | .NET project for `.dmapp` packaging |
+| `DynamicsActivitiesPackage/` | .NET solution for `.dmapp` packaging + automation scripts |
+| `DynamicsActivitiesPackage/DynamicsActivities.DomDefinitions/` | Shared DOM model (IDs, factory) for subscriptions |
+| `DynamicsActivitiesPackage/DynamicsActivities_ManageSubscriptions/` | CRUD automation script for subscriptions (list/create/update/delete) |
+| `DynamicsActivitiesPackage/DynamicsActivities_NotifySubscribers/` | Scheduled email digest sender |
+| `DynamicsActivitiesPackage/DynamicsActivities_SkylineApiProxy/` | Server-side proxy for Skyline API (avoids CORS) |
 | `.github/workflows/deploy-dma-on-pr-merge.yml` | CI/CD — build, catalog upload, deploy to DMA |
+
+---
+
+## Documentation
+
+**Keep `README.md` up to date whenever you make changes that affect:**
+- Features or capabilities of the app
+- Project structure (new files, folders, or scripts)
+- Build/deploy instructions or prerequisites
+- Architecture decisions (e.g. new automation scripts, API changes)
+- Environment variable changes
+
+The README is the public-facing documentation for the repository. It should always reflect the current state of the project.
