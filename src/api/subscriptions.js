@@ -1,69 +1,125 @@
 /**
- * Client for the Azure Functions subscriptions API.
- * Uses a Dataverse-scoped token — the Functions backend validates
- * against ENTRA_AUDIENCE which is set to the Dataverse org URL.
+ * Client for subscription management via DataMiner Automation Script (DOM).
+ * Calls DynamicsActivities_ManageSubscriptions through the JSON API.
+ * Falls back gracefully if DataMiner session is unavailable.
  */
 
-import { getDvToken } from './dataverse'
+import { getConnectionFromCookie, jsonPost, getDmaUser } from './dataminer'
 
-const BASE = (import.meta.env.VITE_FUNCTIONS_BASE_URL || '').replace(/\/$/, '')
+const SCRIPT_NAME = 'DynamicsActivities_ManageSubscriptions'
 
-async function apiFetch(msalInstance, path, options = {}) {
-  const token = await getDvToken(msalInstance)
-  const res = await fetch(`${BASE}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...options.headers,
+/**
+ * Execute the CRUD automation script with given action and payload.
+ */
+async function runSubscriptionScript(action, payload = {}) {
+  const connection = getConnectionFromCookie()
+  if (!connection) throw new Error('No DataMiner connection')
+
+  const dmaUser = getDmaUser()
+  const userEmail = dmaUser?.EmailAddress || ''
+  const userName = dmaUser?.FullName || ''
+
+  const result = await jsonPost('ExecuteAutomationScriptWithOutput', {
+    connection,
+    script: {
+      __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScript',
+      Name: SCRIPT_NAME,
+      Folder: '',
+      Description: '',
+      Settings: {
+        __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptSettings',
+        RequireInteractive: false,
+        HasFindInteractiveClient: false,
+      },
+      Parameters: [
+        {
+          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+          ParameterId: 1,
+          Values: null,
+          MemoryFile: '',
+          Name: 'Action',
+          Value: action,
+        },
+        {
+          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+          ParameterId: 2,
+          Values: null,
+          MemoryFile: '',
+          Name: 'Payload',
+          Value: JSON.stringify(payload),
+        },
+        {
+          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+          ParameterId: 3,
+          Values: null,
+          MemoryFile: '',
+          Name: 'UserEmail',
+          Value: userEmail,
+        },
+        {
+          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+          ParameterId: 4,
+          Values: null,
+          MemoryFile: '',
+          Name: 'UserName',
+          Value: userName,
+        },
+      ],
+      Dummies: [],
+      MemoryFiles: [],
+    },
+    scriptOptions: {
+      __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptOptions',
+      WaitForScript: true,
+      CheckSets: true,
+      LockElements: false,
+      ForceLockElements: false,
+      WaitWhenLocked: true,
+      IsInUse: false,
+      AskForConfirmation: false,
+      GenerateStartedInfoEvent: false,
+      customSuccessMessage: null,
+      hideSuccessPopup: true,
+      skipPresetsIfComplete: true,
+      hidePresets: true,
+      popupIsMinimizable: false,
+      popupType: 1,
+      ClientTimeZone: { Type: 0, Info: null },
     },
   })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`Subscriptions API ${options.method || 'GET'} ${path} → ${res.status}: ${text}`)
+
+  if (!result || result.ErrorCode !== 0) {
+    throw new Error(`Script failed: ${JSON.stringify(result)}`)
   }
-  if (res.status === 204) return null
-  
-  const contentType = res.headers.get('content-type') || ''
-  if (!contentType.includes('application/json')) {
-    const text = await res.text()
-    throw new Error(`Subscriptions API returned non-JSON response (${res.status}): ${text.slice(0, 100)}`)
-  }
-  return res.json()
+
+  // Extract the "result" output from the script
+  const output = result.Output?.find(o => o.Name === 'result')
+  if (!output) return null
+  return JSON.parse(output.Value)
 }
 
-export async function getSubscriptions(msalInstance) {
-  return apiFetch(msalInstance, '/subscriptions')
+export async function getSubscriptions(/* msalInstance not needed */) {
+  return runSubscriptionScript('list')
 }
 
 export async function createSubscription(msalInstance, payload) {
-  return apiFetch(msalInstance, '/subscriptions', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
+  return runSubscriptionScript('create', payload)
 }
 
 export async function updateSubscription(msalInstance, id, patch) {
-  return apiFetch(msalInstance, `/subscriptions/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(patch),
-  })
+  return runSubscriptionScript('update', { id, ...patch })
 }
 
 export async function deleteSubscription(msalInstance, id) {
-  return apiFetch(msalInstance, `/subscriptions/${id}`, { method: 'DELETE' })
+  return runSubscriptionScript('delete', { id })
 }
 
-export async function getReadStatus(msalInstance, activityIds) {
-  if (!activityIds?.length) return []
-  const ids = activityIds.join(',')
-  return apiFetch(msalInstance, `/actions/read-status?ids=${encodeURIComponent(ids)}`)
+// Read status and mark-read are activity-level features that still live
+// in Dataverse / the browse view — kept as stubs for now.
+export async function getReadStatus(/* msalInstance, activityIds */) {
+  return []
 }
 
-/** Mark an activity as read using a direct API call (requires auth, not email token). */
-export async function markActivityRead(msalInstance, activityId) {
-  return apiFetch(msalInstance, `/actions/mark-read`, {
-    method: 'POST',
-    body: JSON.stringify({ activityId }),
-  })
+export async function markActivityRead(/* msalInstance, activityId */) {
+  return null
 }

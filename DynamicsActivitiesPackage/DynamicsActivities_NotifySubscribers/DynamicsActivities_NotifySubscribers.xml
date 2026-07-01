@@ -15,6 +15,9 @@
 	</Memory>
 
 	<Parameters>
+		<ScriptParameter id="1" type="string" values="">
+			<Description>Frequency</Description>
+		</ScriptParameter>
 	</Parameters>
 
 	<Script>
