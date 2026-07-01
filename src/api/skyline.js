@@ -1,4 +1,4 @@
-import { InteractionRequiredAuthError } from '@azure/msal-browser'
+﻿import { InteractionRequiredAuthError } from '@azure/msal-browser'
 import { skylineRequest, skylineApiUrl } from '../authConfig'
 
 // ─── Skyline Collaboration API client ────────────────────────────────────────
@@ -94,7 +94,8 @@ export async function getMyManagedCustomers(msalInstance) {
 
     // Source 2: Customers from projects where user is TAM/Lead/PM/Contact
     if (Array.isArray(projects)) {
-      for (const p of projects) {
+      const active = projects.filter(p => p.Status !== 'Closed')
+      for (const p of active) {
         addCustomer(p.Customer?.Name, p.Customer?.Acronym)
       }
     }

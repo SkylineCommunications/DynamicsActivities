@@ -38,7 +38,6 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const [emailMode, setEmailMode] = useState('create')
   const [appointmentMode, setAppointmentMode] = useState('create')
   const [account, setAccount] = useState(null)
-  const [showAllAccounts, setShowAllAccounts] = useState(false)
   const [date, setDate] = useState(() => {
     const d = new Date()
     d.setSeconds(0, 0)
@@ -126,12 +125,6 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
 
   // ─── Search functions for pickers ──────────────────────────────────────────
   function searchAccountsFn(q) {
-    // If TAM and not showing all, filter within managed accounts (client-side)
-    if (!showAllAccounts && managedAccounts.length) {
-      const lower = (q || '').toLowerCase()
-      const filtered = managedAccounts.filter((a) => a.name.toLowerCase().includes(lower))
-      return Promise.resolve(filtered)
-    }
     return searchAccounts(instance, q)
   }
   function searchContactsFn(q) { return searchContacts(instance, q) }
@@ -270,21 +263,10 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
             getLabel={(a) => a.name}
             value={account}
             onChange={setAccount}
-            placeholder={showAllAccounts || !managedAccounts.length ? 'Type to search accounts…' : 'Search my accounts…'}
+            placeholder="Search accounts…"
             autoSelectSingle
-            minChars={showAllAccounts || !managedAccounts.length ? 2 : 0}
-            showOnFocus={!showAllAccounts && managedAccounts.length > 0}
+            minChars={2}
           />
-          {managedAccounts.length > 0 && (
-            <label className="field-hint toggle-row">
-              <input
-                type="checkbox"
-                checked={showAllAccounts}
-                onChange={(e) => setShowAllAccounts(e.target.checked)}
-              />
-              Show all accounts
-            </label>
-          )}
         </div>
 
         {/* Active escalation link banner */}

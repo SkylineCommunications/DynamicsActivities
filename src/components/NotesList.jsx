@@ -3,8 +3,6 @@ import { useMsal } from '@azure/msal-react'
 import {
   searchActivities,
   searchAccounts,
-  searchMyAccounts,
-  getCurrentSystemUser,
   searchContacts,
   extractAttendees,
   noteTypeLabel,
@@ -205,24 +203,12 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [expandedId, setExpandedId] = useState(null)
   const [tamAutoApplied, setTamAutoApplied] = useState(false)
 
-  // Current user info for "My accounts" filter
-  const [currentUser, setCurrentUser] = useState(null)
-  const [myAccountsMode, setMyAccountsMode] = useState(true) // default to "My accounts"
-
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
   const [attendee, setAttendee] = useState(null) // { contactid, fullname }
   const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-
-  // Resolve current user name for "My accounts" filtering
-  useEffect(() => {
-    if (!currentUserId) return
-    getCurrentSystemUser(instance, currentUserId)
-      .then(setCurrentUser)
-      .catch(() => setCurrentUser(null))
-  }, [instance, currentUserId])
 
   // When initialAccount changes (e.g. after note creation), update the "Regarding" filter
   useEffect(() => {
@@ -234,13 +220,14 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     }
   }, [initialAccount])
 
-  // TAM auto-select: on first load, pre-fill managed accounts and auto-search
+  // TAM auto-select: pre-fill managed accounts when they change
   useEffect(() => {
-    if (tamAutoApplied || tamLoading || !managedAccounts.length) return
+    if (tamLoading) return
+    if (!managedAccounts.length) return
     if (initialAccount) return // don't override when navigated from Create
     setAccounts(managedAccounts)
     setTamAutoApplied(true)
-  }, [tamLoading, managedAccounts, tamAutoApplied, initialAccount])
+  }, [tamLoading, managedAccounts, initialAccount])
 
   const runSearch = useCallback(() => {
     setLoading(true)
@@ -274,28 +261,8 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
         <div className="filter-row">
           <div className="filter-field">
             <label className="filter-label">Regarding</label>
-            <div className="filter-mode-toggle">
-              <button
-                type="button"
-                className={`filter-mode-btn ${myAccountsMode ? 'active' : ''}`}
-                onClick={() => setMyAccountsMode(true)}
-              >
-                My accounts
-              </button>
-              <button
-                type="button"
-                className={`filter-mode-btn ${!myAccountsMode ? 'active' : ''}`}
-                onClick={() => setMyAccountsMode(false)}
-              >
-                All accounts
-              </button>
-            </div>
             <AutocompletePicker
-              searchFn={(q) =>
-                myAccountsMode
-                  ? searchMyAccounts(instance, q, currentUser?.fullname)
-                  : searchAccounts(instance, q)
-              }
+              searchFn={(q) => searchAccounts(instance, q)}
               getKey={(a) => a.accountid}
               getLabel={(a) => a.name}
               value={null}
@@ -305,9 +272,9 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
                 }
               }}
               onEnter={runSearch}
-              placeholder={myAccountsMode ? 'Search my accounts…' : 'Search all accounts…'}
-              minChars={myAccountsMode ? 0 : 2}
-              showOnFocus={myAccountsMode}
+              placeholder="Search accounts…"
+              minChars={2}
+              clearOnPick
               autoSelectSingle
               clearOnPick
             />
