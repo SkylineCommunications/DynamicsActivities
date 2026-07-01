@@ -74,12 +74,12 @@ async function skyFetch(msalInstance, path) {
         Parameters: [
           {
             __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-            ParameterId: 1, Values: null, MemoryFile: '',
+            ParameterId: 10, Values: null, MemoryFile: '',
             Name: 'Path', Value: path,
           },
           {
             __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-            ParameterId: 2, Values: null, MemoryFile: '',
+            ParameterId: 11, Values: null, MemoryFile: '',
             Name: 'Token', Value: token,
           },
         ],

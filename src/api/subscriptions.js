@@ -34,7 +34,7 @@ async function runSubscriptionScript(action, payload = {}) {
       Parameters: [
         {
           __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 1,
+          ParameterId: 10,
           Values: null,
           MemoryFile: '',
           Name: 'Action',
@@ -42,7 +42,7 @@ async function runSubscriptionScript(action, payload = {}) {
         },
         {
           __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 2,
+          ParameterId: 11,
           Values: null,
           MemoryFile: '',
           Name: 'Payload',
@@ -50,7 +50,7 @@ async function runSubscriptionScript(action, payload = {}) {
         },
         {
           __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 3,
+          ParameterId: 12,
           Values: null,
           MemoryFile: '',
           Name: 'UserEmail',
@@ -58,7 +58,7 @@ async function runSubscriptionScript(action, payload = {}) {
         },
         {
           __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 4,
+          ParameterId: 13,
           Values: null,
           MemoryFile: '',
           Name: 'UserName',
