@@ -6,6 +6,7 @@ using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
 using Skyline.DataMiner.Net.Messages.SLDataGateway;
 using Skyline.DataMiner.Net.Sections;
 using System;
+using System.IO;
 using System.Linq;
 
 /// <summary>
@@ -13,6 +14,8 @@ using System.Linq;
 /// </summary>
 internal class Script
 {
+    private const string WebAppPath = @"C:\Skyline DataMiner\Webpages\public\DynamicsActivities";
+
     /// <summary>
     /// The script entry point.
     /// </summary>
@@ -25,6 +28,10 @@ internal class Script
         {
             engine.Timeout = new TimeSpan(0, 10, 0);
             engine.GenerateInformation("Starting installation");
+
+            // Clean old web app files before extracting new ones
+            CleanWebAppDirectory(engine);
+
             var installer = new AppInstaller(Engine.SLNetRaw, context);
             installer.InstallDefaultContent();
 
@@ -34,6 +41,16 @@ internal class Script
         catch (Exception e)
         {
             engine.ExitFail($"Exception encountered during installation: {e}");
+        }
+    }
+
+    private void CleanWebAppDirectory(IEngine engine)
+    {
+        if (Directory.Exists(WebAppPath))
+        {
+            engine.GenerateInformation($"Cleaning old web app at {WebAppPath}...");
+            Directory.Delete(WebAppPath, recursive: true);
+            engine.GenerateInformation("Old web app removed.");
         }
     }
 
