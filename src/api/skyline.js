@@ -1,10 +1,14 @@
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 import { skylineRequest, skylineApiUrl } from '../authConfig'
+import { isDataMinerHost, getConnectionFromCookie, jsonPost } from './dataminer'
 
 // ─── Skyline Collaboration API client ────────────────────────────────────────
 // All functions degrade gracefully: if the Skyline API is unreachable, token
 // cannot be obtained, or CORS blocks the call, they return null/[] and log a
 // warning — the app continues without TAM features.
+//
+// On DataMiner hosts, calls are proxied through an automation script to avoid
+// CORS issues with api.skyline.be.
 
 const API = skylineApiUrl
 let skylineTokenPromise = null
@@ -22,7 +26,6 @@ async function getSkylineToken(msalInstance) {
       return r.accessToken
     } catch (e) {
       if (e instanceof InteractionRequiredAuthError) {
-        // Consent needed — trigger popup (deduped while in-flight)
         try {
           const r = await msalInstance.acquireTokenPopup({ ...skylineRequest, account })
           return r.accessToken
@@ -43,9 +46,65 @@ async function getSkylineToken(msalInstance) {
   }
 }
 
+/**
+ * Fetch from Skyline API. On DataMiner hosts, proxies through an automation
+ * script (DynamicsActivities_SkylineApiProxy) to avoid CORS.
+ * On localhost (dev), calls directly.
+ */
 async function skyFetch(msalInstance, path) {
   const token = await getSkylineToken(msalInstance)
   if (!token) return null
+
+  if (isDataMinerHost()) {
+    const connection = getConnectionFromCookie()
+    if (!connection) return null
+
+    const result = await jsonPost('ExecuteAutomationScriptWithOutput', {
+      connection,
+      script: {
+        __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScript',
+        Name: 'DynamicsActivities_SkylineApiProxy',
+        Folder: '',
+        Description: '',
+        Settings: {
+          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptSettings',
+          RequireInteractive: false,
+          HasFindInteractiveClient: false,
+        },
+        Parameters: [
+          {
+            __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+            ParameterId: 1, Values: null, MemoryFile: '',
+            Name: 'Path', Value: path,
+          },
+          {
+            __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+            ParameterId: 2, Values: null, MemoryFile: '',
+            Name: 'Token', Value: token,
+          },
+        ],
+        Dummies: [],
+        MemoryFiles: [],
+      },
+      scriptOptions: {
+        __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptOptions',
+        WaitForScript: true, CheckSets: true, LockElements: false,
+        ForceLockElements: false, WaitWhenLocked: true, IsInUse: false,
+        AskForConfirmation: false, GenerateStartedInfoEvent: false,
+        customSuccessMessage: null, hideSuccessPopup: true,
+        skipPresetsIfComplete: true, hidePresets: true,
+        popupIsMinimizable: false, popupType: 1,
+        ClientTimeZone: { Type: 0, Info: null },
+      },
+    })
+
+    if (!result || result.ErrorCode !== 0) return null
+    const output = result.Output?.find(o => o.Name === 'result')
+    if (!output) return null
+    return JSON.parse(output.Value)
+  }
+
+  // Direct fetch for localhost dev
   const res = await fetch(`${API}/${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   })
