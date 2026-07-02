@@ -103,7 +103,11 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
-				if (!ShouldSend(frequency, lastSentAt, now)) continue;
+				if (!ShouldSend(frequency, lastSentAt, now))
+				{
+					engine.GenerateInformation($"[NotifySubscribers] Skip sub {instance.ID.Id} ({scopeType}:{scopeValue}) due to frequency gate. LastSentAt={lastSentAt:o}, now={now:o}, frequency={frequency}.");
+					continue;
+				}
 
 				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, lastSentAt, now);
 				if (activities.Count == 0)
@@ -362,8 +366,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
-			var values = json["value"] ?? new JArray();
+			var values = DataverseGetAllValues($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc", 20);
 			var result = new List<ActivityItem>();
 
 			foreach (var v in values)
@@ -399,7 +402,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				result.Add(item);
 			}
 
-			engine?.GenerateInformation($"[NotifySubscribers] Escalation link filter for {entitySet}: fetched {values.Count()} row(s), matched {result.Count} escalation-linked row(s).");
+			engine?.GenerateInformation($"[NotifySubscribers] Escalation link filter for {entitySet}: fetched {values.Count} row(s), matched {result.Count} escalation-linked row(s).");
 
 			return result;
 		}
@@ -506,8 +509,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
-			var values = json["value"] ?? new JArray();
+			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc", 20);
 			var result = new List<ActivityItem>();
 
 			foreach (var v in values)
@@ -541,7 +543,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				result.Add(item);
 			}
 
-			engine?.GenerateInformation($"[NotifySubscribers] Escalation link filter for annotations: fetched {values.Count()} row(s), matched {result.Count} escalation-linked row(s).");
+			engine?.GenerateInformation($"[NotifySubscribers] Escalation link filter for annotations: fetched {values.Count} row(s), matched {result.Count} escalation-linked row(s).");
 
 			return result;
 		}
@@ -554,7 +556,33 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private JObject DataverseGet(string relativePath)
 		{
-			var request = new HttpRequestMessage(HttpMethod.Get, $"{DataverseBaseUrl}/api/data/v9.2{relativePath}");
+			return DataverseGetInternal($"{DataverseBaseUrl}/api/data/v9.2{relativePath}", relativePath);
+		}
+
+		private List<JToken> DataverseGetAllValues(string relativePath, int maxPages)
+		{
+			var results = new List<JToken>();
+			var nextUrl = $"{DataverseBaseUrl}/api/data/v9.2{relativePath}";
+			var page = 0;
+
+			while (!String.IsNullOrWhiteSpace(nextUrl) && page < maxPages)
+			{
+				var json = DataverseGetInternal(nextUrl, $"{relativePath} (page {page + 1})");
+				foreach (var row in json["value"] ?? new JArray())
+				{
+					results.Add(row);
+				}
+
+				nextUrl = json["@odata.nextLink"]?.Value<string>();
+				page++;
+			}
+
+			return results;
+		}
+
+		private JObject DataverseGetInternal(string url, string requestLabel)
+		{
+			var request = new HttpRequestMessage(HttpMethod.Get, url);
 			request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 			request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 			request.Headers.Add("OData-MaxVersion", "4.0");
@@ -565,7 +593,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			var payload = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
 			if (!response.IsSuccessStatusCode)
 			{
-				throw new InvalidOperationException($"Dataverse GET failed ({(int)response.StatusCode}) {relativePath}: {payload}");
+				throw new InvalidOperationException($"Dataverse GET failed ({(int)response.StatusCode}) {requestLabel}: {payload}");
 			}
 
 			return JObject.Parse(payload);
