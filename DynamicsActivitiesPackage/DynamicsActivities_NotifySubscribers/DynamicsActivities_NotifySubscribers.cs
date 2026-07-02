@@ -2,9 +2,14 @@ namespace DynamicsActivitiesNotifySubscribers
 {
 	using System;
 	using System.Collections.Generic;
+	using System.Globalization;
 	using System.Linq;
+	using System.Net.Http;
+	using System.Net.Http.Headers;
 	using System.Text;
+	using System.Threading;
 	using Newtonsoft.Json;
+	using Newtonsoft.Json.Linq;
 	using Skyline.DataMiner.Automation;
 	using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
 	using Skyline.DataMiner.Net.Messages.SLDataGateway;
@@ -12,14 +17,15 @@ namespace DynamicsActivitiesNotifySubscribers
 
 	/// <summary>
 	/// Scheduled notification script for Activity Subscriptions.
-	/// Runs on a timer (e.g. every 15 minutes) and sends email digests
-	/// to subscribers whose frequency interval has elapsed.
-	/// Parameter: Frequency (instant|daily|weekly|monthly) — filters which subs to process.
 	/// </summary>
 	public class Script
 	{
-		// DOM IDs — keep in sync across: ManageSubscriptions, install script, and this script.
 		private const string ModuleId = "dynamics_activities";
+		private const string DataverseBaseUrl = "https://skyline365-qa.crm4.dynamics.com";
+		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
+		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
+		private const string ClientSecret = "71545c7c-4019-41a1-b5e9-d39144ba3839";
+
 		private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
 		private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
 		private static readonly Guid FieldScopeType = new Guid("e5c6d7e8-9f0a-1b2c-3d4e-5f6071829304");
@@ -31,6 +37,8 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
 
 		private DomHelper domHelper;
+		private HttpClient httpClient;
+		private string accessToken;
 
 		public void Run(IEngine engine)
 		{
@@ -59,20 +67,19 @@ namespace DynamicsActivitiesNotifySubscribers
 		private void RunSafe(IEngine engine)
 		{
 			domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
+			httpClient = new HttpClient();
+			accessToken = AcquireDataverseToken();
 
 			var frequency = engine.GetScriptParam("Frequency")?.Value?.Trim().ToLowerInvariant() ?? "daily";
 			var now = DateTime.UtcNow;
 
-			var enabledFilter = DomInstanceExposers.FieldValues.DomInstanceField(
-				new FieldDescriptorID(FieldEnabled)).Equal(true);
-			var frequencyFilter = DomInstanceExposers.FieldValues.DomInstanceField(
-				new FieldDescriptorID(FieldFrequency)).Equal(frequency);
+			var enabledFilter = DomInstanceExposers.FieldValues.DomInstanceField(new FieldDescriptorID(FieldEnabled)).Equal(true);
+			var frequencyFilter = DomInstanceExposers.FieldValues.DomInstanceField(new FieldDescriptorID(FieldFrequency)).Equal(frequency);
 
 			var allInstances = domHelper.DomInstances.Read(enabledFilter.AND(frequencyFilter));
 			engine.GenerateInformation($"[NotifySubscribers] Found {allInstances.Count} enabled '{frequency}' subscription(s).");
 
-			int emailsSent = 0;
-
+			var emailsSent = 0;
 			foreach (var instance in allInstances)
 			{
 				var section = instance.Sections.FirstOrDefault();
@@ -89,20 +96,19 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
-
 				if (!ShouldSend(frequency, lastSentAt, now)) continue;
 
+				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, lastSentAt, now);
+				if (activities.Count == 0) continue;
+
 				var subject = $"[DynamicsActivities] Activity digest for {scopeLabel ?? scopeValue}";
-				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, lastSentAt, now);
+				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, lastSentAt, now, activities);
 
 				try
 				{
 					engine.SendEmail(body, subject, userEmail);
 					emailsSent++;
-
-					section.AddOrReplaceFieldValue(new FieldValue(
-						new FieldDescriptorID(FieldLastSentAt),
-						new ValueWrapper<string>(now.ToString("o"))));
+					section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(now.ToString("o"))));
 					domHelper.DomInstances.Update(instance);
 				}
 				catch (Exception ex)
@@ -112,6 +118,210 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			engine.GenerateInformation($"[NotifySubscribers] Done. Sent {emailsSent} email(s).");
+		}
+
+		private string AcquireDataverseToken()
+		{
+			var tokenEndpoint = $"https://login.microsoftonline.com/{TenantId}/oauth2/v2.0/token";
+			var body = new FormUrlEncodedContent(new[]
+			{
+				new KeyValuePair<string, string>("grant_type", "client_credentials"),
+				new KeyValuePair<string, string>("client_id", ClientId),
+				new KeyValuePair<string, string>("client_secret", ClientSecret),
+				new KeyValuePair<string, string>("scope", $"{DataverseBaseUrl}/.default"),
+			});
+
+			var response = httpClient.PostAsync(tokenEndpoint, body).GetAwaiter().GetResult();
+			var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+			if (!response.IsSuccessStatusCode)
+			{
+				throw new InvalidOperationException($"Token request failed ({(int)response.StatusCode}): {json}");
+			}
+
+			var parsed = JObject.Parse(json);
+			var token = parsed["access_token"]?.Value<string>();
+			if (string.IsNullOrEmpty(token)) throw new InvalidOperationException("Token response did not include access_token.");
+			return token;
+		}
+
+		private List<ActivityItem> FetchActivities(string scopeType, string scopeValue, string activityTypesJson, DateTime since, DateTime until)
+		{
+			var accountIds = ResolveAccountIds(scopeType, scopeValue);
+			var requestedTypes = ParseActivityTypes(activityTypesJson);
+			var includeAllTypes = requestedTypes == null || requestedTypes.Count == 0;
+			var activities = new List<ActivityItem>();
+			var fromIso = since.ToString("o", CultureInfo.InvariantCulture);
+			var toIso = until.ToString("o", CultureInfo.InvariantCulture);
+
+			bool want(string type) => includeAllTypes || requestedTypes.Contains(type, StringComparer.OrdinalIgnoreCase);
+
+			if (want("phonecall")) activities.AddRange(FetchStandardActivities("phonecalls", "Phone Call", "_regardingobjectid_value", accountIds, fromIso, toIso));
+			if (want("appointment")) activities.AddRange(FetchStandardActivities("appointments", "Appointment", "_regardingobjectid_value", accountIds, fromIso, toIso));
+			if (want("email")) activities.AddRange(FetchStandardActivities("emails", "Email", "_regardingobjectid_value", accountIds, fromIso, toIso));
+			if (want("escalation")) activities.AddRange(FetchEscalations(accountIds, fromIso, toIso));
+			if (want("lead")) activities.AddRange(FetchLeads(accountIds, fromIso, toIso));
+			if (want("opportunity") || want("support")) activities.AddRange(FetchOpportunities(accountIds, fromIso, toIso, want("opportunity"), want("support")));
+			if (want("note")) activities.AddRange(FetchAnnotations(accountIds, fromIso, toIso));
+
+			return activities
+				.Where(a => !string.IsNullOrEmpty(a.Id))
+				.GroupBy(a => a.Id)
+				.Select(g => g.OrderByDescending(i => i.CreatedOn).First())
+				.OrderByDescending(i => i.CreatedOn)
+				.ToList();
+		}
+
+		private List<string> ResolveAccountIds(string scopeType, string scopeValue)
+		{
+			switch ((scopeType ?? string.Empty).ToLowerInvariant())
+			{
+				case "account":
+					return string.IsNullOrWhiteSpace(scopeValue) ? new List<string>() : new List<string> { scopeValue.Trim() };
+				case "country":
+					return QueryAccountIds($"address1_country eq '{EscapeODataString(scopeValue)}'");
+				case "region":
+					return QueryAccountIds($"address1_stateorprovince eq '{EscapeODataString(scopeValue)}'");
+				case "escalation":
+					return new List<string>();
+				default:
+					return new List<string>();
+			}
+		}
+
+		private List<string> QueryAccountIds(string filter)
+		{
+			var json = DataverseGet($"/accounts?$select=accountid&$filter={filter}&$top=200");
+			return json["value"]?.Select(v => v["accountid"]?.Value<string>()).Where(v => !string.IsNullOrEmpty(v)).ToList() ?? new List<string>();
+		}
+
+		private List<ActivityItem> FetchStandardActivities(string entitySet, string typeLabel, string lookupField, List<string> accountIds, string fromIso, string toIso)
+		{
+			var filters = BuildLookupFilters(lookupField, accountIds);
+			filters.Add($"createdon gt {fromIso}");
+			filters.Add($"createdon le {toIso}");
+			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
+			var json = DataverseGet($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
+
+			return json["value"]?.Select(v => new ActivityItem
+			{
+				Id = v["activityid"]?.Value<string>(),
+				EntityType = entitySet,
+				TypeLabel = typeLabel,
+				Subject = v["subject"]?.Value<string>(),
+				Description = v["description"]?.Value<string>(),
+				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+			}).ToList() ?? new List<ActivityItem>();
+		}
+
+		private List<ActivityItem> FetchEscalations(List<string> accountIds, string fromIso, string toIso)
+		{
+			var filters = BuildLookupFilters("_regardingobjectid_value", accountIds);
+			filters.Add($"createdon gt {fromIso}");
+			filters.Add($"createdon le {toIso}");
+			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
+			var json = DataverseGet($"/slc_escalations?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
+
+			return json["value"]?.Select(v => new ActivityItem
+			{
+				Id = v["activityid"]?.Value<string>(),
+				EntityType = "slc_escalations",
+				TypeLabel = "Escalation",
+				Subject = v["subject"]?.Value<string>(),
+				Description = v["description"]?.Value<string>(),
+				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+			}).ToList() ?? new List<ActivityItem>();
+		}
+
+		private List<ActivityItem> FetchLeads(List<string> accountIds, string fromIso, string toIso)
+		{
+			if (accountIds.Count == 0) return new List<ActivityItem>();
+			var parentFilter = "(" + string.Join(" or ", accountIds.Select(id => $"_parentaccountid_value eq {id}")) + ")";
+			var json = DataverseGet($"/leads?$select=leadid,subject,description,createdon,_parentaccountid_value&$filter={parentFilter} and createdon gt {fromIso} and createdon le {toIso}&$orderby=createdon desc&$top=100");
+
+			return json["value"]?.Select(v => new ActivityItem
+			{
+				Id = v["leadid"]?.Value<string>(),
+				EntityType = "leads",
+				TypeLabel = "Lead",
+				Subject = v["subject"]?.Value<string>(),
+				Description = v["description"]?.Value<string>(),
+				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				Regarding = v["_parentaccountid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+			}).ToList() ?? new List<ActivityItem>();
+		}
+
+		private List<ActivityItem> FetchOpportunities(List<string> accountIds, string fromIso, string toIso, bool includeOpportunity, bool includeSupport)
+		{
+			if (accountIds.Count == 0) return new List<ActivityItem>();
+			var parentFilter = "(" + string.Join(" or ", accountIds.Select(id => $"_parentaccountid_value eq {id}")) + ")";
+			var json = DataverseGet($"/opportunities?$select=opportunityid,name,description,createdon,_parentaccountid_value,slc_opportunitytype&$filter={parentFilter} and createdon gt {fromIso} and createdon le {toIso}&$orderby=createdon desc&$top=100");
+			var result = new List<ActivityItem>();
+			foreach (var v in json["value"] ?? new JArray())
+			{
+				var formattedType = (v["slc_opportunitytype@OData.Community.Display.V1.FormattedValue"]?.Value<string>() ?? string.Empty).ToLowerInvariant();
+				var isSupport = formattedType == "renewal";
+				if (isSupport && !includeSupport) continue;
+				if (!isSupport && !includeOpportunity) continue;
+				result.Add(new ActivityItem
+				{
+					Id = v["opportunityid"]?.Value<string>(),
+					EntityType = isSupport ? "support" : "opportunities",
+					TypeLabel = isSupport ? "Support" : "Opportunity",
+					Subject = v["name"]?.Value<string>(),
+					Description = v["description"]?.Value<string>(),
+					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+					Regarding = v["_parentaccountid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+				});
+			}
+
+			return result;
+		}
+
+		private List<ActivityItem> FetchAnnotations(List<string> accountIds, string fromIso, string toIso)
+		{
+			var filters = BuildLookupFilters("_objectid_value", accountIds);
+			filters.Add($"createdon gt {fromIso}");
+			filters.Add($"createdon le {toIso}");
+			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
+			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
+
+			return json["value"]?.Select(v => new ActivityItem
+			{
+				Id = v["annotationid"]?.Value<string>(),
+				EntityType = "annotations",
+				TypeLabel = "Note",
+				Subject = v["subject"]?.Value<string>(),
+				Description = v["notetext"]?.Value<string>(),
+				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+			}).ToList() ?? new List<ActivityItem>();
+		}
+
+		private List<string> BuildLookupFilters(string fieldName, List<string> ids)
+		{
+			if (ids == null || ids.Count == 0) return new List<string>();
+			return new List<string> { "(" + string.Join(" or ", ids.Select(id => $"{fieldName} eq {id}")) + ")" };
+		}
+
+		private JObject DataverseGet(string relativePath)
+		{
+			var request = new HttpRequestMessage(HttpMethod.Get, $"{DataverseBaseUrl}/api/data/v9.2{relativePath}");
+			request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+			request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+			request.Headers.Add("OData-MaxVersion", "4.0");
+			request.Headers.Add("OData-Version", "4.0");
+			request.Headers.Add("Prefer", "odata.include-annotations=\"OData.Community.Display.V1.FormattedValue,Microsoft.Dynamics.CRM.lookuplogicalname\",odata.maxpagesize=100");
+
+			var response = httpClient.SendAsync(request, CancellationToken.None).GetAwaiter().GetResult();
+			var payload = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+			if (!response.IsSuccessStatusCode)
+			{
+				throw new InvalidOperationException($"Dataverse GET failed ({(int)response.StatusCode}) {relativePath}: {payload}");
+			}
+
+			return JObject.Parse(payload);
 		}
 
 		private static bool ShouldSend(string frequency, DateTime lastSent, DateTime now)
@@ -131,29 +341,46 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 		}
 
-		private static string BuildEmailBody(
-			string userName, string scopeType, string scopeValue,
-			string scopeLabel, string activityTypesJson, DateTime since, DateTime until)
+		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, List<ActivityItem> activities)
 		{
 			var activityTypes = ParseActivityTypes(activityTypesJson);
 			var sb = new StringBuilder();
-			sb.AppendLine($"<html><body>");
-			sb.AppendLine($"<h2>Activity Digest for {userName ?? "Subscriber"}</h2>");
-			sb.AppendLine($"<p><strong>Scope:</strong> {scopeType} — {scopeLabel ?? scopeValue}</p>");
+			sb.AppendLine("<html><body style='font-family:Segoe UI,Arial,sans-serif;'>");
+			sb.AppendLine($"<h2>Activity Digest for {HtmlEncode(userName ?? "Subscriber")}</h2>");
+			sb.AppendLine($"<p><strong>Scope:</strong> {HtmlEncode(scopeType)} — {HtmlEncode(scopeLabel ?? scopeValue)}</p>");
 			sb.AppendLine($"<p><strong>Period:</strong> {since:yyyy-MM-dd HH:mm} UTC → {until:yyyy-MM-dd HH:mm} UTC</p>");
-
-			if (activityTypes != null && activityTypes.Count > 0)
-			{
-				sb.AppendLine($"<p><strong>Activity types:</strong> {string.Join(", ", activityTypes)}</p>");
-			}
-			else
-			{
-				sb.AppendLine($"<p><strong>Activity types:</strong> All</p>");
-			}
-
+			sb.AppendLine($"<p><strong>New activities:</strong> {activities.Count}</p>");
+			sb.AppendLine(activityTypes != null && activityTypes.Count > 0
+				? $"<p><strong>Activity types:</strong> {HtmlEncode(string.Join(", ", activityTypes))}</p>"
+				: "<p><strong>Activity types:</strong> All</p>");
 			sb.AppendLine("<hr/>");
-			sb.AppendLine("<p><em>Note: This is a notification that new activities matching your subscription exist. ");
-			sb.AppendLine("Please check the DynamicsActivities app for details.</em></p>");
+			sb.AppendLine("<table style='border-collapse:collapse;width:100%;'>");
+			sb.AppendLine("<thead><tr>");
+			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>When (UTC)</th>");
+			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>Type</th>");
+			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>Subject</th>");
+			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>Regarding</th>");
+			sb.AppendLine("</tr></thead><tbody>");
+
+			foreach (var item in activities)
+			{
+				var link = GetDynamicsUrl(item.EntityType, item.Id);
+				sb.AppendLine("<tr>");
+				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'>{item.CreatedOn:yyyy-MM-dd HH:mm}</td>");
+				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'>{HtmlEncode(item.TypeLabel)}</td>");
+				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'><a href='{HtmlEncode(link)}'>{HtmlEncode(item.Subject ?? "(No subject)")}</a></td>");
+				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'>{HtmlEncode(item.Regarding)}</td>");
+				sb.AppendLine("</tr>");
+				if (!string.IsNullOrWhiteSpace(item.Description))
+				{
+					sb.AppendLine("<tr>");
+					sb.AppendLine($"<td colspan='4' style='padding:6px 8px 12px 8px;color:#555;border-bottom:1px solid #f0f0f0;'>{HtmlEncode(TrimForEmail(item.Description, 400))}</td>");
+					sb.AppendLine("</tr>");
+				}
+			}
+
+			sb.AppendLine("</tbody></table>");
+			sb.AppendLine("<p style='margin-top:16px;color:#666;'><em>You only receive entries newer than your previous digest for this subscription.</em></p>");
 			sb.AppendLine("</body></html>");
 			return sb.ToString();
 		}
@@ -168,8 +395,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static DateTime? ParseDateTime(string iso)
 		{
 			if (string.IsNullOrEmpty(iso)) return null;
-			if (DateTime.TryParse(iso, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
-				return dt;
+			if (DateTime.TryParse(iso, null, DateTimeStyles.RoundtripKind, out var dt)) return dt;
 			return null;
 		}
 
@@ -178,6 +404,66 @@ namespace DynamicsActivitiesNotifySubscribers
 			if (string.IsNullOrEmpty(json)) return null;
 			try { return JsonConvert.DeserializeObject<List<string>>(json); }
 			catch { return null; }
+		}
+
+		private static string EscapeODataString(string input)
+		{
+			return (input ?? string.Empty).Replace("'", "''");
+		}
+
+		private static string HtmlEncode(string value)
+		{
+			if (string.IsNullOrEmpty(value)) return string.Empty;
+			return value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;").Replace("'", "&#39;");
+		}
+
+		private static string TrimForEmail(string value, int max)
+		{
+			if (string.IsNullOrEmpty(value) || value.Length <= max) return value;
+			return value.Substring(0, max) + "...";
+		}
+
+		private static string GetDynamicsUrl(string entityType, string activityId)
+		{
+			var etn = "activitypointer";
+			switch ((entityType ?? string.Empty).ToLowerInvariant())
+			{
+				case "phonecalls":
+					etn = "phonecall";
+					break;
+				case "appointments":
+					etn = "appointment";
+					break;
+				case "emails":
+					etn = "email";
+					break;
+				case "slc_escalations":
+					etn = "slc_escalation";
+					break;
+				case "annotations":
+					etn = "annotation";
+					break;
+				case "leads":
+					etn = "lead";
+					break;
+				case "opportunities":
+				case "support":
+					etn = "opportunity";
+					break;
+			}
+
+			return $"{DataverseBaseUrl}/main.aspx?etn={etn}&id={activityId}&pagetype=entityrecord";
+		}
+
+		private sealed class ActivityItem
+		{
+			public string Id { get; set; }
+			public string EntityType { get; set; }
+			public string TypeLabel { get; set; }
+			public string Subject { get; set; }
+			public string Description { get; set; }
+			public string Regarding { get; set; }
+			public DateTime CreatedOn { get; set; }
 		}
 	}
 }
