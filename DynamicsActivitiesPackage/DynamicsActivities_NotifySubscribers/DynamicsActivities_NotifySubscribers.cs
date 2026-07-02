@@ -19,6 +19,7 @@ namespace DynamicsActivitiesNotifySubscribers
 	{
 		private const string ModuleId = "dynamics_activities";
 		private const string DataverseBaseUrl = "https://skyline365-qa.crm4.dynamics.com";
+		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
 
@@ -439,43 +440,55 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			var activityTypes = ParseActivityTypes(activityTypesJson);
 			var sb = new StringBuilder();
-			sb.AppendLine("<html><body style='font-family:Segoe UI,Arial,sans-serif;'>");
-			sb.AppendLine($"<h2>Activity Digest for {HtmlEncode(userName ?? "Subscriber")}</h2>");
-			sb.AppendLine($"<p><strong>Scope:</strong> {HtmlEncode(scopeType)} — {HtmlEncode(scopeLabel ?? scopeValue)}</p>");
-			sb.AppendLine($"<p><strong>Period:</strong> {since:yyyy-MM-dd HH:mm} UTC → {until:yyyy-MM-dd HH:mm} UTC</p>");
-			sb.AppendLine($"<p><strong>New activities:</strong> {activities.Count}</p>");
+			sb.AppendLine("<!DOCTYPE html><html><head><meta charset='utf-8' />");
+			sb.AppendLine("<meta name='viewport' content='width=device-width,initial-scale=1' />");
+			sb.AppendLine("</head><body style='margin:0;padding:0;background:#f6f6f6;font-family:Segoe UI,Arial,sans-serif;'>");
+			sb.AppendLine("<div style='max-width:640px;margin:24px auto;border:1px solid #e1e1e2;border-radius:12px;overflow:hidden;background:#fdfdfd;'>");
+			sb.AppendLine("<div style='padding:24px 28px;background:#eff0f0;border-bottom:1px solid #e1e1e2;'>");
+			sb.AppendLine("<div style='font-size:22px;font-weight:700;color:#151a22;'>Activity Digest</div>");
+			sb.AppendLine($"<div style='margin-top:6px;color:#727579;font-size:13px;'>For {HtmlEncode(userName ?? "Subscriber")}</div>");
+			sb.AppendLine("</div>");
+			sb.AppendLine("<div style='padding:24px 28px;'>");
+			sb.AppendLine("<div style='background:#eff0f0;border-left:3px solid #2563eb;padding:14px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;color:#44484e;font-size:14px;line-height:1.5;'>");
+			sb.AppendLine($"<div><strong>Scope:</strong> {HtmlEncode(scopeType)} — {HtmlEncode(scopeLabel ?? scopeValue)}</div>");
+			sb.AppendLine($"<div><strong>Period:</strong> {since:yyyy-MM-dd HH:mm} UTC → {until:yyyy-MM-dd HH:mm} UTC</div>");
+			sb.AppendLine($"<div><strong>New activities:</strong> {activities.Count}</div>");
 			sb.AppendLine(activityTypes != null && activityTypes.Count > 0
-				? $"<p><strong>Activity types:</strong> {HtmlEncode(string.Join(", ", activityTypes))}</p>"
-				: "<p><strong>Activity types:</strong> All</p>");
-			sb.AppendLine("<hr/>");
-			sb.AppendLine("<table style='border-collapse:collapse;width:100%;'>");
-			sb.AppendLine("<thead><tr>");
-			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>When (UTC)</th>");
-			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>Type</th>");
-			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>Subject</th>");
-			sb.AppendLine("<th style='text-align:left;border-bottom:1px solid #ddd;padding:8px;'>Regarding</th>");
-			sb.AppendLine("</tr></thead><tbody>");
+				? $"<div><strong>Activity types:</strong> {HtmlEncode(string.Join(", ", activityTypes))}</div>"
+				: "<div><strong>Activity types:</strong> All</div>");
+			sb.AppendLine("</div>");
+			sb.AppendLine($"<div style='margin-bottom:16px;'><a href='{HtmlEncode(ActivitiesAppUrl)}' style='display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;'>Open Dynamics Activities</a></div>");
 
 			foreach (var item in activities)
 			{
 				var link = GetDynamicsUrl(item.EntityType, item.Id);
-				sb.AppendLine("<tr>");
-				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'>{item.CreatedOn:yyyy-MM-dd HH:mm}</td>");
-				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'>{HtmlEncode(item.TypeLabel)}</td>");
-				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'><a href='{HtmlEncode(link)}'>{HtmlEncode(item.Subject ?? "(No subject)")}</a></td>");
-				sb.AppendLine($"<td style='padding:8px;border-bottom:1px solid #f0f0f0;'>{HtmlEncode(item.Regarding)}</td>");
-				sb.AppendLine("</tr>");
+				var typeColor = GetTypeColor(item.EntityType);
+				var typeLabel = GetTypeBadgeLabel(item);
+
+				sb.AppendLine("<div style='border:1px solid #e1e1e2;border-radius:10px;padding:14px 14px 12px 14px;margin-bottom:12px;background:#fdfdfd;'>");
+				sb.AppendLine("<div style='margin-bottom:8px;'>");
+				sb.AppendLine($"<span style='display:inline-block;background:{typeColor}22;color:{typeColor};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'>{HtmlEncode(typeLabel)}</span>");
+				sb.AppendLine($"<span style='color:#727579;font-size:12px;margin-left:10px;'>{item.CreatedOn:yyyy-MM-dd HH:mm} UTC</span>");
+				sb.AppendLine("</div>");
+				sb.AppendLine($"<div style='font-weight:600;color:#151a22;margin-bottom:4px;'>{HtmlEncode(item.Subject ?? "(No subject)")}</div>");
+				sb.AppendLine($"<div style='color:#727579;font-size:13px;margin-bottom:10px;'>Regarding: {HtmlEncode(item.Regarding)}</div>");
 				if (!string.IsNullOrWhiteSpace(item.Description))
 				{
-					sb.AppendLine("<tr>");
-					sb.AppendLine($"<td colspan='4' style='padding:6px 8px 12px 8px;color:#555;border-bottom:1px solid #f0f0f0;'>{HtmlEncode(TrimForEmail(item.Description, 400))}</td>");
-					sb.AppendLine("</tr>");
+					sb.AppendLine($"<div style='color:#555;font-size:13px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;'>{HtmlEncode(TrimForEmail(item.Description, 400))}</div>");
 				}
+				sb.AppendLine("<div style='display:flex;gap:8px;flex-wrap:wrap;'>");
+				sb.AppendLine($"<a href='{HtmlEncode(link)}' style='color:#2563eb;font-size:12px;text-decoration:none;border:1px solid #2563eb;padding:5px 12px;border-radius:6px;'>View in Dynamics ↗</a>");
+				sb.AppendLine($"<a href='{HtmlEncode(ActivitiesAppUrl)}?activity={HtmlEncode(item.Id)}' style='color:#2563eb;font-size:12px;text-decoration:none;border:1px solid #2563eb;padding:5px 12px;border-radius:6px;'>Open in Activities app</a>");
+				sb.AppendLine("</div>");
+				sb.AppendLine("</div>");
 			}
 
-			sb.AppendLine("</tbody></table>");
-			sb.AppendLine("<p style='margin-top:16px;color:#666;'><em>You only receive entries newer than your previous digest for this subscription.</em></p>");
-			sb.AppendLine("</body></html>");
+			sb.AppendLine("<div style='margin-top:16px;color:#666;font-size:12px;line-height:1.5;'>You only receive entries newer than your previous digest for this subscription.</div>");
+			sb.AppendLine("</div>");
+			sb.AppendLine("<div style='padding:14px 28px;border-top:1px solid #e1e1e2;font-size:11px;color:#727579;text-align:center;'>");
+			sb.AppendLine("You are receiving this because you subscribed to activity notifications in Dynamics Activities.<br/>");
+			sb.AppendLine($"<a href='{HtmlEncode(ActivitiesAppUrl)}?tab=subscriptions' style='color:#2563eb;text-decoration:none;'>Manage subscriptions</a>");
+			sb.AppendLine("</div></div></body></html>");
 			return sb.ToString();
 		}
 
@@ -515,6 +528,51 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			if (string.IsNullOrEmpty(value) || value.Length <= max) return value;
 			return value.Substring(0, max) + "...";
+		}
+
+		private static string GetTypeColor(string entityType)
+		{
+			switch ((entityType ?? string.Empty).ToLowerInvariant())
+			{
+				case "phonecalls":
+					return "#24A148";
+				case "appointments":
+					return "#2563EB";
+				case "slc_escalations":
+					return "#DA1E28";
+				case "annotations":
+					return "#F1C21B";
+				case "emails":
+					return "#8A3FFC";
+				default:
+					return "#FB923C";
+			}
+		}
+
+		private static string GetTypeBadgeLabel(ActivityItem item)
+		{
+			var entityType = (item.EntityType ?? string.Empty).ToLowerInvariant();
+			switch (entityType)
+			{
+				case "phonecalls":
+					return "Phone Call";
+				case "appointments":
+					return "Appointment";
+				case "slc_escalations":
+					return "Escalation";
+				case "annotations":
+					return "Note";
+				case "emails":
+					return "Email";
+				case "leads":
+					return "Lead";
+				case "opportunities":
+					return "Opportunity";
+				case "support":
+					return "Support";
+				default:
+					return item.TypeLabel ?? "Activity";
+			}
 		}
 
 		private static string GetDynamicsUrl(string entityType, string activityId)
