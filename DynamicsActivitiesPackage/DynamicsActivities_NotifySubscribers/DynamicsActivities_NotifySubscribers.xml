@@ -18,6 +18,9 @@
 		<ScriptParameter id="10" type="string" values="">
 			<Description>Frequency</Description>
 		</ScriptParameter>
+		<ScriptParameter id="11" type="string" values="">
+			<Description>ClientSecret</Description>
+		</ScriptParameter>
 	</Parameters>
 
 	<Script>

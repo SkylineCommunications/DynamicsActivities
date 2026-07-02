@@ -15,16 +15,12 @@ namespace DynamicsActivitiesNotifySubscribers
 	using Skyline.DataMiner.Net.Messages.SLDataGateway;
 	using Skyline.DataMiner.Net.Sections;
 
-	/// <summary>
-	/// Scheduled notification script for Activity Subscriptions.
-	/// </summary>
 	public class Script
 	{
 		private const string ModuleId = "dynamics_activities";
 		private const string DataverseBaseUrl = "https://skyline365-qa.crm4.dynamics.com";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
-		private const string ClientSecret = "71545c7c-4019-41a1-b5e9-d39144ba3839";
 
 		private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
 		private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
@@ -39,6 +35,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private DomHelper domHelper;
 		private HttpClient httpClient;
 		private string accessToken;
+		private string clientSecret;
 
 		public void Run(IEngine engine)
 		{
@@ -68,6 +65,12 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
 			httpClient = new HttpClient();
+			clientSecret = engine.GetScriptParam("ClientSecret")?.Value?.Trim();
+			if (string.IsNullOrWhiteSpace(clientSecret))
+			{
+				throw new InvalidOperationException("Missing ClientSecret script parameter.");
+			}
+
 			accessToken = AcquireDataverseToken();
 
 			var frequency = engine.GetScriptParam("Frequency")?.Value?.Trim().ToLowerInvariant() ?? "daily";
@@ -127,7 +130,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			{
 				new KeyValuePair<string, string>("grant_type", "client_credentials"),
 				new KeyValuePair<string, string>("client_id", ClientId),
-				new KeyValuePair<string, string>("client_secret", ClientSecret),
+				new KeyValuePair<string, string>("client_secret", clientSecret),
 				new KeyValuePair<string, string>("scope", $"{DataverseBaseUrl}/.default"),
 			});
 
