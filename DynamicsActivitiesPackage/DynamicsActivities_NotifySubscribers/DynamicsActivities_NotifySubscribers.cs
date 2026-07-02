@@ -159,15 +159,15 @@ namespace DynamicsActivitiesNotifySubscribers
 			var activities = new List<ActivityItem>();
 			var fromIso = BuildCreatedOnLowerBound(since);
 
-			bool want(string type) => includeAllTypes || requestedTypes.Contains(type, StringComparer.OrdinalIgnoreCase);
+			bool want(params string[] values) => includeAllTypes || values.Any(v => requestedTypes.Contains(v, StringComparer.OrdinalIgnoreCase));
 
-			if (want("phonecall")) activities.AddRange(FetchStandardActivities("phonecalls", "Phone Call", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
-			if (want("appointment")) activities.AddRange(FetchStandardActivities("appointments", "Appointment", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
-			if (want("email")) activities.AddRange(FetchStandardActivities("emails", "Email", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
-			if (want("escalation")) activities.AddRange(FetchEscalations(scope.ActivityLookupIds, fromIso));
-			if (want("lead")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso));
-			if (want("opportunity") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, want("opportunity"), want("support")));
-			if (want("note")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso));
+			if (want("phonecall", "phonecalls")) activities.AddRange(FetchStandardActivities("phonecalls", "Phone Call", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
+			if (want("appointment", "appointments")) activities.AddRange(FetchStandardActivities("appointments", "Appointment", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
+			if (want("email", "emails")) activities.AddRange(FetchStandardActivities("emails", "Email", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
+			if (want("escalation", "slc_escalations")) activities.AddRange(FetchEscalations(scope.ActivityLookupIds, fromIso));
+			if (want("lead", "leads")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso));
+			if (want("opportunity", "opportunities") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, want("opportunity", "opportunities"), want("support")));
+			if (want("note", "annotations")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso));
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
