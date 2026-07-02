@@ -157,18 +157,17 @@ namespace DynamicsActivitiesNotifySubscribers
 			var requestedTypes = ParseActivityTypes(activityTypesJson);
 			var includeAllTypes = requestedTypes == null || requestedTypes.Count == 0;
 			var activities = new List<ActivityItem>();
-			var fromIso = since.ToString("o", CultureInfo.InvariantCulture);
-			var toIso = until.ToString("o", CultureInfo.InvariantCulture);
+			var fromIso = BuildCreatedOnLowerBound(since);
 
 			bool want(string type) => includeAllTypes || requestedTypes.Contains(type, StringComparer.OrdinalIgnoreCase);
 
-			if (want("phonecall")) activities.AddRange(FetchStandardActivities("phonecalls", "Phone Call", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso, toIso));
-			if (want("appointment")) activities.AddRange(FetchStandardActivities("appointments", "Appointment", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso, toIso));
-			if (want("email")) activities.AddRange(FetchStandardActivities("emails", "Email", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso, toIso));
-			if (want("escalation")) activities.AddRange(FetchEscalations(scope.ActivityLookupIds, fromIso, toIso));
-			if (want("lead")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso, toIso));
-			if (want("opportunity") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, toIso, want("opportunity"), want("support")));
-			if (want("note")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso, toIso));
+			if (want("phonecall")) activities.AddRange(FetchStandardActivities("phonecalls", "Phone Call", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
+			if (want("appointment")) activities.AddRange(FetchStandardActivities("appointments", "Appointment", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
+			if (want("email")) activities.AddRange(FetchStandardActivities("emails", "Email", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso));
+			if (want("escalation")) activities.AddRange(FetchEscalations(scope.ActivityLookupIds, fromIso));
+			if (want("lead")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso));
+			if (want("opportunity") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, want("opportunity"), want("support")));
+			if (want("note")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso));
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
@@ -272,11 +271,22 @@ namespace DynamicsActivitiesNotifySubscribers
 			return "(" + string.Join(" or ", valid.Select(id => $"{fieldName} eq {id}")) + ")";
 		}
 
-		private List<ActivityItem> FetchStandardActivities(string entitySet, string typeLabel, string lookupField, List<string> accountIds, string fromIso, string toIso)
+		private static string BuildCreatedOnLowerBound(DateTime since)
+		{
+			// Dataverse does not reliably handle DateTime.MinValue in OData filters.
+			// First-run should not enforce a lower bound.
+			var safeMinimum = new DateTime(1753, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+			if (since <= safeMinimum) return null;
+			return since.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
+		}
+
+		private List<ActivityItem> FetchStandardActivities(string entitySet, string typeLabel, string lookupField, List<string> accountIds, string fromIso)
 		{
 			var filters = BuildLookupFilters(lookupField, accountIds);
-			filters.Add($"createdon gt {fromIso}");
-			filters.Add($"createdon le {toIso}");
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var json = DataverseGet($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
 
@@ -292,11 +302,13 @@ namespace DynamicsActivitiesNotifySubscribers
 			}).ToList() ?? new List<ActivityItem>();
 		}
 
-		private List<ActivityItem> FetchEscalations(List<string> accountIds, string fromIso, string toIso)
+		private List<ActivityItem> FetchEscalations(List<string> accountIds, string fromIso)
 		{
 			var filters = BuildLookupFilters("_regardingobjectid_value", accountIds);
-			filters.Add($"createdon gt {fromIso}");
-			filters.Add($"createdon le {toIso}");
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var json = DataverseGet($"/slc_escalations?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
 
@@ -312,11 +324,12 @@ namespace DynamicsActivitiesNotifySubscribers
 			}).ToList() ?? new List<ActivityItem>();
 		}
 
-		private List<ActivityItem> FetchLeads(List<string> accountIds, string fromIso, string toIso)
+		private List<ActivityItem> FetchLeads(List<string> accountIds, string fromIso)
 		{
 			if (accountIds.Count == 0) return new List<ActivityItem>();
 			var parentFilter = "(" + string.Join(" or ", accountIds.Select(id => $"_parentaccountid_value eq {id}")) + ")";
-			var json = DataverseGet($"/leads?$select=leadid,subject,description,createdon,_parentaccountid_value&$filter={parentFilter} and createdon gt {fromIso} and createdon le {toIso}&$orderby=createdon desc&$top=100");
+			var lowerBound = !string.IsNullOrEmpty(fromIso) ? $" and createdon gt {fromIso}" : string.Empty;
+			var json = DataverseGet($"/leads?$select=leadid,subject,description,createdon,_parentaccountid_value&$filter={parentFilter}{lowerBound}&$orderby=createdon desc&$top=100");
 
 			return json["value"]?.Select(v => new ActivityItem
 			{
@@ -330,11 +343,12 @@ namespace DynamicsActivitiesNotifySubscribers
 			}).ToList() ?? new List<ActivityItem>();
 		}
 
-		private List<ActivityItem> FetchOpportunities(List<string> accountIds, string fromIso, string toIso, bool includeOpportunity, bool includeSupport)
+		private List<ActivityItem> FetchOpportunities(List<string> accountIds, string fromIso, bool includeOpportunity, bool includeSupport)
 		{
 			if (accountIds.Count == 0) return new List<ActivityItem>();
 			var parentFilter = "(" + string.Join(" or ", accountIds.Select(id => $"_parentaccountid_value eq {id}")) + ")";
-			var json = DataverseGet($"/opportunities?$select=opportunityid,name,description,createdon,_parentaccountid_value,slc_opportunitytype&$filter={parentFilter} and createdon gt {fromIso} and createdon le {toIso}&$orderby=createdon desc&$top=100");
+			var lowerBound = !string.IsNullOrEmpty(fromIso) ? $" and createdon gt {fromIso}" : string.Empty;
+			var json = DataverseGet($"/opportunities?$select=opportunityid,name,description,createdon,_parentaccountid_value,slc_opportunitytype&$filter={parentFilter}{lowerBound}&$orderby=createdon desc&$top=100");
 			var result = new List<ActivityItem>();
 			foreach (var v in json["value"] ?? new JArray())
 			{
@@ -357,11 +371,13 @@ namespace DynamicsActivitiesNotifySubscribers
 			return result;
 		}
 
-		private List<ActivityItem> FetchAnnotations(List<string> accountIds, string fromIso, string toIso)
+		private List<ActivityItem> FetchAnnotations(List<string> accountIds, string fromIso)
 		{
 			var filters = BuildLookupFilters("_objectid_value", accountIds);
-			filters.Add($"createdon gt {fromIso}");
-			filters.Add($"createdon le {toIso}");
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
 
