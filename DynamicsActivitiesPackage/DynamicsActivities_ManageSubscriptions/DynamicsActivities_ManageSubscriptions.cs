@@ -4,6 +4,7 @@ namespace DynamicsActivitiesManageSubscriptions
 	using System.Collections.Generic;
 	using System.Linq;
 	using Newtonsoft.Json;
+	using Newtonsoft.Json.Linq;
 	using Skyline.DataMiner.Automation;
 	using Skyline.DataMiner.Net.Apps.DataMinerObjectModel;
 	using Skyline.DataMiner.Net.Apps.Modules;
@@ -130,6 +131,7 @@ namespace DynamicsActivitiesManageSubscriptions
 		private string HandleCreate(string payload, string userEmail, string userName)
 		{
 			var dto = JsonConvert.DeserializeObject<SubscriptionDto>(payload);
+			var normalizedActivityTypes = NormalizeActivityTypes(dto.ActivityTypes);
 
 			var instance = new DomInstance
 			{
@@ -143,7 +145,7 @@ namespace DynamicsActivitiesManageSubscriptions
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeValue), new ValueWrapper<string>(dto.ScopeValue ?? string.Empty)));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeLabel), new ValueWrapper<string>(dto.ScopeLabel ?? string.Empty)));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldFrequency), new ValueWrapper<string>(dto.Frequency ?? "daily")));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(dto.ActivityTypes != null ? JsonConvert.SerializeObject(dto.ActivityTypes) : "[]")));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(JsonConvert.SerializeObject(normalizedActivityTypes))));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(true)));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(string.Empty)));
 
@@ -155,7 +157,8 @@ namespace DynamicsActivitiesManageSubscriptions
 
 		private string HandleUpdate(string payload)
 		{
-			var dto = JsonConvert.DeserializeObject<SubscriptionDto>(payload);
+			var payloadObj = string.IsNullOrWhiteSpace(payload) ? new JObject() : JObject.Parse(payload);
+			var dto = payloadObj.ToObject<SubscriptionDto>() ?? new SubscriptionDto();
 			if (string.IsNullOrEmpty(dto.Id))
 			{
 				return JsonConvert.SerializeObject(new { error = "Missing id" });
@@ -179,8 +182,15 @@ namespace DynamicsActivitiesManageSubscriptions
 				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldScopeLabel), new ValueWrapper<string>(dto.ScopeLabel)));
 			if (dto.Frequency != null)
 				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldFrequency), new ValueWrapper<string>(dto.Frequency)));
-			if (dto.ActivityTypes != null)
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(JsonConvert.SerializeObject(dto.ActivityTypes))));
+			if (payloadObj.Property("activityTypes") != null)
+			{
+				var activityTypesToken = payloadObj["activityTypes"];
+				var activityTypes = activityTypesToken?.Type == JTokenType.Null
+					? null
+					: activityTypesToken?.ToObject<List<string>>();
+				var normalizedActivityTypes = NormalizeActivityTypes(activityTypes);
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(JsonConvert.SerializeObject(normalizedActivityTypes))));
+			}
 			if (dto.Enabled.HasValue)
 				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(dto.Enabled.Value)));
 
@@ -235,8 +245,54 @@ namespace DynamicsActivitiesManageSubscriptions
 		private static List<string> ParseActivityTypes(string json)
 		{
 			if (string.IsNullOrEmpty(json)) return null;
-			try { return JsonConvert.DeserializeObject<List<string>>(json); }
+			try
+			{
+				var values = JsonConvert.DeserializeObject<List<string>>(json);
+				var normalized = NormalizeActivityTypes(values);
+				return normalized.Count == 0 ? null : normalized;
+			}
 			catch { return null; }
+		}
+
+		private static List<string> NormalizeActivityTypes(List<string> values)
+		{
+			if (values == null || values.Count == 0)
+			{
+				return new List<string>();
+			}
+
+			string normalize(string value)
+			{
+				var key = (value ?? string.Empty).Trim().ToLowerInvariant();
+				switch (key)
+				{
+					case "phonecall":
+					case "phonecalls":
+						return "phonecalls";
+					case "appointment":
+					case "appointments":
+						return "appointments";
+					case "email":
+					case "emails":
+						return "emails";
+					case "escalation":
+					case "slc_escalation":
+					case "slc_escalations":
+						return "slc_escalations";
+					case "annotation":
+					case "annotations":
+					case "note":
+						return "annotations";
+					default:
+						return null;
+				}
+			}
+
+			return values
+				.Select(normalize)
+				.Where(v => !string.IsNullOrEmpty(v))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
 		}
 	}
 

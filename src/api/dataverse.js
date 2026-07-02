@@ -317,14 +317,44 @@ export async function searchLeads(msalInstance, query) {
   return results
 }
 
-export async function findContactByEmail(msalInstance, email) {
+export async function resolveAccountForRegarding(msalInstance, { regardingType, regardingId }) {
+  if (!regardingType || !regardingId) return null
+
+  if (regardingType === 'account') {
+    const account = await dvFetch(msalInstance, `/accounts(${regardingId})?$select=accountid,name`).catch(() => null)
+    if (!account?.accountid) return null
+    return { accountid: account.accountid, name: account.name || 'Account' }
+  }
+
+  const regardingEntity = regardingType === 'opportunity' ? 'opportunities' : regardingType === 'lead' ? 'leads' : null
+  if (!regardingEntity) return null
+
+  const regardingRecord = await dvFetch(
+    msalInstance,
+    `/${regardingEntity}(${regardingId})?$select=_parentaccountid_value`,
+  ).catch(() => null)
+  const accountId = regardingRecord?._parentaccountid_value
+  if (!accountId) return null
+
+  return {
+    accountid: accountId,
+    name: regardingRecord['_parentaccountid_value@OData.Community.Display.V1.FormattedValue'] || 'Account',
+  }
+}
+
+export async function findContactByEmail(msalInstance, email, preferredAccountId = null) {
   if (!email) return null
   const enc = encodeURIComponent(email.toLowerCase())
   const data = await dvFetch(
     msalInstance,
-    `/contacts?$filter=emailaddress1 eq '${enc}'&$select=contactid,fullname,emailaddress1,_parentcustomerid_value&$top=1`,
+    `/contacts?$filter=emailaddress1 eq '${enc}'&$select=contactid,fullname,emailaddress1,_parentcustomerid_value&$orderby=fullname asc&$top=10`,
   )
-  return data?.value?.[0] ?? null
+  const contacts = data?.value ?? []
+  if (!contacts.length) return null
+  if (!preferredAccountId) return contacts[0]
+
+  const preferred = contacts.find((contact) => contact?._parentcustomerid_value === preferredAccountId)
+  return preferred ?? contacts[0]
 }
 
 export async function suggestAccountByEmailDomain(msalInstance, email) {
@@ -507,10 +537,10 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
 export async function createInboxEmailActivity(
   msalInstance,
-  { message, regardingType, regardingId, contactsByEmail = {} },
+  { message, regardingType, regardingId, regardingAccountId, contactsByEmail = {} },
 ) {
   if (!message) throw new Error('Message is required')
-  if (!regardingType || !regardingId) throw new Error('A Dynamics link target is required')
+  if (!regardingType || (!regardingId && !regardingAccountId)) throw new Error('A Dynamics link target is required')
 
   const fromAddress = message.from?.email || ''
   const toRecipients = [...(message.toRecipients ?? []), ...(message.ccRecipients ?? [])]
@@ -537,24 +567,30 @@ export async function createInboxEmailActivity(
     }
   }
 
-  const bindName = `regardingobjectid_${regardingType}@odata.bind`
+  const isEscalationLink = ['escalation', 'slc_escalation', 'slc_escalations'].includes(regardingType)
+  const resolvedRegardingType = isEscalationLink ? 'account' : regardingType
+  const resolvedRegardingId = isEscalationLink ? regardingAccountId : regardingId
+  const bindName = `regardingobjectid_${resolvedRegardingType}@odata.bind`
   const entityPlural = {
     account: 'accounts',
     opportunity: 'opportunities',
     lead: 'leads',
-  }[regardingType]
+  }[resolvedRegardingType]
 
   if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
+  if (!resolvedRegardingId) throw new Error(`Missing Dynamics link id for type: ${regardingType}`)
+
+  const description = [message.bodyPreview, `Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}`]
+    .filter(Boolean)
+    .join('\n\n')
 
   const body = {
     subject: message.subject || '(No subject)',
-    description: [message.bodyPreview, `Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}`]
-      .filter(Boolean)
-      .join('\n\n'),
+    description: isEscalationLink ? `[Linked to escalation]\n${description}` : description,
     directioncode: true,
     actualend: message.receivedDateTime ? message.receivedDateTime.toISOString() : undefined,
     ...(message.internetMessageId ? { messageid: message.internetMessageId.toLowerCase() } : {}),
-    [bindName]: `/${entityPlural}(${regardingId})`,
+    [bindName]: `/${entityPlural}(${resolvedRegardingId})`,
     email_activity_parties: parties,
   }
 
@@ -576,18 +612,22 @@ export async function createInboxEmailActivity(
 
 export async function createInboxAppointmentActivity(
   msalInstance,
-  { event, regardingType, regardingId, contactsByEmail = {} },
+  { event, regardingType, regardingId, regardingAccountId, contactsByEmail = {} },
 ) {
   if (!event) throw new Error('Calendar event is required')
-  if (!regardingType || !regardingId) throw new Error('A Dynamics link target is required')
+  if (!regardingType || (!regardingId && !regardingAccountId)) throw new Error('A Dynamics link target is required')
 
-  const bindName = `regardingobjectid_${regardingType}@odata.bind`
+  const isEscalationLink = ['escalation', 'slc_escalation', 'slc_escalations'].includes(regardingType)
+  const resolvedRegardingType = isEscalationLink ? 'account' : regardingType
+  const resolvedRegardingId = isEscalationLink ? regardingAccountId : regardingId
+  const bindName = `regardingobjectid_${resolvedRegardingType}@odata.bind`
   const entityPlural = {
     account: 'accounts',
     opportunity: 'opportunities',
     lead: 'leads',
-  }[regardingType]
+  }[resolvedRegardingType]
   if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
+  if (!resolvedRegardingId) throw new Error(`Missing Dynamics link id for type: ${regardingType}`)
 
   const attendees = event.attendees ?? []
   const parties = []
@@ -619,16 +659,18 @@ export async function createInboxAppointmentActivity(
     ? new Date(event.end).toISOString()
     : new Date(new Date(start).getTime() + 30 * 60 * 1000).toISOString()
 
+  const description = [
+    event.bodyPreview,
+    `Imported from calendar${event.start ? ` on ${new Date(event.start).toLocaleString()}` : ''}`,
+    event.location ? `Location: ${event.location}` : '',
+  ].filter(Boolean).join('\n\n')
+
   const body = {
     subject: event.subject || '(No subject)',
-    description: [
-      event.bodyPreview,
-      `Imported from calendar${event.start ? ` on ${new Date(event.start).toLocaleString()}` : ''}`,
-      event.location ? `Location: ${event.location}` : '',
-    ].filter(Boolean).join('\n\n'),
+    description: isEscalationLink ? `[Linked to escalation]\n${description}` : description,
     scheduledstart: start,
     scheduledend: end,
-    [bindName]: `/${entityPlural}(${regardingId})`,
+    [bindName]: `/${entityPlural}(${resolvedRegardingId})`,
     appointment_activity_parties: parties,
   }
 
@@ -713,25 +755,36 @@ export async function getThreadSuggestion(msalInstance, internetMessageIds) {
   }
 }
 
-export async function relinkExistingEmails(msalInstance, activityIds, { regardingType, regardingId }) {
+export async function relinkExistingEmails(msalInstance, activityIds, { regardingType, regardingId, regardingAccountId }) {
+  const isEscalationLink = ['escalation', 'slc_escalation', 'slc_escalations'].includes(regardingType)
+  const resolvedRegardingType = isEscalationLink ? 'account' : regardingType
+  const resolvedRegardingId = isEscalationLink ? regardingAccountId : regardingId
   const entityPlural = {
     account: 'accounts',
     opportunity: 'opportunities',
     lead: 'leads',
-  }[regardingType]
+  }[resolvedRegardingType]
   if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
   if (!activityIds?.length) return 0
+  if (!resolvedRegardingId) throw new Error(`Missing Dynamics link id for type: ${regardingType}`)
 
-  const bindName = `regardingobjectid_${regardingType}@odata.bind`
+  const bindName = `regardingobjectid_${resolvedRegardingType}@odata.bind`
   await Promise.all(
-    activityIds.map((activityId) =>
-      dvFetch(msalInstance, `/emails(${activityId})`, {
+    activityIds.map(async (activityId) => {
+      let description
+      if (isEscalationLink) {
+        const existing = await dvFetch(msalInstance, `/emails(${activityId})?$select=description`).catch(() => null)
+        const current = existing?.description || ''
+        description = current.startsWith('[Linked to escalation]') ? current : `[Linked to escalation]\n${current}`
+      }
+      return dvFetch(msalInstance, `/emails(${activityId})`, {
         method: 'PATCH',
         body: JSON.stringify({
-          [bindName]: `/${entityPlural}(${regardingId})`,
+          [bindName]: `/${entityPlural}(${resolvedRegardingId})`,
+          ...(isEscalationLink ? { description } : {}),
         }),
-      }),
-    ),
+      })
+    }),
   )
   return activityIds.length
 }

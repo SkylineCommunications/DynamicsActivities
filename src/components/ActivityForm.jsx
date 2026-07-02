@@ -167,6 +167,10 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     setAttendees((prev) => prev.filter((_, i) => i !== idx))
   }
 
+  function completePostCreateFlow(browseAccount = null) {
+    onNoteCreated?.(browseAccount)
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!canSubmit) return
@@ -190,7 +194,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         const d = new Date(); d.setSeconds(0, 0); return d.toISOString().slice(0, 16)
       })
       setTimeout(() => setSuccess(false), 3000)
-      onNoteCreated?.(account)
+      completePostCreateFlow(account)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -428,7 +432,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         {isCalendarImportMode && (
           <CalendarImportTab
             compact
-            onImported={() => onNoteCreated?.(null)}
+            selectedAccount={account}
+            onImported={(result) => completePostCreateFlow(result?.browseAccount || null)}
           />
         )}
 
@@ -438,7 +443,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
             <p className="hint-text">Import your email threads to Dynamics from here.</p>
             <InboxTab
               compact
-              onImported={() => onNoteCreated?.(null)}
+              selectedAccount={account}
+              onImported={(result) => completePostCreateFlow(result?.browseAccount || null)}
             />
           </div>
         )}

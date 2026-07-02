@@ -38,6 +38,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private HttpClient httpClient;
 		private string accessToken;
 		private string clientSecret;
+		private IEngine engine;
 
 		public void Run(IEngine engine)
 		{
@@ -65,6 +66,7 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private void RunSafe(IEngine engine)
 		{
+			this.engine = engine;
 			domHelper = new DomHelper(engine.SendSLNetMessages, ModuleId);
 			httpClient = new HttpClient();
 			clientSecret = engine.GetScriptParam("ClientSecret")?.Value?.Trim();
@@ -193,7 +195,11 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			var activities = new List<ActivityItem>();
 			var escalationActivities = FetchEscalations(new List<string>(), fromIso);
-			activities.AddRange(escalationActivities);
+			bool want(params string[] values) => includeAllTypes || values.Any(v => requestedTypes.Contains(v, StringComparer.OrdinalIgnoreCase));
+			if (want("escalation", "slc_escalations"))
+			{
+				activities.AddRange(escalationActivities);
+			}
 
 			var escalationIds = escalationActivities
 				.Select(a => a.Id)
@@ -206,12 +212,12 @@ namespace DynamicsActivitiesNotifySubscribers
 				.GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
 				.ToDictionary(g => g.Key, g => g.First().Regarding ?? String.Empty, StringComparer.OrdinalIgnoreCase);
 
-			// Escalation scope semantics: always include all activities that are escalation
-			// or linked to an escalation, regardless of selected activity-type filters.
-			activities.AddRange(FetchStandardActivitiesLinkedToEscalations("phonecalls", "Phone Call", escalationIds, fromIso, escalationAccountById));
-			activities.AddRange(FetchStandardActivitiesLinkedToEscalations("appointments", "Appointment", escalationIds, fromIso, escalationAccountById));
-			activities.AddRange(FetchStandardActivitiesLinkedToEscalations("emails", "Email", escalationIds, fromIso, escalationAccountById));
-			activities.AddRange(FetchAnnotationsLinkedToEscalations(escalationIds, fromIso, escalationAccountById));
+			if (want("phonecall", "phonecalls")) activities.AddRange(FetchStandardActivitiesLinkedToEscalations("phonecalls", "Phone Call", escalationIds, fromIso, escalationAccountById));
+			if (want("appointment", "appointments")) activities.AddRange(FetchStandardActivitiesLinkedToEscalations("appointments", "Appointment", escalationIds, fromIso, escalationAccountById));
+			if (want("email", "emails")) activities.AddRange(FetchStandardActivitiesLinkedToEscalations("emails", "Email", escalationIds, fromIso, escalationAccountById));
+			if (want("note", "annotations")) activities.AddRange(FetchAnnotationsLinkedToEscalations(escalationIds, fromIso, escalationAccountById));
+
+			engine?.GenerateInformation($"[NotifySubscribers] Escalation scope requested types: {(includeAllTypes ? "all" : string.Join(", ", requestedTypes ?? new List<string>()))}. Found {activities.Count} raw item(s).");
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
@@ -355,42 +361,45 @@ namespace DynamicsActivitiesNotifySubscribers
 				filters.Add($"createdon gt {fromIso}");
 			}
 
-			var linkedByText = "startswith(description,'[Linked to escalation]')";
-			var linkedByRegarding = escalationIds.Count > 0
-				? BuildOrFilter("_regardingobjectid_value", escalationIds)
-				: null;
-
-			if (!String.IsNullOrWhiteSpace(linkedByRegarding))
-			{
-				filters.Add($"({linkedByRegarding} or {linkedByText})");
-			}
-			else
-			{
-				filters.Add(linkedByText);
-			}
-
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var json = DataverseGet($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
+			var values = json["value"] ?? new JArray();
+			var result = new List<ActivityItem>();
 
-			var result = json["value"]?.Select(v => new ActivityItem
+			foreach (var v in values)
 			{
-				Id = v["activityid"]?.Value<string>(),
-				EntityType = entitySet,
-				TypeLabel = typeLabel,
-				Subject = v["subject"]?.Value<string>(),
-				Description = v["description"]?.Value<string>(),
-				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				RegardingId = v["_regardingobjectid_value"]?.Value<string>(),
-				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
-			}).ToList() ?? new List<ActivityItem>();
+				var regardingId = v["_regardingobjectid_value"]?.Value<string>();
+				var regardingLogicalName = v["_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
+				var description = v["description"]?.Value<string>();
+				var linkedByLookup = String.Equals(regardingLogicalName, "slc_escalation", StringComparison.OrdinalIgnoreCase);
+				var linkedByKnownId = !String.IsNullOrWhiteSpace(regardingId) && escalationIds.Any(id => String.Equals(id, regardingId, StringComparison.OrdinalIgnoreCase));
+				var linkedByText = !String.IsNullOrWhiteSpace(description) && description.TrimStart().StartsWith("[Linked to escalation]", StringComparison.OrdinalIgnoreCase);
+				if (!linkedByLookup && !linkedByKnownId && !linkedByText)
+				{
+					continue;
+				}
 
-			foreach (var item in result)
-			{
+				var item = new ActivityItem
+				{
+					Id = v["activityid"]?.Value<string>(),
+					EntityType = entitySet,
+					TypeLabel = typeLabel,
+					Subject = v["subject"]?.Value<string>(),
+					Description = description,
+					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+					RegardingId = regardingId,
+					Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+				};
+
 				if (!String.IsNullOrWhiteSpace(item.RegardingId) && escalationAccountById.TryGetValue(item.RegardingId, out var escalationAccount))
 				{
 					item.Regarding = escalationAccount;
 				}
+
+				result.Add(item);
 			}
+
+			engine?.GenerateInformation($"[NotifySubscribers] Escalation link filter for {entitySet}: fetched {values.Count()} row(s), matched {result.Count} escalation-linked row(s).");
 
 			return result;
 		}
@@ -490,42 +499,49 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<ActivityItem> FetchAnnotationsLinkedToEscalations(List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
 		{
-			if (escalationIds == null || escalationIds.Count == 0)
-			{
-				return new List<ActivityItem>();
-			}
-
-			var filters = new List<string>
-			{
-				BuildOrFilter("_objectid_value", escalationIds),
-			};
+			var filters = new List<string>();
 			if (!string.IsNullOrEmpty(fromIso))
 			{
 				filters.Add($"createdon gt {fromIso}");
 			}
 
-			var filter = "&$filter=" + string.Join(" and ", filters);
+			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
+			var values = json["value"] ?? new JArray();
+			var result = new List<ActivityItem>();
 
-			var result = json["value"]?.Select(v => new ActivityItem
+			foreach (var v in values)
 			{
-				Id = v["annotationid"]?.Value<string>(),
-				EntityType = "annotations",
-				TypeLabel = "Note",
-				Subject = v["subject"]?.Value<string>(),
-				Description = v["notetext"]?.Value<string>(),
-				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				RegardingId = v["_objectid_value"]?.Value<string>(),
-				Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
-			}).ToList() ?? new List<ActivityItem>();
+				var regardingId = v["_objectid_value"]?.Value<string>();
+				var regardingLogicalName = v["_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
+				var linkedByLookup = String.Equals(regardingLogicalName, "slc_escalation", StringComparison.OrdinalIgnoreCase);
+				var linkedByKnownId = !String.IsNullOrWhiteSpace(regardingId) && escalationIds.Any(id => String.Equals(id, regardingId, StringComparison.OrdinalIgnoreCase));
+				if (!linkedByLookup && !linkedByKnownId)
+				{
+					continue;
+				}
 
-			foreach (var item in result)
-			{
+				var item = new ActivityItem
+				{
+					Id = v["annotationid"]?.Value<string>(),
+					EntityType = "annotations",
+					TypeLabel = "Note",
+					Subject = v["subject"]?.Value<string>(),
+					Description = v["notetext"]?.Value<string>(),
+					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+					RegardingId = regardingId,
+					Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+				};
+
 				if (!String.IsNullOrWhiteSpace(item.RegardingId) && escalationAccountById.TryGetValue(item.RegardingId, out var escalationAccount))
 				{
 					item.Regarding = escalationAccount;
 				}
+
+				result.Add(item);
 			}
+
+			engine?.GenerateInformation($"[NotifySubscribers] Escalation link filter for annotations: fetched {values.Count()} row(s), matched {result.Count} escalation-linked row(s).");
 
 			return result;
 		}
@@ -645,7 +661,52 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static List<string> ParseActivityTypes(string json)
 		{
 			if (string.IsNullOrEmpty(json)) return null;
-			try { return JsonConvert.DeserializeObject<List<string>>(json); }
+			try
+			{
+				var values = JsonConvert.DeserializeObject<List<string>>(json);
+				if (values == null) return null;
+
+				string normalize(string value)
+				{
+					var key = (value ?? String.Empty).Trim().ToLowerInvariant();
+					switch (key)
+					{
+						case "phonecall":
+						case "phonecalls":
+							return "phonecalls";
+						case "appointment":
+						case "appointments":
+							return "appointments";
+						case "email":
+						case "emails":
+							return "emails";
+						case "escalation":
+						case "slc_escalation":
+						case "slc_escalations":
+							return "slc_escalations";
+						case "annotation":
+						case "annotations":
+						case "note":
+							return "annotations";
+						case "lead":
+						case "leads":
+							return "leads";
+						case "opportunity":
+						case "opportunities":
+							return "opportunities";
+						case "support":
+							return "support";
+						default:
+							return null;
+					}
+				}
+
+				return values
+					.Select(normalize)
+					.Where(v => !String.IsNullOrWhiteSpace(v))
+					.Distinct(StringComparer.OrdinalIgnoreCase)
+					.ToList();
+			}
 			catch { return null; }
 		}
 
