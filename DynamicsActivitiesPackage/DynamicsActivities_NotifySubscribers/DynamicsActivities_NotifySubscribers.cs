@@ -103,12 +103,6 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
-				if (!ShouldSend(frequency, lastSentAt, now))
-				{
-					engine.GenerateInformation($"[NotifySubscribers] Skip sub {instance.ID.Id} ({scopeType}:{scopeValue}) due to frequency gate. LastSentAt={lastSentAt:o}, now={now:o}, frequency={frequency}.");
-					continue;
-				}
-
 				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, lastSentAt, now);
 				if (activities.Count == 0)
 				{
@@ -597,23 +591,6 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			return JObject.Parse(payload);
-		}
-
-		private static bool ShouldSend(string frequency, DateTime lastSent, DateTime now)
-		{
-			switch (frequency)
-			{
-				case "instant":
-					return true;
-				case "daily":
-					return (now - lastSent).TotalHours >= 23;
-				case "weekly":
-					return (now - lastSent).TotalDays >= 6.5;
-				case "monthly":
-					return (now - lastSent).TotalDays >= 28;
-				default:
-					return (now - lastSent).TotalHours >= 23;
-			}
 		}
 
 		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, List<ActivityItem> activities)
