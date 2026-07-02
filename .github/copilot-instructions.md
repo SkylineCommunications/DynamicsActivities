@@ -37,6 +37,19 @@ The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge
 
 ---
 
+## Notification subscriptions behavior
+
+- `DynamicsActivities_ManageSubscriptions` stores subscription config in DOM.
+- `DynamicsActivities_NotifySubscribers` is executed by scheduler task or manual run.
+- Script parameters:
+  - `Frequency` (`id=10`, string): `instant`, `daily`, `weekly`, `monthly`.
+  - `ClientSecret` (`id=11`, string): Dataverse client secret.
+- The notify script does **not** enforce an internal cadence gate; every run processes subscriptions matching the passed `Frequency`.
+- New activity detection uses `createdon > LastSentAt` per subscription.
+- Sender/from behavior is controlled by DataMiner mail/SMTP configuration.
+
+---
+
 ## Authentication (Triple Auth)
 
 The app uses three layers of authentication:
@@ -149,7 +162,7 @@ App-specific behavior:
 | `vite.config.js` | Build config (dual mode) + Skyline API dev proxy |
 | `public/web.config` | IIS SPA rewrite rule for DataMiner/IIS hosting |
 | `DynamicsActivitiesPackage/` | .NET solution for `.dmapp` packaging + automation scripts |
-| `DynamicsActivitiesPackage/DynamicsActivities.DomDefinitions/` | Shared DOM model (IDs, factory) for subscriptions |
+| `DynamicsActivitiesPackage/DynamicsActivitiesPackage/` | Package install script + companion-file deployment wiring |
 | `DynamicsActivitiesPackage/DynamicsActivities_ManageSubscriptions/` | CRUD automation script for subscriptions (list/create/update/delete) |
 | `DynamicsActivitiesPackage/DynamicsActivities_NotifySubscribers/` | Scheduled email digest sender |
 | `DynamicsActivitiesPackage/DynamicsActivities_SkylineApiProxy/` | Server-side proxy for Skyline API (avoids CORS) |

@@ -13,7 +13,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - Prefill attendees from your **Microsoft 365 calendar** (meeting rooms filtered out)
 - Browse and filter the full organisation's activity history with lazy server-side OData queries
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
-- **Notification subscriptions** — subscribe to email digests for account activity updates
+- **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types
 - Open any activity directly in Dynamics 365 with a single click
 - Delete activities with an inline confirm flow
 - DataMiner design system — Inter font, DataMinerIcons, CSS custom properties
@@ -30,7 +30,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 | Data | Dataverse Web API v9.2 |
 | Calendar | Microsoft Graph API v1.0 |
 | TAM | Skyline Collaboration API (`api.skyline.be`) |
-| Notifications | Azure Functions backend |
+| Notifications | DataMiner DOM + Automation scripts (`ManageSubscriptions`, `NotifySubscribers`) |
 | Styling | CSS custom properties, Inter font (DataMiner design system) |
 
 ---
@@ -114,6 +114,19 @@ Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesP
 
 ---
 
+## Notification Subscriptions (DataMiner-native)
+
+- Subscriptions are stored in **DataMiner DOM** and managed via `DynamicsActivities_ManageSubscriptions`.
+- Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually).
+- Notify script parameters:
+  - `Frequency` (string): `instant`, `daily`, `weekly`, `monthly` — used to select which subscriptions to process.
+  - `ClientSecret` (string): Dataverse app secret used for token acquisition.
+- There is **no internal cadence gate** in the notify script anymore: each run processes eligible subscriptions immediately.
+- New items are still detected using `createdon > LastSentAt` per subscription.
+- Sender address is controlled by DataMiner/SMTP configuration.
+
+---
+
 ## Known Dataverse Constraints
 
 - **`$expand` + `$top` on the same query → HTTP 400 (`0x80060888`)** — use `Prefer: odata.maxpagesize=N` instead of `$top` when expanding activity parties
@@ -130,7 +143,7 @@ src/
     dataverse.js       # All Dataverse ops (auth, search, create, delete)
     graph.js           # Graph calendar fetch for attendee prefill
     skyline.js         # Skyline Collaboration API (TAM accounts)
-    subscriptions.js   # Azure Functions notification backend
+    subscriptions.js   # Subscription CRUD via DataMiner Automation scripts (DOM-backed)
   components/
     AuthGuard.jsx      # Triple-auth gate (DMA → MSAL → WhoAmI)
     ActivityForm.jsx   # Activity creation (4 types, pickers, calendar)
@@ -142,12 +155,13 @@ src/
     InboxTab.jsx
   hooks/
     useTamContext.js   # TAM account context from Skyline API
+  services/
+    postCreateBrowseAccount.js # Centralized account resolution after create/import flows
   authConfig.js        # MSAL config, scopes
   styles/
     main.css           # DataMiner design system CSS
 public/
   web.config           # IIS SPA rewrite rule
-functions/             # Azure Functions (notification subscriptions)
 DynamicsActivitiesPackage/  # .NET project for .dmapp packaging
 .github/workflows/     # CI/CD workflows
 ```

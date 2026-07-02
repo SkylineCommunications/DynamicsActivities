@@ -20,7 +20,6 @@ namespace DynamicsActivitiesNotifySubscribers
 		private const string ModuleId = "dynamics_activities";
 		private const string DataverseBaseUrl = "https://skyline365-qa.crm4.dynamics.com";
 		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
-		private const string MailFromAddress = "squad.maximize-amplify@skyline.be";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
 
@@ -115,11 +114,7 @@ namespace DynamicsActivitiesNotifySubscribers
 
 				try
 				{
-					var emailOptions = new EmailOptions(body, subject, userEmail)
-					{
-						FROM = MailFromAddress,
-					};
-					engine.SendEmail(emailOptions);
+					engine.SendEmail(body, subject, userEmail);
 					emailsSent++;
 					section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(now.ToString("o"))));
 					domHelper.DomInstances.Update(instance);
