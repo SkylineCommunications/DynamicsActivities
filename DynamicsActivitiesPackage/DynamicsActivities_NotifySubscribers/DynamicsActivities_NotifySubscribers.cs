@@ -20,6 +20,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private const string ModuleId = "dynamics_activities";
 		private const string DataverseBaseUrl = "https://skyline365-qa.crm4.dynamics.com";
 		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
+		private const string MailFromAddress = "squad.maximize-amplify@skyline.be";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
 
@@ -114,7 +115,11 @@ namespace DynamicsActivitiesNotifySubscribers
 
 				try
 				{
-					engine.SendEmail(body, subject, userEmail);
+					var emailOptions = new EmailOptions(body, subject, userEmail)
+					{
+						FROM = MailFromAddress,
+					};
+					engine.SendEmail(emailOptions);
 					emailsSent++;
 					section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(now.ToString("o"))));
 					domHelper.DomInstances.Update(instance);
@@ -159,6 +164,12 @@ namespace DynamicsActivitiesNotifySubscribers
 			var includeAllTypes = requestedTypes == null || requestedTypes.Count == 0;
 			var activities = new List<ActivityItem>();
 			var fromIso = BuildCreatedOnLowerBound(since);
+			var escalationScope = String.Equals((scopeType ?? String.Empty).Trim(), "escalation", StringComparison.OrdinalIgnoreCase);
+
+			if (escalationScope)
+			{
+				return FetchEscalationScopedActivities(fromIso, includeAllTypes, requestedTypes);
+			}
 
 			bool want(params string[] values) => includeAllTypes || values.Any(v => requestedTypes.Contains(v, StringComparer.OrdinalIgnoreCase));
 
@@ -169,6 +180,53 @@ namespace DynamicsActivitiesNotifySubscribers
 			if (want("lead", "leads")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso));
 			if (want("opportunity", "opportunities") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, want("opportunity", "opportunities"), want("support")));
 			if (want("note", "annotations")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso));
+
+			return activities
+				.Where(a => !string.IsNullOrEmpty(a.Id))
+				.GroupBy(a => a.Id)
+				.Select(g => g.OrderByDescending(i => i.CreatedOn).First())
+				.OrderByDescending(i => i.CreatedOn)
+				.ToList();
+		}
+
+		private List<ActivityItem> FetchEscalationScopedActivities(string fromIso, bool includeAllTypes, List<string> requestedTypes)
+		{
+			bool want(params string[] values) => includeAllTypes || values.Any(v => requestedTypes.Contains(v, StringComparer.OrdinalIgnoreCase));
+
+			var activities = new List<ActivityItem>();
+			var escalationActivities = FetchEscalations(new List<string>(), fromIso);
+			activities.AddRange(escalationActivities);
+
+			var escalationIds = escalationActivities
+				.Select(a => a.Id)
+				.Where(id => !String.IsNullOrWhiteSpace(id))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+
+			var escalationAccountById = escalationActivities
+				.Where(a => !String.IsNullOrWhiteSpace(a.Id))
+				.GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
+				.ToDictionary(g => g.Key, g => g.First().Regarding ?? String.Empty, StringComparer.OrdinalIgnoreCase);
+
+			if (want("phonecall", "phonecalls"))
+			{
+				activities.AddRange(FetchStandardActivitiesLinkedToEscalations("phonecalls", "Phone Call", escalationIds, fromIso, escalationAccountById));
+			}
+
+			if (want("appointment", "appointments"))
+			{
+				activities.AddRange(FetchStandardActivitiesLinkedToEscalations("appointments", "Appointment", escalationIds, fromIso, escalationAccountById));
+			}
+
+			if (want("email", "emails"))
+			{
+				activities.AddRange(FetchStandardActivitiesLinkedToEscalations("emails", "Email", escalationIds, fromIso, escalationAccountById));
+			}
+
+			if (want("note", "annotations"))
+			{
+				activities.AddRange(FetchAnnotationsLinkedToEscalations(escalationIds, fromIso, escalationAccountById));
+			}
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
@@ -299,8 +357,57 @@ namespace DynamicsActivitiesNotifySubscribers
 				Subject = v["subject"]?.Value<string>(),
 				Description = v["description"]?.Value<string>(),
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				RegardingId = v["_regardingobjectid_value"]?.Value<string>(),
 				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
+		}
+
+		private List<ActivityItem> FetchStandardActivitiesLinkedToEscalations(string entitySet, string typeLabel, List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
+		{
+			var filters = new List<string>();
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
+
+			var linkedByText = "startswith(description,'[Linked to escalation]')";
+			var linkedByRegarding = escalationIds.Count > 0
+				? BuildOrFilter("_regardingobjectid_value", escalationIds)
+				: null;
+
+			if (!String.IsNullOrWhiteSpace(linkedByRegarding))
+			{
+				filters.Add($"({linkedByRegarding} or {linkedByText})");
+			}
+			else
+			{
+				filters.Add(linkedByText);
+			}
+
+			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
+			var json = DataverseGet($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
+
+			var result = json["value"]?.Select(v => new ActivityItem
+			{
+				Id = v["activityid"]?.Value<string>(),
+				EntityType = entitySet,
+				TypeLabel = typeLabel,
+				Subject = v["subject"]?.Value<string>(),
+				Description = v["description"]?.Value<string>(),
+				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				RegardingId = v["_regardingobjectid_value"]?.Value<string>(),
+				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+			}).ToList() ?? new List<ActivityItem>();
+
+			foreach (var item in result)
+			{
+				if (!String.IsNullOrWhiteSpace(item.RegardingId) && escalationAccountById.TryGetValue(item.RegardingId, out var escalationAccount))
+				{
+					item.Regarding = escalationAccount;
+				}
+			}
+
+			return result;
 		}
 
 		private List<ActivityItem> FetchEscalations(List<string> accountIds, string fromIso)
@@ -321,6 +428,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				Subject = v["subject"]?.Value<string>(),
 				Description = v["description"]?.Value<string>(),
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				RegardingId = v["_regardingobjectid_value"]?.Value<string>(),
 				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
 		}
@@ -390,8 +498,51 @@ namespace DynamicsActivitiesNotifySubscribers
 				Subject = v["subject"]?.Value<string>(),
 				Description = v["notetext"]?.Value<string>(),
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				RegardingId = v["_objectid_value"]?.Value<string>(),
 				Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
+		}
+
+		private List<ActivityItem> FetchAnnotationsLinkedToEscalations(List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
+		{
+			if (escalationIds == null || escalationIds.Count == 0)
+			{
+				return new List<ActivityItem>();
+			}
+
+			var filters = new List<string>
+			{
+				BuildOrFilter("_objectid_value", escalationIds),
+			};
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
+
+			var filter = "&$filter=" + string.Join(" and ", filters);
+			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
+
+			var result = json["value"]?.Select(v => new ActivityItem
+			{
+				Id = v["annotationid"]?.Value<string>(),
+				EntityType = "annotations",
+				TypeLabel = "Note",
+				Subject = v["subject"]?.Value<string>(),
+				Description = v["notetext"]?.Value<string>(),
+				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+				RegardingId = v["_objectid_value"]?.Value<string>(),
+				Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+			}).ToList() ?? new List<ActivityItem>();
+
+			foreach (var item in result)
+			{
+				if (!String.IsNullOrWhiteSpace(item.RegardingId) && escalationAccountById.TryGetValue(item.RegardingId, out var escalationAccount))
+				{
+					item.Regarding = escalationAccount;
+				}
+			}
+
+			return result;
 		}
 
 		private List<string> BuildLookupFilters(string fieldName, List<string> ids)
@@ -614,6 +765,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			public string TypeLabel { get; set; }
 			public string Subject { get; set; }
 			public string Description { get; set; }
+			public string RegardingId { get; set; }
 			public string Regarding { get; set; }
 			public DateTime CreatedOn { get; set; }
 		}
