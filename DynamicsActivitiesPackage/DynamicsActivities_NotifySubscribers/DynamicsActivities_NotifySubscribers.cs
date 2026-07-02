@@ -102,7 +102,11 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (!ShouldSend(frequency, lastSentAt, now)) continue;
 
 				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, lastSentAt, now);
-				if (activities.Count == 0) continue;
+				if (activities.Count == 0)
+				{
+					engine.GenerateInformation($"[NotifySubscribers] No new activities for sub {instance.ID.Id} ({scopeType}:{scopeValue}) since {lastSentAt:o}.");
+					continue;
+				}
 
 				var subject = $"[DynamicsActivities] Activity digest for {scopeLabel ?? scopeValue}";
 				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, lastSentAt, now, activities);
@@ -149,7 +153,7 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<ActivityItem> FetchActivities(string scopeType, string scopeValue, string activityTypesJson, DateTime since, DateTime until)
 		{
-			var accountIds = ResolveAccountIds(scopeType, scopeValue);
+			var scope = ResolveScopeContext(scopeType, scopeValue);
 			var requestedTypes = ParseActivityTypes(activityTypesJson);
 			var includeAllTypes = requestedTypes == null || requestedTypes.Count == 0;
 			var activities = new List<ActivityItem>();
@@ -158,13 +162,13 @@ namespace DynamicsActivitiesNotifySubscribers
 
 			bool want(string type) => includeAllTypes || requestedTypes.Contains(type, StringComparer.OrdinalIgnoreCase);
 
-			if (want("phonecall")) activities.AddRange(FetchStandardActivities("phonecalls", "Phone Call", "_regardingobjectid_value", accountIds, fromIso, toIso));
-			if (want("appointment")) activities.AddRange(FetchStandardActivities("appointments", "Appointment", "_regardingobjectid_value", accountIds, fromIso, toIso));
-			if (want("email")) activities.AddRange(FetchStandardActivities("emails", "Email", "_regardingobjectid_value", accountIds, fromIso, toIso));
-			if (want("escalation")) activities.AddRange(FetchEscalations(accountIds, fromIso, toIso));
-			if (want("lead")) activities.AddRange(FetchLeads(accountIds, fromIso, toIso));
-			if (want("opportunity") || want("support")) activities.AddRange(FetchOpportunities(accountIds, fromIso, toIso, want("opportunity"), want("support")));
-			if (want("note")) activities.AddRange(FetchAnnotations(accountIds, fromIso, toIso));
+			if (want("phonecall")) activities.AddRange(FetchStandardActivities("phonecalls", "Phone Call", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso, toIso));
+			if (want("appointment")) activities.AddRange(FetchStandardActivities("appointments", "Appointment", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso, toIso));
+			if (want("email")) activities.AddRange(FetchStandardActivities("emails", "Email", "_regardingobjectid_value", scope.ActivityLookupIds, fromIso, toIso));
+			if (want("escalation")) activities.AddRange(FetchEscalations(scope.ActivityLookupIds, fromIso, toIso));
+			if (want("lead")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso, toIso));
+			if (want("opportunity") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, toIso, want("opportunity"), want("support")));
+			if (want("note")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso, toIso));
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
@@ -174,27 +178,98 @@ namespace DynamicsActivitiesNotifySubscribers
 				.ToList();
 		}
 
-		private List<string> ResolveAccountIds(string scopeType, string scopeValue)
+		private ScopeContext ResolveScopeContext(string scopeType, string scopeValue)
 		{
+			var accountIds = new List<string>();
 			switch ((scopeType ?? string.Empty).ToLowerInvariant())
 			{
 				case "account":
-					return string.IsNullOrWhiteSpace(scopeValue) ? new List<string>() : new List<string> { scopeValue.Trim() };
+					if (!string.IsNullOrWhiteSpace(scopeValue)) accountIds.Add(scopeValue.Trim());
+					break;
 				case "country":
-					return QueryAccountIds($"address1_country eq '{EscapeODataString(scopeValue)}'");
+					accountIds = QueryAccountIds($"address1_country eq '{EscapeODataString(scopeValue)}'");
+					break;
 				case "region":
-					return QueryAccountIds($"address1_stateorprovince eq '{EscapeODataString(scopeValue)}'");
+					accountIds = QueryAccountIds($"address1_stateorprovince eq '{EscapeODataString(scopeValue)}'");
+					break;
 				case "escalation":
-					return new List<string>();
+					break;
 				default:
-					return new List<string>();
+					break;
 			}
+
+			var activityLookupIds = ExpandRelatedLookupIds(accountIds);
+			return new ScopeContext
+			{
+				AccountIds = accountIds,
+				ActivityLookupIds = activityLookupIds,
+			};
 		}
 
 		private List<string> QueryAccountIds(string filter)
 		{
 			var json = DataverseGet($"/accounts?$select=accountid&$filter={filter}&$top=200");
 			return json["value"]?.Select(v => v["accountid"]?.Value<string>()).Where(v => !string.IsNullOrEmpty(v)).ToList() ?? new List<string>();
+		}
+
+		private List<string> ExpandRelatedLookupIds(List<string> accountIds)
+		{
+			var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			foreach (var id in accountIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+			{
+				ids.Add(id);
+			}
+
+			if (accountIds == null || accountIds.Count == 0)
+			{
+				return new List<string>();
+			}
+
+			var capped = accountIds.Where(id => !string.IsNullOrWhiteSpace(id)).Take(50).ToList();
+			var accountFilter = BuildOrFilter("_parentaccountid_value", capped);
+			var parentCustomerFilter = BuildOrFilter("_parentcustomerid_value", capped);
+			var regardingFilter = BuildOrFilter("_regardingobjectid_value", capped);
+
+			var opportunities = DataverseGet($"/opportunities?$select=opportunityid&$filter={accountFilter}&$top=200");
+			foreach (var v in opportunities["value"] ?? new JArray())
+			{
+				var id = v["opportunityid"]?.Value<string>();
+				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
+			}
+
+			var contacts = DataverseGet($"/contacts?$select=contactid&$filter={parentCustomerFilter}&$top=200");
+			foreach (var v in contacts["value"] ?? new JArray())
+			{
+				var id = v["contactid"]?.Value<string>();
+				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
+			}
+
+			var leads = DataverseGet($"/leads?$select=leadid&$filter={accountFilter}&$top=200");
+			foreach (var v in leads["value"] ?? new JArray())
+			{
+				var id = v["leadid"]?.Value<string>();
+				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
+			}
+
+			var escalations = DataverseGet($"/slc_escalations?$select=activityid&$filter={regardingFilter}&$top=200");
+			foreach (var v in escalations["value"] ?? new JArray())
+			{
+				var id = v["activityid"]?.Value<string>();
+				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
+			}
+
+			return ids.ToList();
+		}
+
+		private static string BuildOrFilter(string fieldName, List<string> ids)
+		{
+			var valid = ids.Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+			if (valid.Count == 0)
+			{
+				return "false";
+			}
+
+			return "(" + string.Join(" or ", valid.Select(id => $"{fieldName} eq {id}")) + ")";
 		}
 
 		private List<ActivityItem> FetchStandardActivities(string entitySet, string typeLabel, string lookupField, List<string> accountIds, string fromIso, string toIso)
@@ -467,6 +542,12 @@ namespace DynamicsActivitiesNotifySubscribers
 			public string Description { get; set; }
 			public string Regarding { get; set; }
 			public DateTime CreatedOn { get; set; }
+		}
+
+		private sealed class ScopeContext
+		{
+			public List<string> AccountIds { get; set; } = new List<string>();
+			public List<string> ActivityLookupIds { get; set; } = new List<string>();
 		}
 	}
 }
