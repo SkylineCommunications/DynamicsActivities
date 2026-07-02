@@ -191,8 +191,6 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<ActivityItem> FetchEscalationScopedActivities(string fromIso, bool includeAllTypes, List<string> requestedTypes)
 		{
-			bool want(params string[] values) => includeAllTypes || values.Any(v => requestedTypes.Contains(v, StringComparer.OrdinalIgnoreCase));
-
 			var activities = new List<ActivityItem>();
 			var escalationActivities = FetchEscalations(new List<string>(), fromIso);
 			activities.AddRange(escalationActivities);
@@ -208,25 +206,12 @@ namespace DynamicsActivitiesNotifySubscribers
 				.GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
 				.ToDictionary(g => g.Key, g => g.First().Regarding ?? String.Empty, StringComparer.OrdinalIgnoreCase);
 
-			if (want("phonecall", "phonecalls"))
-			{
-				activities.AddRange(FetchStandardActivitiesLinkedToEscalations("phonecalls", "Phone Call", escalationIds, fromIso, escalationAccountById));
-			}
-
-			if (want("appointment", "appointments"))
-			{
-				activities.AddRange(FetchStandardActivitiesLinkedToEscalations("appointments", "Appointment", escalationIds, fromIso, escalationAccountById));
-			}
-
-			if (want("email", "emails"))
-			{
-				activities.AddRange(FetchStandardActivitiesLinkedToEscalations("emails", "Email", escalationIds, fromIso, escalationAccountById));
-			}
-
-			if (want("note", "annotations"))
-			{
-				activities.AddRange(FetchAnnotationsLinkedToEscalations(escalationIds, fromIso, escalationAccountById));
-			}
+			// Escalation scope semantics: always include all activities that are escalation
+			// or linked to an escalation, regardless of selected activity-type filters.
+			activities.AddRange(FetchStandardActivitiesLinkedToEscalations("phonecalls", "Phone Call", escalationIds, fromIso, escalationAccountById));
+			activities.AddRange(FetchStandardActivitiesLinkedToEscalations("appointments", "Appointment", escalationIds, fromIso, escalationAccountById));
+			activities.AddRange(FetchStandardActivitiesLinkedToEscalations("emails", "Email", escalationIds, fromIso, escalationAccountById));
+			activities.AddRange(FetchAnnotationsLinkedToEscalations(escalationIds, fromIso, escalationAccountById));
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
