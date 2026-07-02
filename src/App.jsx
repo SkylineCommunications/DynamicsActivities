@@ -4,10 +4,13 @@ import AuthGuard from './components/AuthGuard'
 import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
+import SubscriptionsPanel from './components/SubscriptionsPanel'
+import { signOut as dmaSignOut, isDataMinerHost, getDmaUser } from './api/dataminer'
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
   { id: 'browse', label: 'Browse', icon: 'search' },
+  { id: 'subscriptions', label: 'Subscriptions', icon: 'notifications' },
 ]
 
 function getInitialTheme() {
@@ -54,6 +57,8 @@ function cycleTheme() {
   try { localStorage.setItem('dm-theme', next) } catch {}
 }
 
+  const dmaUser = isDataMinerHost() ? getDmaUser() : null
+
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
 
   function handleNoteCreated(account) {
@@ -68,6 +73,12 @@ function cycleTheme() {
       <header className="app-header">
         <span className="header-title">Activities</span>
         <div className="header-right">
+          {dmaUser?.FullName && (
+            <span className="dma-user-name">
+              <span className="icon icon-sm" aria-hidden="true">person</span>
+              {dmaUser.FullName}
+            </span>
+          )}
           <button
             type="button"
             className="theme-toggle"
@@ -80,7 +91,7 @@ function cycleTheme() {
           <button
             type="button"
             className="sign-out-btn"
-            onClick={() => instance.logoutRedirect()}
+            onClick={() => isDataMinerHost() ? dmaSignOut() : instance.logoutRedirect()}
             title="Sign out"
           >
             <span className="icon">logout</span>
@@ -123,6 +134,9 @@ function cycleTheme() {
                   managedAccounts={managedAccounts}
                   tamLoading={tamLoading}
                 />
+              )}
+              {activeTab === 'subscriptions' && (
+                <SubscriptionsPanel />
               )}
             </>
           )}

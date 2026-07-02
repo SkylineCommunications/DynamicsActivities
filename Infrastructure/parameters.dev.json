@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "namePrefix":              { "value": "dmact" },
+    "location":                { "value": "westeurope" },
+    "environment":             { "value": "dev" },
+    "dataverseUrl":            { "value": "https://skyline365-qa.crm4.dynamics.com/" },
+    "dataverseClientId":       { "value": "acd01a7c-7c83-4977-a98d-ade9e82ae6e8" },
+    "dataverseClientSecret": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748" },
+        "secretName": "dataverse-client-secret"
+      }
+    },
+    "entraIdTenantId":         { "value": "5f175691-8d1c-4932-b7c8-ce990839ac40" },
+    "sendGridApiKey": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748" },
+        "secretName": "sendgrid-api-key"
+      }
+    },
+    "sendGridFromEmail":       { "value": "notifications@skyline.be" },
+    "sendGridFromName":        { "value": "Skyline Activities (Dev)" },
+    "openaiEndpoint":          { "value": "https://oai-dynamics-activities-6a258.openai.azure.com/" },
+    "openaiDeployment":        { "value": "gpt-4o" },
+    "openaiApiKey": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748" },
+        "secretName": "openai-api-key"
+      }
+    },
+    "webhookSecret": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748" },
+        "secretName": "webhook-secret"
+      }
+    },
+    "actionTokenSecret": {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748" },
+        "secretName": "action-token-secret"
+      }
+    },
+    "spaBaseUrl":              { "value": "http://localhost:5173/" },
+    "corsOrigins":             { "value": "http://localhost:5173,http://localhost:4173" },
+    "instantCooldownMinutes":  { "value": 1 }
+  }
+}

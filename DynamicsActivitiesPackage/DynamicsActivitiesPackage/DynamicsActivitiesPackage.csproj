@@ -8,19 +8,21 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.6.0</Version>
-		<VersionComment>Skyline API TAM integration: auto-select managed accounts in Browse, prefilter in Create</VersionComment>
+		<Version>1.8.26</Version>
+		<VersionComment>Remove notify frequency gate so each run processes selected subscriptions immediately</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Skyline.DataMiner.Core.AppPackageInstaller" Version="3.3.0" />
+		<PackageReference Include="Skyline.DataMiner.Core.AppPackageInstaller" Version="4.0.0" />
 		<PackageReference Include="Skyline.DataMiner.Dev.Automation" Version="10.3.0.25" />
 		<PackageReference Include="Skyline.DataMiner.Utils.SecureCoding.Analyzers" Version="2.2.1">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
+	</ItemGroup>
+	<ItemGroup>
 	</ItemGroup>
 
 	<!--
@@ -52,7 +54,7 @@
 		<!-- Clean the destination first so removed/renamed assets don't linger. -->
 		<RemoveDir Directories="$(WebAppCompanionDir)" />
 		<MakeDir Directories="$(WebAppCompanionDir)" />
-		<Copy SourceFiles="@(DynamicsActivitiesWebAppFiles)" DestinationFiles="@(DynamicsActivitiesWebAppFiles-&gt;'$(WebAppCompanionDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="false" />
+		<Copy SourceFiles="@(DynamicsActivitiesWebAppFiles)" DestinationFiles="@(DynamicsActivitiesWebAppFiles->'$(WebAppCompanionDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="false" />
 		<Message Importance="high" Text="Copied web app files from '$(WebAppDistDir)' into companion folder '$(WebAppCompanionDir)'." />
 	</Target>
 </Project>
