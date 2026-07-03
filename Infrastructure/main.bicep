@@ -36,10 +36,6 @@ param openaiApiKey string
 @description('Entra ID tenant ID')
 param entraIdTenantId string
 
-@description('SendGrid API key for email delivery')
-@secure()
-param sendGridApiKey string
-
 @description('SendGrid from email address')
 param sendGridFromEmail string
 
@@ -51,10 +47,6 @@ param openaiEndpoint string = 'https://oai-dynamics-activities-6a258.openai.azur
 
 @description('Azure OpenAI deployment name')
 param openaiDeployment string = 'gpt-4o'
-
-@description('OpenAI API key for activity summaries')
-@secure()
-param openaiApiKey string
 
 @description('Shared secret for Dataverse webhook validation')
 @secure()

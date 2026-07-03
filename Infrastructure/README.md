@@ -33,8 +33,6 @@ Infrastructure/
 - `PUT /api/subscriptions/{id}` — Update subscription
 - `DELETE /api/subscriptions/{id}` — Delete subscription
 - `POST /api/notify` — Dataverse webhook receiver (instant notifications)
-- `POST /api/actions/mark-read` — Mark activity as read
-- `GET /api/actions/read-status` — Get read status for activities
 
 ### Timer Triggers
 - **digestDaily** — 6:00 UTC daily (sends daily digest emails)

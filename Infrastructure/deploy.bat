@@ -5,10 +5,10 @@ setlocal enabledelayedexpansion
 
 REM Configuration
 set SUBSCRIPTION_ID=327a6575-94e4-4d02-bb5d-9a88d68f58b9
-set LOCATION=%LOCATION:eastus=%
-set ENVIRONMENT=%ENVIRONMENT:dev=%
+if "%LOCATION%"=="" set LOCATION=eastus
+if "%ENVIRONMENT%"=="" set ENVIRONMENT=dev
 set RESOURCE_GROUP=%RESOURCE_GROUP%
-set NAME_PREFIX=%NAME_PREFIX:dmact=%
+if "%NAME_PREFIX%"=="" set NAME_PREFIX=dmact
 
 REM Check prerequisites
 if "%RESOURCE_GROUP%"=="" (
@@ -22,8 +22,8 @@ call az account set --subscription "%SUBSCRIPTION_ID%" || exit /b 1
 
 REM Check if resource group exists
 echo [INFO] Checking resource group...
-call az group exists --name "%RESOURCE_GROUP%" >nul 2>&1
-if errorlevel 1 (
+for /f "tokens=*" %%a in ('az group exists --name "%RESOURCE_GROUP%" -o tsv') do set RG_EXISTS=%%a
+if /i not "%RG_EXISTS%"=="true" (
   echo [INFO] Creating resource group %RESOURCE_GROUP% in %LOCATION%...
   call az group create --name "%RESOURCE_GROUP%" --location "%LOCATION%" || exit /b 1
 )

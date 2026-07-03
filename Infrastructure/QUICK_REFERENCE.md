@@ -73,13 +73,12 @@ func azure functionapp publish <APP_NAME> --build remote --build-native-deps
 
 ```
 Function App (Node.js 20)
-  ├─ HTTP Triggers (6 endpoints)
+  ├─ HTTP Triggers (5 endpoints)
   │  ├─ GET /api/subscriptions
   │  ├─ POST /api/subscriptions
   │  ├─ PUT /api/subscriptions/{id}
   │  ├─ DELETE /api/subscriptions/{id}
-  │  ├─ POST /api/notify
-  │  └─ POST /api/actions/mark-read
+  │  └─ POST /api/notify
   ├─ Timer Triggers (3)
   │  ├─ digestDaily (6:00 UTC)
   │  ├─ digestWeekly (Mon 7:00 UTC)

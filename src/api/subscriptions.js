@@ -114,13 +114,3 @@ export async function updateSubscription(msalInstance, id, patch) {
 export async function deleteSubscription(msalInstance, id) {
   return runSubscriptionScript('delete', { id })
 }
-
-// Read status and mark-read are activity-level features that still live
-// in Dataverse / the browse view — kept as stubs for now.
-export async function getReadStatus(/* msalInstance, activityIds */) {
-  return []
-}
-
-export async function markActivityRead(/* msalInstance, activityId */) {
-  return null
-}

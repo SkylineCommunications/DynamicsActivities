@@ -45,7 +45,8 @@ print_status "Setting subscription to $SUBSCRIPTION_ID..."
 az account set --subscription "$SUBSCRIPTION_ID"
 
 # Check if resource group exists
-if ! az group exists --name "$RESOURCE_GROUP" &>/dev/null; then
+RG_EXISTS="$(az group exists --name "$RESOURCE_GROUP" -o tsv)"
+if [ "$RG_EXISTS" != "true" ]; then
   print_status "Creating resource group $RESOURCE_GROUP in $LOCATION..."
   az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 fi

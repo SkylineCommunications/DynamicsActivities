@@ -113,14 +113,12 @@ Total: 16 files, ~50 KB
 
 ## Functions Deployed
 
-### HTTP Endpoints (6)
+### HTTP Endpoints (5)
 - `GET /api/subscriptions` - List user subscriptions
 - `POST /api/subscriptions` - Create subscription
 - `PUT /api/subscriptions/{id}` - Update subscription
 - `DELETE /api/subscriptions/{id}` - Delete subscription
 - `POST /api/notify` - Dataverse webhook receiver
-- `POST /api/actions/mark-read` - Mark activity as read
-- `GET /api/actions/read-status` - Get read status
 
 ### Timer Triggers (3)
 - **digestDaily**: 6:00 UTC daily

@@ -48,7 +48,11 @@ function SubscriptionCard({ sub, onEdit, onDelete, onToggle }) {
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return }
     setDeleting(true)
-    await onDelete(sub.id)
+    try {
+      await onDelete(sub.id)
+    } catch {
+      setDeleting(false)
+    }
   }
 
   async function handleToggle() {
@@ -146,8 +150,13 @@ export default function SubscriptionsPanel() {
   useEffect(() => { load() }, [load])
 
   async function handleDelete(id) {
-    await deleteSubscription(instance, id).catch((e) => setError(e.message))
-    setSubs((prev) => prev.filter((s) => s.id !== id))
+    try {
+      await deleteSubscription(instance, id)
+      setSubs((prev) => prev.filter((s) => s.id !== id))
+    } catch (e) {
+      setError(e.message)
+      throw e
+    }
   }
 
   async function handleToggle(id, enabled) {

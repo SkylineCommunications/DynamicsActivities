@@ -6,7 +6,7 @@
 
 ### Subscription Information
 - **Subscription**: `sub-bpa-test`
-- **Subscription ID**: `a476a434-0f2f-45db-bf17-cf278ef08379`
+- **Subscription ID**: `327a6575-94e4-4d02-bb5d-9a88d68f58b9`
 - **Tenant ID**: `5f175691-8d1c-4932-b7c8-ce990839ac40`
 - **Location**: `eastus`
 
@@ -17,7 +17,7 @@
 ### Key Vault (for Secrets)
 - **Name**: `kv-dynamics-748`
 - **Status**: ✅ Created
-- **Resource ID**: `/subscriptions/a476a434-0f2f-45db-bf17-cf278ef08379/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748`
+- **Resource ID**: `/subscriptions/327a6575-94e4-4d02-bb5d-9a88d68f58b9/resourceGroups/rg-dynamics-activities/providers/Microsoft.KeyVault/vaults/kv-dynamics-748`
 - **Secrets Configured**:
   - ✅ `dataverse-client-secret`
   - ✅ `sendgrid-api-key`
@@ -61,8 +61,6 @@ POST   /api/subscriptions
 PUT    /api/subscriptions/{id}
 DELETE /api/subscriptions/{id}
 POST   /api/notify
-POST   /api/actions/mark-read
-GET    /api/actions/read-status
 ```
 
 ### Timer Triggers

@@ -13,7 +13,6 @@ import {
   ESCALATION_STATUSES,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
-import { getReadStatus, markActivityRead } from '../api/subscriptions'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
 const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.iconLigature || t.icon]))
@@ -35,7 +34,7 @@ function fmtDate(d) {
   })
 }
 
-function NoteCard({ note, expanded, onToggle, onDelete, isRead }) {
+function NoteCard({ note, expanded, onToggle, onDelete }) {
   const { instance } = useMsal()
   const label = noteTypeLabel(note)
   const date = noteDate(note)
@@ -50,8 +49,6 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead }) {
   const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities' || note._entityType === 'support'
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [markingRead, setMarkingRead] = useState(false)
-  const [localRead, setLocalRead] = useState(isRead)
 
   async function handleDelete(e) {
     e.stopPropagation()
@@ -70,17 +67,6 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead }) {
   function cancelDelete(e) {
     e.stopPropagation()
     setConfirmDelete(false)
-  }
-
-  async function handleMarkRead(e) {
-    e.stopPropagation()
-    setMarkingRead(true)
-    try {
-      await markActivityRead(instance, note.activityid)
-      setLocalRead(true)
-    } finally {
-      setMarkingRead(false)
-    }
   }
 
   return (
@@ -122,18 +108,6 @@ function NoteCard({ note, expanded, onToggle, onDelete, isRead }) {
             </>
           ) : (
             <>
-              {!localRead && (
-                <button
-                  type="button"
-                  className="btn-card-action btn-cancel"
-                  onClick={handleMarkRead}
-                  disabled={markingRead}
-                  title="Mark as read"
-                >
-                  {markingRead ? '…' : '✓ Read'}
-                </button>
-              )}
-              {localRead && <span className="read-badge">✓ Read</span>}
               <button
                 type="button"
                 className="btn-card-action btn-delete"
@@ -232,7 +206,6 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [tamAutoApplied, setTamAutoApplied] = useState(false)
-  const [readIds, setReadIds] = useState(new Set())
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
@@ -272,13 +245,6 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     })
       .then(async (results) => {
         setNotes(results)
-        if (results.length > 0) {
-          const ids = results.map((n) => n.activityid).filter(Boolean)
-          const read = await getReadStatus(instance, ids).catch(() => [])
-          setReadIds(new Set(read))
-        } else {
-          setReadIds(new Set())
-        }
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
@@ -431,16 +397,19 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
 
       {notes !== null && notes.length > 0 && (
         <div className="notes-list">
-          {notes.map((n) => (
-            <NoteCard
-              key={n.activityid}
-              note={n}
-              expanded={expandedId === n.activityid}
-              onToggle={() => setExpandedId((prev) => (prev === n.activityid ? null : n.activityid))}
-              onDelete={(id) => setNotes((prev) => prev.filter((x) => x.activityid !== id))}
-              isRead={readIds.has(n.activityid)}
-            />
-          ))}
+          {notes.map((n) => {
+            const recordId = n.activityid || n.annotationid
+
+            return (
+              <NoteCard
+                key={recordId}
+                note={n}
+                expanded={expandedId === recordId}
+                onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
+                onDelete={(id) => setNotes((prev) => prev.filter((x) => (x.activityid || x.annotationid) !== id))}
+              />
+            )
+          })}
         </div>
       )}
     </div>
