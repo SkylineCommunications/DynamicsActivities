@@ -2,36 +2,63 @@
 
 ## What This App Is
 
-A React + Vite SPA that replaces a Power App for logging customer interactions. It stores notes as native Dynamics 365 Activities and is deployed on DataMiner at:
+A React + Vite SPA deployed as a **DataMiner Custom App** for logging customer interactions. It stores notes as native Dynamics 365 Activities and is deployed on the Solutions DMA at:
 
 ```
 https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/
 ```
 
-Runs inside a DataMiner iframe. All auth uses popup flows — redirect flows do not work in iframes.
+Users access it via DataMiner's `/auth/` page, which handles Entra sign-in and sets session cookies before redirecting to the app.
 
 ---
 
 ## Versioning & Deployment
 
-**Every PR opened must increment the version in `DynamicsActivitiesPackage\DynamicsActivitiesPackage\DynamicsActivitiesPackage.csproj`:**
-- File: `DynamicsActivitiesPackage.csproj`
-- Field: `<Version>X.Y.Z</Version>`
-- **Increment the patch version (Z)** for bug fixes and features
-- **Increment the minor version (Y)** for significant changes
-- Example: `1.0.0` → `1.0.1` for a new PR
+**Every PR must increment the version in `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj`:**
+- Field: `<Version>X.Y.Z</Version>` — increment for every PR
+- Field: `<VersionComment>...</VersionComment>` — update with a short description
+- **Patch (Z)** for bug fixes and features, **Minor (Y)** for significant changes
 
-This prevents version conflicts in the DataMiner Catalog when multiple PRs are deployed. The workflow automatically uses the csproj version for Catalog registration and deployment.
+The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge` runs automatically on PR merge to main, or can be triggered manually via `workflow_dispatch` on any branch. It builds the frontend, packages a `.dmapp`, uploads to the DataMiner Catalog, and deploys to the target agent.
 
 ---
 
 ## Stack
 
 - React 18 + Vite 5, static build only
-- `@azure/msal-browser` + `@azure/msal-react` for Entra popup auth
-- Dataverse Web API v9.2 for all data
+- **DataMiner Custom App** — session managed via `DMAConnection` / `DMAUser` cookies
+- `@azure/msal-browser` + `@azure/msal-react` for Dynamics 365 and Skyline API tokens
+- Dataverse Web API v9.2 for all activity data
 - Microsoft Graph API v1.0 for calendar events (attendee prefill)
-- Skyline dark design system (CSS custom properties, Inter font)
+- Skyline Collaboration API (`api.skyline.be`) — proxied via automation script on DMA, direct on localhost
+- DataMiner DOM (Object Model) for notification subscriptions (CRUD + scheduled notifications)
+- DataMiner Automation Scripts for server-side logic (subscription CRUD, email notifications, API proxy)
+- DataMiner design system (CSS custom properties, Inter font, DataMinerIcons)
+
+---
+
+## Notification subscriptions behavior
+
+- `DynamicsActivities_ManageSubscriptions` stores subscription config in DOM.
+- `DynamicsActivities_NotifySubscribers` is executed by scheduler task or manual run.
+- Script parameters:
+  - `Frequency` (`id=10`, string): `instant`, `daily`, `weekly`, `monthly`.
+  - `ClientSecret` (`id=11`, string): Dataverse client secret.
+- The notify script does **not** enforce an internal cadence gate; every run processes subscriptions matching the passed `Frequency`.
+- New activity detection uses `createdon > LastSentAt` per subscription.
+- Sender/from behavior is controlled by DataMiner mail/SMTP configuration.
+
+---
+
+## Authentication (Triple Auth)
+
+The app uses three layers of authentication:
+
+1. **DataMiner session** (primary gate on DMA host): User signs in via `/auth/?url=%2Fpublic%2FDynamicsActivities%2Findex.html`. DataMiner sets `DMAConnection` (connection GUID) and `DMAUser` (JSON user info) cookies. The app reads the cookie, verifies with `IsConnectionAlive`.
+2. **MSAL for Dynamics 365 / Graph**: After DMA session is verified, tries `ssoSilent` (same Entra tenant), falls back to popup if consent is needed. Tokens used for Dataverse Web API and Graph calls.
+3. **MSAL for Skyline API**: Separate scope `api://53d05a51-7b85-4f10-a44b-69f97640b152/.default`, acquired via `acquireTokenSilent` / popup fallback.
+
+**Dual-mode**: On localhost (`isDataMinerHost()` returns false), the DMA session check is skipped and MSAL popup auth is used directly.
 
 ---
 
@@ -50,40 +77,36 @@ cd C:\GIT\DynamicsActivities
 npx vite --port 5173
 ```
 
+The Vite dev server includes a proxy for the Skyline API (`/skyline-api` → `https://api.skyline.be`) to bypass CORS restrictions in local dev.
+
 ---
 
 ## Build Commands
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Dev server — uses `.env` |
-| `npm run build` | Production build → `dist-dataminer/` — uses `.env.dataminer` |
-| `npm run build:local` | Local build → `dist/` — uses `.env` |
+| Command | Purpose | Output | Env file |
+|---|---|---|---|
+| `npm run dev` | Dev server | — | `.env` |
+| `npm run build` | DataMiner production build | `dist-dataminer/` | `.env.dataminer` |
+| `npm run build:local` | Local build | `dist/` | `.env` |
 
-**Always run `npm run build` (not `build:local`) before deploying.**
-
-### Versioning for Deployment
-
-A new deployment package requires a version bump. Update **both** files before creating a PR:
-
-1. `package.json` → `"version"` field
-2. `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj` → `<Version>` and `<VersionComment>`
-
-Use semver: patch for fixes, minor for features, major for breaking changes.
+The `.csproj` packaging automatically copies `dist-dataminer/` into the `.dmapp` as companion files under `C:\Skyline DataMiner\Webpages\public\DynamicsActivities\`.
 
 ---
 
 ## Environment Variables
 
-`.env` — local dev, client `acd01a7c-7c83-4977-a98d-ade9e82ae6e8`
-`.env.dataminer` — DataMiner deployment, client `31b6b722-e159-43bd-a53b-1a450bf5b38c`
+| File | Client ID | Purpose |
+|---|---|---|
+| `.env` | `acd01a7c-7c83-4977-a98d-ade9e82ae6e8` | Local development |
+| `.env.dataminer` | `31b6b722-e159-43bd-a53b-1a450bf5b38c` | DataMiner deployment |
 
-Key variables:
+Key variables (see `.env.example` for full list):
 ```
-VITE_DATAVERSE_URL=https://skyline365-qa.crm4.dynamics.com/
-VITE_CLIENT_ID=...
-VITE_TENANT_ID=5f175691-8d1c-4932-b7c8-ce990839ac40
-VITE_REDIRECT_URI=...
+VITE_DATAVERSE_URL          — Dataverse environment URL
+VITE_CLIENT_ID              — Entra app registration client ID
+VITE_TENANT_ID              — Entra tenant ID
+VITE_REDIRECT_URI           — MSAL redirect URI (must match Entra registration exactly)
+VITE_SKYLINE_API_URL        — Skyline API base URL (proxied on DMA, direct on localhost)
 ```
 
 ---
@@ -118,33 +141,42 @@ App-specific behavior:
 
 ---
 
-## Auth Pattern
-
-Popup-only. Never use `loginRedirect` (breaks inside DataMiner iframe).
-
-```js
-// Initial login
-instance.loginPopup(loginRequest)
-
-// Token acquisition
-msalInstance.acquireTokenSilent(request)
-  .catch(() => msalInstance.acquireTokenPopup(request))
-```
-
-Call `handleRedirectPromise()` at startup for resilience, but the primary flow is popup.
-
----
-
 ## Key Source Files
 
 | File | Purpose |
 |---|---|
+| `src/api/dataminer.js` | DataMiner session management — cookie bootstrap, `IsConnectionAlive`, sign-out, `getDmaUser` |
 | `src/api/dataverse.js` | All Dataverse ops — auth, search, create, delete |
 | `src/api/graph.js` | Graph calendar fetch for attendee prefill |
-| `src/components/AuthGuard.jsx` | Popup login, WhoAmI, render-prop auth gate |
-| `src/components/QuickNoteForm.jsx` | Note creation (3 types, account/attendee pickers, calendar fill) |
+| `src/api/skyline.js` | Skyline Collaboration API — proxied via DMA automation script to avoid CORS |
+| `src/api/subscriptions.js` | Subscription CRUD via DataMiner Automation (DOM-backed) |
+| `src/authConfig.js` | MSAL config, scopes for Dataverse/Graph/Skyline |
+| `src/components/AuthGuard.jsx` | Triple-auth gate: DMA session → MSAL ssoSilent/popup → WhoAmI |
+| `src/components/ActivityForm.jsx` | Activity creation (4 types, account/attendee pickers, calendar) |
 | `src/components/NotesList.jsx` | Browse view — lazy server-side OData filters |
+| `src/components/SubscriptionsPanel.jsx` | Email notification subscription management |
 | `src/components/AutocompletePicker.jsx` | Debounced autocomplete with clearOnPick support |
-| `src/components/CalendarPicker.jsx` | Graph calendar modal (60d past + 30d future, no all-day) |
-| `src/styles/main.css` | Skyline design system CSS variables + component styles |
+| `src/components/CalendarPicker.jsx` | Graph calendar modal (60d past + 30d future) |
+| `src/hooks/useTamContext.js` | TAM account context — loads managed accounts from Skyline API |
+| `src/styles/main.css` | DataMiner design system CSS variables + component styles |
+| `vite.config.js` | Build config (dual mode) + Skyline API dev proxy |
 | `public/web.config` | IIS SPA rewrite rule for DataMiner/IIS hosting |
+| `DynamicsActivitiesPackage/` | .NET solution for `.dmapp` packaging + automation scripts |
+| `DynamicsActivitiesPackage/DynamicsActivitiesPackage/` | Package install script + companion-file deployment wiring |
+| `DynamicsActivitiesPackage/DynamicsActivities_ManageSubscriptions/` | CRUD automation script for subscriptions (list/create/update/delete) |
+| `DynamicsActivitiesPackage/DynamicsActivities_NotifySubscribers/` | Scheduled email digest sender |
+| `DynamicsActivitiesPackage/DynamicsActivities_SkylineApiProxy/` | Server-side proxy for Skyline API (avoids CORS) |
+| `.github/workflows/deploy-dma-on-pr-merge.yml` | CI/CD — build, catalog upload, deploy to DMA |
+
+---
+
+## Documentation
+
+**Keep `README.md` up to date whenever you make changes that affect:**
+- Features or capabilities of the app
+- Project structure (new files, folders, or scripts)
+- Build/deploy instructions or prerequisites
+- Architecture decisions (e.g. new automation scripts, API changes)
+- Environment variable changes
+
+The README is the public-facing documentation for the repository. It should always reflect the current state of the project.

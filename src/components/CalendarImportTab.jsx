@@ -5,11 +5,13 @@ import {
   createContact,
   createInboxAppointmentActivity,
   findContactByEmail,
+  resolveAccountForRegarding,
   searchAccounts,
   searchLeads,
   searchOpportunities,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
+import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
 const REGARDING_TYPES = [
   { id: 'account', label: 'Account' },
@@ -64,6 +66,19 @@ function splitParticipants(event) {
   })
 }
 
+function getImportRegardingPayload(regardingType, regardingItem) {
+  if (!regardingItem) return { regardingId: null, regardingAccountId: null }
+  const isEscalationLink = ['escalation', 'slc_escalation', 'slc_escalations'].includes(regardingType)
+  return {
+    regardingId: isEscalationLink
+      ? regardingItem.activityid || regardingItem.slc_escalationid || null
+      : regardingItem[`${regardingType}id`] || null,
+    regardingAccountId: isEscalationLink
+      ? regardingItem._regardingobjectid_value || regardingItem.accountid || null
+      : null,
+  }
+}
+
 function isInternalEmail(email) {
   const normalized = String(email || '').trim().toLowerCase()
   return INTERNAL_DOMAINS.some((domain) => normalized.endsWith(domain))
@@ -84,10 +99,12 @@ function splitNameParts(displayName, fallbackEmail) {
   }
 }
 
-function CalendarAddModal({ event, onClose, onImported }) {
+function CalendarAddModal({ event, onClose, onImported, selectedAccount = null }) {
   const { instance } = useMsal()
   const [regardingType, setRegardingType] = useState('account')
-  const [regardingItem, setRegardingItem] = useState(null)
+  const [regardingItem, setRegardingItem] = useState(() => (
+    selectedAccount?.accountid ? { accountid: selectedAccount.accountid, name: selectedAccount.name } : null
+  ))
   const [contactsByEmail, setContactsByEmail] = useState({})
   const [loadingContacts, setLoadingContacts] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -101,7 +118,7 @@ function CalendarAddModal({ event, onClose, onImported }) {
     setContactsByEmail({})
     Promise.all(
       participants.map(async (p) => {
-        const contact = await findContactByEmail(instance, p.email)
+        const contact = await findContactByEmail(instance, p.email, selectedAccount?.accountid || null)
         return [p.email.toLowerCase(), contact]
       }),
     )
@@ -112,7 +129,7 @@ function CalendarAddModal({ event, onClose, onImported }) {
       .catch((e) => { if (!cancelled) setError(e.message) })
       .finally(() => { if (!cancelled) setLoadingContacts(false) })
     return () => { cancelled = true }
-  }, [instance, participants])
+  }, [instance, participants, selectedAccount?.accountid])
 
   const suggestedAccount = useMemo(() => {
     if (regardingType !== 'account') return null
@@ -177,16 +194,26 @@ function CalendarAddModal({ event, onClose, onImported }) {
 
   async function handleImport() {
     if (!regardingItem) return
+    const { regardingId, regardingAccountId } = getImportRegardingPayload(regardingType, regardingItem)
     setSaving(true)
     setError(null)
     try {
       const imported = await createInboxAppointmentActivity(instance, {
         event,
         regardingType,
-        regardingId: regardingItem[`${regardingType}id`],
+        regardingId,
+        regardingAccountId,
         contactsByEmail,
       })
-      onImported?.(imported)
+      const resolvedAccount = regardingType === 'account'
+        ? null
+        : await resolveAccountForRegarding(instance, { regardingType, regardingId })
+      const browseAccount = buildBrowseAccountFromRegarding({
+        regardingType,
+        regardingItem,
+        resolvedAccount,
+      })
+      onImported?.({ activity: imported, browseAccount })
       onClose()
     } catch (e) {
       setError(e.message)
@@ -288,7 +315,7 @@ function CalendarAddModal({ event, onClose, onImported }) {
   )
 }
 
-export default function CalendarImportTab({ compact = false, onImported }) {
+export default function CalendarImportTab({ compact = false, onImported, selectedAccount = null }) {
   const { instance } = useMsal()
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -476,6 +503,7 @@ export default function CalendarImportTab({ compact = false, onImported }) {
       {addingEvent && (
         <CalendarAddModal
           event={addingEvent}
+          selectedAccount={selectedAccount}
           onClose={() => setAddingEvent(null)}
           onImported={(imported) => {
             onImported?.(imported)

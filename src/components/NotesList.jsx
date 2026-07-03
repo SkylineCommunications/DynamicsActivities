@@ -21,6 +21,8 @@ const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cs
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= 'contact_phone'
 TYPE_ICONS['Meeting'] ??= 'calendar_today'
+TYPE_ICONS['Escalation'] ??= 'warning'
+TYPE_ICONS['Note'] ??= 'edit_note'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 
@@ -105,14 +107,16 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="btn-card-action btn-delete"
-              onClick={handleDelete}
-              title="Delete activity"
-            >
-              <span className="icon icon-sm">delete</span>
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn-card-action btn-delete"
+                onClick={handleDelete}
+                title="Delete activity"
+              >
+                <span className="icon icon-sm">delete</span>
+              </button>
+            </>
           ))}
         </div>
       </div>
@@ -239,7 +243,9 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
     })
-      .then(setNotes)
+      .then(async (results) => {
+        setNotes(results)
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [instance, accounts, attendee, selectedTypes, dateFrom, dateTo])
@@ -391,15 +397,19 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
 
       {notes !== null && notes.length > 0 && (
         <div className="notes-list">
-          {notes.map((n) => (
-            <NoteCard
-              key={n.activityid}
-              note={n}
-              expanded={expandedId === n.activityid}
-              onToggle={() => setExpandedId((prev) => (prev === n.activityid ? null : n.activityid))}
-              onDelete={(id) => setNotes((prev) => prev.filter((x) => x.activityid !== id))}
-            />
-          ))}
+          {notes.map((n) => {
+            const recordId = n.activityid || n.annotationid
+
+            return (
+              <NoteCard
+                key={recordId}
+                note={n}
+                expanded={expandedId === recordId}
+                onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
+                onDelete={(id) => setNotes((prev) => prev.filter((x) => (x.activityid || x.annotationid) !== id))}
+              />
+            )
+          })}
         </div>
       )}
     </div>

@@ -7,6 +7,7 @@ import {
   createInboxEmailActivity,
   findContactByEmail,
   getThreadSuggestion,
+  resolveAccountForRegarding,
   relinkExistingEmails,
   suggestAccountByEmailDomain,
   searchAccounts,
@@ -14,6 +15,7 @@ import {
   searchOpportunities,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
+import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
 const REGARDING_TYPES = [
   { id: 'account', label: 'Account' },
@@ -66,6 +68,19 @@ function splitRecipients(message) {
 
 function normaliseThreadMessages(messages) {
   return [...messages].sort((a, b) => (b.receivedDateTime?.getTime?.() || 0) - (a.receivedDateTime?.getTime?.() || 0))
+}
+
+function getImportRegardingPayload(regardingType, regardingItem) {
+  if (!regardingItem) return { regardingId: null, regardingAccountId: null }
+  const isEscalationLink = ['escalation', 'slc_escalation', 'slc_escalations'].includes(regardingType)
+  return {
+    regardingId: isEscalationLink
+      ? regardingItem.activityid || regardingItem.slc_escalationid || null
+      : regardingItem[`${regardingType}id`] || null,
+    regardingAccountId: isEscalationLink
+      ? regardingItem._regardingobjectid_value || regardingItem.accountid || null
+      : null,
+  }
 }
 
 function groupMessagesIntoThreads(messages, syncedSet) {
@@ -369,10 +384,12 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
   )
 }
 
-function MailAddModal({ thread, mailbox, onClose, onImported }) {
+function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = null }) {
   const { instance } = useMsal()
   const [regardingType, setRegardingType] = useState('account')
-  const [regardingItem, setRegardingItem] = useState(null)
+  const [regardingItem, setRegardingItem] = useState(() => (
+    selectedAccount?.accountid ? { accountid: selectedAccount.accountid, name: selectedAccount.name } : null
+  ))
   const [contactsByEmail, setContactsByEmail] = useState({})
   const [loadingContacts, setLoadingContacts] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -447,7 +464,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
     setContactsByEmail({})
     Promise.all(
       participants.map(async (p) => {
-        const contact = await findContactByEmail(instance, p.email)
+        const contact = await findContactByEmail(instance, p.email, selectedAccount?.accountid || null)
         return [p.email.toLowerCase(), contact]
       }),
     )
@@ -458,7 +475,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
       .catch((e) => { if (!cancelled) setError(e.message) })
       .finally(() => { if (!cancelled) setLoadingContacts(false) })
     return () => { cancelled = true }
-  }, [instance, participants])
+  }, [instance, participants, selectedAccount?.accountid])
 
   const suggestedAccount = useMemo(() => {
     if (regardingType !== 'account') return null
@@ -598,6 +615,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
 
   async function handleImport({ missingOnly }) {
     if (!regardingItem) return
+    const { regardingId, regardingAccountId } = getImportRegardingPayload(regardingType, regardingItem)
     setSaving(true)
     setError(null)
     try {
@@ -617,7 +635,8 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
         await createInboxEmailActivity(instance, {
           message,
           regardingType,
-          regardingId: regardingItem[`${regardingType}id`],
+          regardingId,
+          regardingAccountId,
           contactsByEmail,
         })
         if (message.internetMessageId) importedIds.push(message.internetMessageId)
@@ -626,14 +645,25 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
       if (relinkActivityIds.length && !missingOnly) {
         await relinkExistingEmails(instance, relinkActivityIds, {
           regardingType,
-          regardingId: regardingItem[`${regardingType}id`],
+          regardingId,
+          regardingAccountId,
         })
       }
+
+      const resolvedAccount = regardingType === 'account'
+        ? null
+        : await resolveAccountForRegarding(instance, { regardingType, regardingId })
+      const browseAccount = buildBrowseAccountFromRegarding({
+        regardingType,
+        regardingItem,
+        resolvedAccount,
+      })
 
       onImported?.({
         importedIds,
         relinkedIds: relinkActivityIds,
         allThreadIds: threadIds,
+        browseAccount,
       })
       onClose()
     } catch (e) {
@@ -769,7 +799,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported }) {
   )
 }
 
-export default function InboxTab({ compact = false, onImported }) {
+export default function InboxTab({ compact = false, onImported, selectedAccount = null }) {
   const { instance } = useMsal()
   const [messages, setMessages] = useState([])
   const [nextLink, setNextLink] = useState(null)
@@ -991,13 +1021,14 @@ export default function InboxTab({ compact = false, onImported }) {
         <MailAddModal
           thread={addingThread}
           mailbox={mailbox}
+          selectedAccount={selectedAccount}
           onClose={() => setAddingThread(null)}
-          onImported={({ importedIds, allThreadIds }) => {
+          onImported={({ importedIds, allThreadIds, browseAccount }) => {
             const knownIds = [...importedIds, ...allThreadIds].filter(Boolean)
             if (knownIds.length) {
               setSyncedSet((prev) => new Set([...prev, ...knownIds]))
             }
-            onImported?.({ importedIds, allThreadIds })
+            onImported?.({ importedIds, allThreadIds, browseAccount })
             setAddingThread(null)
           }}
         />
