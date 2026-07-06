@@ -130,7 +130,7 @@ function SubscriptionCard({ sub, onEdit, onDelete, onToggle }) {
   )
 }
 
-export default function SubscriptionsPanel() {
+export default function SubscriptionsPanel({ dmaAvailable = true }) {
   const { instance } = useMsal()
   const [subs, setSubs] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -139,13 +139,20 @@ export default function SubscriptionsPanel() {
   const [editingSub, setEditingSub] = useState(null)
 
   const load = useCallback(() => {
+    if (!dmaAvailable) {
+      setLoading(false)
+      setSubs([])
+      setError('DataMiner connection unavailable. Subscriptions are disabled in this session.')
+      return
+    }
+
     setLoading(true)
     setError(null)
     getSubscriptions(instance)
       .then(setSubs)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [instance])
+  }, [instance, dmaAvailable])
 
   useEffect(() => { load() }, [load])
 

@@ -36,6 +36,7 @@ export default function App() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [browseAccount, setBrowseAccount] = useState(null)
   const [themePref, setThemePref] = useState(getInitialTheme)
+  const [dmaConnection, setDmaConnection] = useState(null)
 
   // Apply theme to document
   useEffect(() => {
@@ -58,6 +59,7 @@ function cycleTheme() {
 }
 
   const dmaUser = isDataMinerHost() ? getDmaUser() : null
+  const subscriptionsAvailable = Boolean(dmaConnection)
 
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
 
@@ -106,6 +108,8 @@ function cycleTheme() {
           <button
             key={t.id}
             className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
+            disabled={t.id === 'subscriptions' && !subscriptionsAvailable}
+            title={t.id === 'subscriptions' && !subscriptionsAvailable ? 'Subscriptions require a DataMiner connection' : undefined}
             onClick={() => setActiveTab(t.id)}
           >
             <span className="icon icon-sm" aria-hidden="true">{t.icon}</span>
@@ -116,7 +120,7 @@ function cycleTheme() {
 
       {/* Content */}
       <main className="app-main">
-        <AuthGuard>
+        <AuthGuard onDmaConnection={setDmaConnection}>
           {(currentUserId) => (
             <>
               {activeTab === 'new' && (
@@ -136,7 +140,7 @@ function cycleTheme() {
                 />
               )}
               {activeTab === 'subscriptions' && (
-                <SubscriptionsPanel />
+                <SubscriptionsPanel dmaAvailable={subscriptionsAvailable} />
               )}
             </>
           )}

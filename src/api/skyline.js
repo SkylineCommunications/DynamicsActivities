@@ -96,7 +96,7 @@ async function skyFetch(msalInstance, path) {
         popupIsMinimizable: false, popupType: 1,
         ClientTimeZone: { Type: 0, Info: null },
       },
-    })
+    }, { redirectOnAuthFailure: false })
 
     if (!result || result.ErrorCode !== 0) return null
     const output = result.Output?.find(o => o.Name === 'result')
