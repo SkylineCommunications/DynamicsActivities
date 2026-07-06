@@ -26,6 +26,37 @@ TYPE_ICONS['Note'] ??= 'edit_note'
 TYPE_CLASSES['Call'] ??= 'type-call'
 TYPE_CLASSES['Meeting'] ??= 'type-visit'
 
+const BROWSE_VIEWS = [
+  {
+    id: 'activities',
+    label: 'Activities',
+    hint: 'Timeline with calls, appointments, emails, escalations, and notes.',
+    typeIds: ['phonecall', 'appointment', 'email', 'escalation', 'note'],
+    emptyTitle: 'No activities found',
+  },
+  {
+    id: 'opportunities',
+    label: 'Opportunities',
+    hint: 'Sales opportunities only.',
+    typeIds: ['opportunity'],
+    emptyTitle: 'No opportunities found',
+  },
+  {
+    id: 'leads',
+    label: 'Leads',
+    hint: 'Lead records only.',
+    typeIds: ['lead'],
+    emptyTitle: 'No leads found',
+  },
+  {
+    id: 'support',
+    label: 'Support',
+    hint: 'Support renewal opportunities only.',
+    typeIds: ['support'],
+    emptyTitle: 'No support records found',
+  },
+]
+
 function fmtDate(d) {
   if (!d) return ''
   return new Date(d).toLocaleString(undefined, {
@@ -206,6 +237,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [error, setError] = useState(null)
   const [expandedId, setExpandedId] = useState(null)
   const [tamAutoApplied, setTamAutoApplied] = useState(false)
+  const [activeViewId, setActiveViewId] = useState('activities')
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
@@ -213,6 +245,13 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const activeView = BROWSE_VIEWS.find((v) => v.id === activeViewId) || BROWSE_VIEWS[0]
+  const allowedTypeIds = new Set(activeView.typeIds)
+  const allowedTypes = ACTIVITY_TYPES.filter((t) => allowedTypeIds.has(t.id))
+
+  useEffect(() => {
+    setSelectedTypes(new Set())
+  }, [activeViewId])
 
   // When initialAccount changes (e.g. after note creation), update the "Regarding" filter
   useEffect(() => {
@@ -239,7 +278,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     searchActivities(instance, {
       accountIds: accounts.map((a) => a.accountid),
       contactId: attendee?.contactid ?? null,
-      activityTypes: selectedTypes.size ? [...selectedTypes] : null,
+      activityTypes: [...(selectedTypes.size ? [...selectedTypes].filter((t) => allowedTypeIds.has(t)) : activeView.typeIds)],
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
     })
@@ -248,7 +287,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [instance, accounts, attendee, selectedTypes, dateFrom, dateTo])
+  }, [instance, accounts, attendee, selectedTypes, dateFrom, dateTo, activeViewId])
 
   // Auto-search when navigated here after note creation, or re-run on refresh
   useEffect(() => {
@@ -264,6 +303,23 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     <div className="notes-container">
       {/* Filter panel */}
       <div className="filter-panel">
+        <div className="filter-field">
+          <label className="filter-label">View</label>
+          <div className="filter-mode-toggle">
+            {BROWSE_VIEWS.map((view) => (
+              <button
+                key={view.id}
+                type="button"
+                className={`filter-mode-btn ${activeViewId === view.id ? 'active' : ''}`}
+                onClick={() => setActiveViewId(view.id)}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+          <div className="filter-view-hint">{activeView.hint}</div>
+        </div>
+
         <div className="filter-row">
           <div className="filter-field">
             <label className="filter-label">Regarding</label>
@@ -315,35 +371,37 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
         )}
 
         <div className="filter-row filter-row-controls">
-          <div className="filter-field">
-            <label className="filter-label">Type</label>
-            <div className="filter-type-btns">
-<button
-  type="button"
-  className={`filter-type-btn ${selectedTypes.size === 0 ? 'active' : ''}`}
-  aria-pressed={selectedTypes.size === 0}
-  onClick={() => setSelectedTypes(new Set())}
->
-                All
-              </button>
-              {ACTIVITY_TYPES.map((t) => (
+          {activeView.typeIds.length > 1 && (
+            <div className="filter-field">
+              <label className="filter-label">Type</label>
+              <div className="filter-type-btns">
                 <button
-                  key={t.id}
                   type="button"
-                  className={`filter-type-btn ${selectedTypes.has(t.id) ? 'active' : ''}`}
-                  aria-pressed={selectedTypes.has(t.id)}
-                  onClick={() => setSelectedTypes((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(t.id)) next.delete(t.id)
-                    else next.add(t.id)
-                    return next
-                  })}
+                  className={`filter-type-btn ${selectedTypes.size === 0 ? 'active' : ''}`}
+                  aria-pressed={selectedTypes.size === 0}
+                  onClick={() => setSelectedTypes(new Set())}
                 >
-<span className="icon icon-sm" aria-hidden="true">{TYPE_ICONS[t.label]}</span>{t.label}
+                  All
                 </button>
-              ))}
+                {allowedTypes.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`filter-type-btn ${selectedTypes.has(t.id) ? 'active' : ''}`}
+                    aria-pressed={selectedTypes.has(t.id)}
+                    onClick={() => setSelectedTypes((prev) => {
+                      const next = new Set([...prev].filter((id) => allowedTypeIds.has(id)))
+                      if (next.has(t.id)) next.delete(t.id)
+                      else next.add(t.id)
+                      return next
+                    })}
+                  >
+                    <span className="icon icon-sm" aria-hidden="true">{TYPE_ICONS[t.label]}</span>{t.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div className="filter-field filter-field-date">
             <label className="filter-label">From</label>
             <input
@@ -388,7 +446,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       {notes !== null && !loading && notes.length === 0 && (
         <div className="empty-state">
           <div className="empty-icon"><span className="icon icon-lg">checklist</span></div>
-          <div className="empty-title">No activities found</div>
+          <div className="empty-title">{activeView.emptyTitle}</div>
           <div className="empty-sub">Try adjusting your filters.</div>
         </div>
       )}

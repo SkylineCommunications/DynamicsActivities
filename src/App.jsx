@@ -9,7 +9,7 @@ import { signOut as dmaSignOut, isDataMinerHost, getDmaUser } from './api/datami
 
 const TABS = [
   { id: 'new', label: 'New Activity', icon: 'add' },
-  { id: 'browse', label: 'Browse', icon: 'search' },
+  { id: 'browse', label: 'Activities', icon: 'search' },
   { id: 'subscriptions', label: 'Subscriptions', icon: 'notifications' },
 ]
 
