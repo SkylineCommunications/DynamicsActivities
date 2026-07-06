@@ -266,7 +266,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			var rows = DataverseGetAllValues($"/accounts?$select=accountid&$filter={filter}", 20);
 			return rows
-				.Select(v => v["accountid"]?.Value<string>())
+				.Select(v => NormalizeDataverseId(v["accountid"]?.Value<string>()))
 				.Where(v => !String.IsNullOrWhiteSpace(v))
 				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToList();
@@ -297,7 +297,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			foreach (var id in accountIds.Where(id => !string.IsNullOrWhiteSpace(id)))
 			{
-				ids.Add(id);
+				ids.Add(NormalizeDataverseId(id));
 			}
 
 			if (accountIds == null || accountIds.Count == 0)
@@ -328,7 +328,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			var json = DataverseGet(relativePath);
 			foreach (var v in json["value"] ?? new JArray())
 			{
-				var id = v[idField]?.Value<string>();
+				var id = NormalizeDataverseId(v[idField]?.Value<string>());
 				if (!String.IsNullOrWhiteSpace(id))
 				{
 					ids.Add(id);
@@ -502,7 +502,9 @@ namespace DynamicsActivitiesNotifySubscribers
 		private List<ActivityItem> FetchAnnotations(List<string> accountIds, string fromIso)
 		{
 			var scopedIds = new HashSet<string>(
-				(accountIds ?? new List<string>()).Where(id => !String.IsNullOrWhiteSpace(id)),
+				(accountIds ?? new List<string>())
+					.Select(NormalizeDataverseId)
+					.Where(id => !String.IsNullOrWhiteSpace(id)),
 				StringComparer.OrdinalIgnoreCase);
 			if (scopedIds.Count == 0)
 			{
@@ -519,11 +521,18 @@ namespace DynamicsActivitiesNotifySubscribers
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc", 20);
 			var result = new List<ActivityItem>();
+			string firstUnmatchedId = null;
+			string firstUnmatchedLogicalName = null;
 			foreach (var v in values)
 			{
-				var regardingId = v["_objectid_value"]?.Value<string>();
+				var regardingId = NormalizeDataverseId(v["_objectid_value"]?.Value<string>());
 				if (String.IsNullOrWhiteSpace(regardingId) || !scopedIds.Contains(regardingId))
 				{
+					if (firstUnmatchedId == null)
+					{
+						firstUnmatchedId = regardingId;
+						firstUnmatchedLogicalName = v["_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
+					}
 					continue;
 				}
 
@@ -541,6 +550,11 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			engine?.GenerateInformation($"[NotifySubscribers] Annotation fetch in-scope: fetched {values.Count} row(s), matched {result.Count} row(s).");
+			if (values.Count > 0 && result.Count == 0)
+			{
+				var scopeSample = String.Join(",", scopedIds.Take(3));
+				engine?.GenerateInformation($"[NotifySubscribers] Annotation mismatch sample: regardingId={firstUnmatchedId ?? "n/a"}, logicalName={firstUnmatchedLogicalName ?? "n/a"}, scopeSample={scopeSample}.");
+			}
 			return result;
 		}
 
@@ -914,6 +928,22 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static string EscapeODataString(string input)
 		{
 			return (input ?? string.Empty).Replace("'", "''");
+		}
+
+		private static string NormalizeDataverseId(string value)
+		{
+			if (String.IsNullOrWhiteSpace(value))
+			{
+				return String.Empty;
+			}
+
+			var trimmed = value.Trim();
+			if (Guid.TryParse(trimmed, out var guid))
+			{
+				return guid.ToString("D");
+			}
+
+			return trimmed;
 		}
 
 		private static string HtmlEncode(string value)
