@@ -33,6 +33,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static readonly Guid FieldActivityTypes = new Guid("29a0b1c2-3d4e-5f60-7182-930415263748");
 		private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
 		private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
+		private static readonly Guid FieldCreatedAt = new Guid("5cd3e4f5-6071-8293-0415-263748596a7b");
 
 		private DomHelper domHelper;
 		private HttpClient httpClient;
@@ -100,11 +101,18 @@ namespace DynamicsActivitiesNotifySubscribers
 				var scopeLabel = GetField<string>(section, FieldScopeLabel);
 				var activityTypesJson = GetField<string>(section, FieldActivityTypes);
 				var lastSentAtStr = GetField<string>(section, FieldLastSentAt);
+				var createdAtStr = GetField<string>(section, FieldCreatedAt);
 
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
-				var createdAt = GetSubscriptionCreatedAt(instance);
+				var createdAt = ParseDateTime(createdAtStr) ?? GetSubscriptionCreatedAt(instance);
+				if (!createdAt.HasValue)
+				{
+					createdAt = lastSentAt > DateTime.MinValue ? lastSentAt : now;
+					section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(createdAt.Value.ToString("o"))));
+					domHelper.DomInstances.Update(instance);
+				}
 				var since = GetEffectiveSince(lastSentAt, createdAt);
 				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, since, now);
 				if (activities.Count == 0)

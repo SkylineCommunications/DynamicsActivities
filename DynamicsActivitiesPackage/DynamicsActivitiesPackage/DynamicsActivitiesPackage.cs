@@ -29,6 +29,7 @@ internal class Script
     private static readonly Guid FieldActivityTypes = new Guid("29a0b1c2-3d4e-5f60-7182-930415263748");
     private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
     private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
+    private static readonly Guid FieldCreatedAt = new Guid("5cd3e4f5-6071-8293-0415-263748596a7b");
 
     /// <summary>
     /// The script entry point.
@@ -162,6 +163,7 @@ internal class Script
         section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldActivityTypes), Name = "Activity Types", FieldType = typeof(string) });
         section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldEnabled), Name = "Enabled", FieldType = typeof(bool) });
         section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldLastSentAt), Name = "Last Sent At", FieldType = typeof(string) });
+        section.AddOrReplaceFieldDescriptor(new FieldDescriptor { ID = new FieldDescriptorID(FieldCreatedAt), Name = "Created At", FieldType = typeof(string) });
 
         return section;
     }
