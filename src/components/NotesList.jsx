@@ -37,9 +37,10 @@ const BROWSE_VIEWS = [
   {
     id: 'opportunities',
     label: 'Opportunities',
-    hint: 'Sales opportunities only.',
+    hint: 'Select an account under Regarding to browse sales opportunities.',
     typeIds: ['opportunity'],
     emptyTitle: 'No opportunities found',
+  }
   },
   {
     id: 'leads',
