@@ -6,6 +6,7 @@ namespace DynamicsActivitiesNotifySubscribers
 	using System.Linq;
 	using System.Net.Http;
 	using System.Net.Http.Headers;
+	using System.Reflection;
 	using System.Text;
 	using System.Threading;
 	using Newtonsoft.Json;
@@ -102,15 +103,17 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
-				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, lastSentAt, now);
+				var createdAt = GetSubscriptionCreatedAt(instance);
+				var since = GetEffectiveSince(lastSentAt, createdAt);
+				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, since, now);
 				if (activities.Count == 0)
 				{
-					engine.GenerateInformation($"[NotifySubscribers] No new activities for sub {instance.ID.Id} ({scopeType}:{scopeValue}) since {lastSentAt:o}.");
+					engine.GenerateInformation($"[NotifySubscribers] No new activities for sub {instance.ID.Id} ({scopeType}:{scopeValue}) since {since:o}. LastSentAt={lastSentAt:o}, CreatedAt={(createdAt.HasValue ? createdAt.Value.ToString("o") : "n/a")}.");
 					continue;
 				}
 
 				var subject = $"[DynamicsActivities] Activity digest for {scopeLabel ?? scopeValue}";
-				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, lastSentAt, now, activities);
+				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, since, now, activities);
 
 				try
 				{
@@ -655,6 +658,75 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			if (string.IsNullOrEmpty(iso)) return null;
 			if (DateTime.TryParse(iso, null, DateTimeStyles.RoundtripKind, out var dt)) return dt;
+			return null;
+		}
+
+		private static DateTime GetEffectiveSince(DateTime lastSentAt, DateTime? createdAt)
+		{
+			if (!createdAt.HasValue)
+			{
+				return lastSentAt;
+			}
+
+			return createdAt.Value > lastSentAt ? createdAt.Value : lastSentAt;
+		}
+
+		private static DateTime? GetSubscriptionCreatedAt(DomInstance instance)
+		{
+			if (instance == null) return null;
+
+			var candidatePropertyNames = new[]
+			{
+				"CreatedAt",
+				"CreatedOn",
+				"CreationTime",
+				"CreatedDate",
+				"CreatedUtc",
+			};
+
+			foreach (var propertyName in candidatePropertyNames)
+			{
+				var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+				if (property == null) continue;
+
+				var value = property.GetValue(instance, null);
+				var parsed = TryConvertToUtcDateTime(value);
+				if (parsed.HasValue)
+				{
+					return parsed.Value;
+				}
+			}
+
+			return null;
+		}
+
+		private static DateTime? TryConvertToUtcDateTime(object value)
+		{
+			if (value == null) return null;
+
+			if (value is DateTimeOffset dto)
+			{
+				return dto.UtcDateTime;
+			}
+
+			if (value is DateTime dt)
+			{
+				return dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+			}
+
+			var raw = Convert.ToString(value, CultureInfo.InvariantCulture);
+			if (String.IsNullOrWhiteSpace(raw)) return null;
+
+			if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedOffset))
+			{
+				return parsedOffset.UtcDateTime;
+			}
+
+			if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedDateTime))
+			{
+				return parsedDateTime.Kind == DateTimeKind.Utc ? parsedDateTime : parsedDateTime.ToUniversalTime();
+			}
+
 			return null;
 		}
 
