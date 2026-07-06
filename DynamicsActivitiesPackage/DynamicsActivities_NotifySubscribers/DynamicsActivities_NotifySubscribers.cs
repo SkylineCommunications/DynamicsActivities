@@ -186,7 +186,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			if (want("escalation", "slc_escalations")) activities.AddRange(FetchEscalations(scope.ActivityLookupIds, fromIso));
 			if (want("lead", "leads")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso));
 			if (want("opportunity", "opportunities") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, want("opportunity", "opportunities"), want("support")));
-			if (want("note", "annotations")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso));
+			if (want("note", "annotations")) activities.AddRange(FetchAnnotations(scope, fromIso));
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
@@ -257,6 +257,8 @@ namespace DynamicsActivitiesNotifySubscribers
 			engine?.GenerateInformation($"[NotifySubscribers] Scope resolution for {normalizedScopeType}:{scopeValue} -> accounts={accountIds.Count}, lookupIds={activityLookupIds.Count}.");
 			return new ScopeContext
 			{
+				ScopeType = normalizedScopeType,
+				ScopeValue = scopeValue ?? String.Empty,
 				AccountIds = accountIds,
 				ActivityLookupIds = activityLookupIds,
 			};
@@ -499,8 +501,9 @@ namespace DynamicsActivitiesNotifySubscribers
 			return result;
 		}
 
-		private List<ActivityItem> FetchAnnotations(List<string> accountIds, string fromIso)
+		private List<ActivityItem> FetchAnnotations(ScopeContext scope, string fromIso)
 		{
+			var accountIds = scope?.ActivityLookupIds ?? new List<string>();
 			var scopedIds = new HashSet<string>(
 				(accountIds ?? new List<string>())
 					.Select(NormalizeDataverseId)
@@ -523,10 +526,36 @@ namespace DynamicsActivitiesNotifySubscribers
 			var result = new List<ActivityItem>();
 			string firstUnmatchedId = null;
 			string firstUnmatchedLogicalName = null;
+			string firstFallbackMatchedId = null;
 			foreach (var v in values)
 			{
 				var regardingId = NormalizeDataverseId(v["_objectid_value"]?.Value<string>());
-				if (String.IsNullOrWhiteSpace(regardingId) || !scopedIds.Contains(regardingId))
+				if (String.IsNullOrWhiteSpace(regardingId))
+				{
+					if (firstUnmatchedId == null)
+					{
+						firstUnmatchedId = regardingId;
+						firstUnmatchedLogicalName = v["_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
+					}
+					continue;
+				}
+
+				var inScope = scopedIds.Contains(regardingId);
+				if (!inScope)
+				{
+					var regardingLogicalName = v["_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
+					var matchedByAccountFallback =
+						String.Equals(regardingLogicalName, "account", StringComparison.OrdinalIgnoreCase) &&
+						AccountMatchesTextScope(scope, regardingId);
+					if (matchedByAccountFallback)
+					{
+						inScope = true;
+						firstFallbackMatchedId = firstFallbackMatchedId ?? regardingId;
+						scopedIds.Add(regardingId);
+					}
+				}
+
+				if (!inScope)
 				{
 					if (firstUnmatchedId == null)
 					{
@@ -555,7 +584,50 @@ namespace DynamicsActivitiesNotifySubscribers
 				var scopeSample = String.Join(",", scopedIds.Take(3));
 				engine?.GenerateInformation($"[NotifySubscribers] Annotation mismatch sample: regardingId={firstUnmatchedId ?? "n/a"}, logicalName={firstUnmatchedLogicalName ?? "n/a"}, scopeSample={scopeSample}.");
 			}
+			if (!String.IsNullOrWhiteSpace(firstFallbackMatchedId))
+			{
+				engine?.GenerateInformation($"[NotifySubscribers] Annotation account fallback matched account {firstFallbackMatchedId}.");
+			}
 			return result;
+		}
+
+		private bool AccountMatchesTextScope(ScopeContext scope, string accountId)
+		{
+			if (scope == null || String.IsNullOrWhiteSpace(accountId))
+			{
+				return false;
+			}
+
+			var normalizedScopeType = (scope.ScopeType ?? String.Empty).Trim().ToLowerInvariant();
+			var rawScopeValue = (scope.ScopeValue ?? String.Empty).Trim();
+			if (String.IsNullOrWhiteSpace(rawScopeValue))
+			{
+				return false;
+			}
+
+			string fieldName = null;
+			switch (normalizedScopeType)
+			{
+				case "region":
+					fieldName = "address1_stateorprovince";
+					break;
+				case "country":
+					fieldName = "address1_country";
+					break;
+				default:
+					return false;
+			}
+
+			var normalizedAccountId = NormalizeDataverseId(accountId);
+			var account = DataverseGet($"/accounts({normalizedAccountId})?$select={fieldName}");
+			var fieldValue = (account[fieldName]?.Value<string>() ?? String.Empty).Trim();
+			if (String.IsNullOrWhiteSpace(fieldValue))
+			{
+				return false;
+			}
+
+			return String.Equals(fieldValue, rawScopeValue, StringComparison.OrdinalIgnoreCase)
+				|| fieldValue.IndexOf(rawScopeValue, StringComparison.OrdinalIgnoreCase) >= 0;
 		}
 
 		private List<ActivityItem> FetchAnnotationsLinkedToEscalations(List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
@@ -1049,6 +1121,8 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private sealed class ScopeContext
 		{
+			public string ScopeType { get; set; } = String.Empty;
+			public string ScopeValue { get; set; } = String.Empty;
 			public List<string> AccountIds { get; set; } = new List<string>();
 			public List<string> ActivityLookupIds { get; set; } = new List<string>();
 		}
