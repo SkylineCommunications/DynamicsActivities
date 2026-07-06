@@ -32,6 +32,7 @@ namespace DynamicsActivitiesManageSubscriptions
 		private static readonly Guid FieldActivityTypes = new Guid("29a0b1c2-3d4e-5f60-7182-930415263748");
 		private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
 		private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
+		private static readonly Guid FieldCreatedAt = new Guid("5cd3e4f5-6071-8293-0415-263748596a7b");
 
 		private DomHelper domHelper;
 
@@ -148,6 +149,7 @@ namespace DynamicsActivitiesManageSubscriptions
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(JsonConvert.SerializeObject(normalizedActivityTypes))));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(true)));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(string.Empty)));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(UtcNowRoundedToSeconds().ToString("o"))));
 
 			instance.Sections.Add(section);
 			var created = domHelper.DomInstances.Create(instance);
@@ -193,6 +195,8 @@ namespace DynamicsActivitiesManageSubscriptions
 			}
 			if (dto.Enabled.HasValue)
 				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(dto.Enabled.Value)));
+			if (String.IsNullOrWhiteSpace(GetFieldValue<string>(section, FieldCreatedAt)))
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(UtcNowRoundedToSeconds().ToString("o"))));
 
 			var updated = domHelper.DomInstances.Update(existing);
 			return JsonConvert.SerializeObject(MapToDto(updated));
@@ -229,6 +233,7 @@ namespace DynamicsActivitiesManageSubscriptions
 				ActivityTypes = ParseActivityTypes(GetFieldValue<string>(section, FieldActivityTypes)),
 				Enabled = GetFieldValue<bool>(section, FieldEnabled),
 				LastSentAt = GetFieldValue<string>(section, FieldLastSentAt),
+				CreatedAt = GetFieldValue<string>(section, FieldCreatedAt),
 				UserEmail = GetFieldValue<string>(section, FieldUserEmail),
 				UserName = GetFieldValue<string>(section, FieldUserName),
 			};
@@ -294,6 +299,12 @@ namespace DynamicsActivitiesManageSubscriptions
 				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToList();
 		}
+
+		private static DateTime UtcNowRoundedToSeconds()
+		{
+			var now = DateTime.UtcNow;
+			return new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second, DateTimeKind.Utc);
+		}
 	}
 
 	internal class SubscriptionDto
@@ -321,6 +332,9 @@ namespace DynamicsActivitiesManageSubscriptions
 
 		[JsonProperty("lastSentAt")]
 		public string LastSentAt { get; set; }
+
+		[JsonProperty("createdAt")]
+		public string CreatedAt { get; set; }
 
 		[JsonProperty("userEmail")]
 		public string UserEmail { get; set; }

@@ -32,6 +32,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static readonly Guid FieldActivityTypes = new Guid("29a0b1c2-3d4e-5f60-7182-930415263748");
 		private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
 		private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
+		private static readonly Guid FieldCreatedAt = new Guid("5cd3e4f5-6071-8293-0415-263748596a7b");
 
 		private DomHelper domHelper;
 		private HttpClient httpClient;
@@ -98,19 +99,28 @@ namespace DynamicsActivitiesNotifySubscribers
 				var scopeLabel = GetField<string>(section, FieldScopeLabel);
 				var activityTypesJson = GetField<string>(section, FieldActivityTypes);
 				var lastSentAtStr = GetField<string>(section, FieldLastSentAt);
+				var createdAtStr = GetField<string>(section, FieldCreatedAt);
 
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
-				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, lastSentAt, now);
+				var createdAt = ParseDateTime(createdAtStr);
+				if (!createdAt.HasValue)
+				{
+					createdAt = lastSentAt > DateTime.MinValue ? lastSentAt : UtcNowRoundedToSeconds(now);
+					section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(createdAt.Value.ToString("o"))));
+					domHelper.DomInstances.Update(instance);
+				}
+				var since = GetEffectiveSince(lastSentAt, createdAt);
+				var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, since, now);
 				if (activities.Count == 0)
 				{
-					engine.GenerateInformation($"[NotifySubscribers] No new activities for sub {instance.ID.Id} ({scopeType}:{scopeValue}) since {lastSentAt:o}.");
+					engine.GenerateInformation($"[NotifySubscribers] No new activities for sub {instance.ID.Id} ({scopeType}:{scopeValue}) since {since:o}. LastSentAt={lastSentAt:o}, CreatedAt={(createdAt.HasValue ? createdAt.Value.ToString("o") : "n/a")}.");
 					continue;
 				}
 
 				var subject = $"[DynamicsActivities] Activity digest for {scopeLabel ?? scopeValue}";
-				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, lastSentAt, now, activities);
+				var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, since, now, activities);
 
 				try
 				{
@@ -174,7 +184,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			if (want("escalation", "slc_escalations")) activities.AddRange(FetchEscalations(scope.ActivityLookupIds, fromIso));
 			if (want("lead", "leads")) activities.AddRange(FetchLeads(scope.AccountIds, fromIso));
 			if (want("opportunity", "opportunities") || want("support")) activities.AddRange(FetchOpportunities(scope.AccountIds, fromIso, want("opportunity", "opportunities"), want("support")));
-			if (want("note", "annotations")) activities.AddRange(FetchAnnotations(scope.ActivityLookupIds, fromIso));
+			if (want("note", "annotations")) activities.AddRange(FetchAnnotations(scope, fromIso));
 
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
@@ -223,16 +233,17 @@ namespace DynamicsActivitiesNotifySubscribers
 		private ScopeContext ResolveScopeContext(string scopeType, string scopeValue)
 		{
 			var accountIds = new List<string>();
-			switch ((scopeType ?? string.Empty).ToLowerInvariant())
+			var normalizedScopeType = (scopeType ?? string.Empty).ToLowerInvariant();
+			switch (normalizedScopeType)
 			{
 				case "account":
 					if (!string.IsNullOrWhiteSpace(scopeValue)) accountIds.Add(scopeValue.Trim());
 					break;
 				case "country":
-					accountIds = QueryAccountIds($"address1_country eq '{EscapeODataString(scopeValue)}'");
+					accountIds = QueryAccountIdsForTextField("address1_country", scopeValue);
 					break;
 				case "region":
-					accountIds = QueryAccountIds($"address1_stateorprovince eq '{EscapeODataString(scopeValue)}'");
+					accountIds = QueryAccountIdsForTextField("address1_stateorprovince", scopeValue);
 					break;
 				case "escalation":
 					break;
@@ -241,8 +252,11 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			var activityLookupIds = ExpandRelatedLookupIds(accountIds);
+			engine?.GenerateInformation($"[NotifySubscribers] Scope resolution for {normalizedScopeType}:{scopeValue} -> accounts={accountIds.Count}, lookupIds={activityLookupIds.Count}.");
 			return new ScopeContext
 			{
+				ScopeType = normalizedScopeType,
+				ScopeValue = scopeValue ?? String.Empty,
 				AccountIds = accountIds,
 				ActivityLookupIds = activityLookupIds,
 			};
@@ -250,8 +264,32 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<string> QueryAccountIds(string filter)
 		{
-			var json = DataverseGet($"/accounts?$select=accountid&$filter={filter}&$top=200");
-			return json["value"]?.Select(v => v["accountid"]?.Value<string>()).Where(v => !string.IsNullOrEmpty(v)).ToList() ?? new List<string>();
+			var rows = DataverseGetAllValues($"/accounts?$select=accountid&$filter={filter}", 20);
+			return rows
+				.Select(v => NormalizeDataverseId(v["accountid"]?.Value<string>()))
+				.Where(v => !String.IsNullOrWhiteSpace(v))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+		}
+
+		private List<string> QueryAccountIdsForTextField(string fieldName, string scopeValue)
+		{
+			var escaped = EscapeODataString(scopeValue).Trim();
+			if (String.IsNullOrWhiteSpace(escaped))
+			{
+				return new List<string>();
+			}
+
+			var exact = QueryAccountIds($"{fieldName} eq '{escaped}'");
+			// UI suggestions use contains(); union both to avoid missing near-match values.
+			var contains = QueryAccountIds($"contains({fieldName},'{escaped}')");
+			var union = exact
+				.Concat(contains)
+				.Where(v => !String.IsNullOrWhiteSpace(v))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			engine?.GenerateInformation($"[NotifySubscribers] Scope text match for {fieldName}='{escaped}': exact={exact.Count}, contains={contains.Count}, union={union.Count}.");
+			return union;
 		}
 
 		private List<string> ExpandRelatedLookupIds(List<string> accountIds)
@@ -259,7 +297,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			foreach (var id in accountIds.Where(id => !string.IsNullOrWhiteSpace(id)))
 			{
-				ids.Add(id);
+				ids.Add(NormalizeDataverseId(id));
 			}
 
 			if (accountIds == null || accountIds.Count == 0)
@@ -272,35 +310,30 @@ namespace DynamicsActivitiesNotifySubscribers
 			var parentCustomerFilter = BuildOrFilter("_parentcustomerid_value", capped);
 			var regardingFilter = BuildOrFilter("_regardingobjectid_value", capped);
 
-			var opportunities = DataverseGet($"/opportunities?$select=opportunityid&$filter={accountFilter}&$top=200");
-			foreach (var v in opportunities["value"] ?? new JArray())
-			{
-				var id = v["opportunityid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
+			AddIdsFromQuery(ids, $"/opportunities?$select=opportunityid&$filter={accountFilter}&$top=200", "opportunityid");
+			AddIdsFromQuery(ids, $"/contacts?$select=contactid&$filter={parentCustomerFilter}&$top=200", "contactid");
+			AddIdsFromQuery(ids, $"/leads?$select=leadid&$filter={accountFilter}&$top=200", "leadid");
+			AddIdsFromQuery(ids, $"/slc_escalations?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
 
-			var contacts = DataverseGet($"/contacts?$select=contactid&$filter={parentCustomerFilter}&$top=200");
-			foreach (var v in contacts["value"] ?? new JArray())
-			{
-				var id = v["contactid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
-
-			var leads = DataverseGet($"/leads?$select=leadid&$filter={accountFilter}&$top=200");
-			foreach (var v in leads["value"] ?? new JArray())
-			{
-				var id = v["leadid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
-
-			var escalations = DataverseGet($"/slc_escalations?$select=activityid&$filter={regardingFilter}&$top=200");
-			foreach (var v in escalations["value"] ?? new JArray())
-			{
-				var id = v["activityid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
+			// Include direct activities so notes linked to those activity records can also be matched in-scope.
+			AddIdsFromQuery(ids, $"/phonecalls?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
+			AddIdsFromQuery(ids, $"/appointments?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
+			AddIdsFromQuery(ids, $"/emails?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
 
 			return ids.ToList();
+		}
+
+		private void AddIdsFromQuery(HashSet<string> ids, string relativePath, string idField)
+		{
+			var json = DataverseGet(relativePath);
+			foreach (var v in json["value"] ?? new JArray())
+			{
+				var id = NormalizeDataverseId(v[idField]?.Value<string>());
+				if (!String.IsNullOrWhiteSpace(id))
+				{
+					ids.Add(id);
+				}
+			}
 		}
 
 		private static string BuildOrFilter(string fieldName, List<string> ids)
@@ -466,27 +499,149 @@ namespace DynamicsActivitiesNotifySubscribers
 			return result;
 		}
 
-		private List<ActivityItem> FetchAnnotations(List<string> accountIds, string fromIso)
+		private List<ActivityItem> FetchAnnotations(ScopeContext scope, string fromIso)
 		{
-			var filters = BuildLookupFilters("_objectid_value", accountIds);
+			var accountIds = scope?.ActivityLookupIds ?? new List<string>();
+			var scopedIds = new HashSet<string>(
+				(accountIds ?? new List<string>())
+					.Select(NormalizeDataverseId)
+					.Where(id => !String.IsNullOrWhiteSpace(id)),
+				StringComparer.OrdinalIgnoreCase);
+			if (scopedIds.Count == 0)
+			{
+				engine?.GenerateInformation("[NotifySubscribers] Annotation fetch skipped: no scoped lookup IDs.");
+				return new List<ActivityItem>();
+			}
+
+			var filters = new List<string>();
 			if (!string.IsNullOrEmpty(fromIso))
 			{
 				filters.Add($"createdon gt {fromIso}");
 			}
-			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
 
-			return json["value"]?.Select(v => new ActivityItem
+			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
+			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc", 20);
+			var result = new List<ActivityItem>();
+			foreach (var v in values)
 			{
-				Id = v["annotationid"]?.Value<string>(),
-				EntityType = "annotations",
-				TypeLabel = "Note",
-				Subject = v["subject"]?.Value<string>(),
-				Description = v["notetext"]?.Value<string>(),
-				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				RegardingId = v["_objectid_value"]?.Value<string>(),
-				Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
-			}).ToList() ?? new List<ActivityItem>();
+				var regardingId = NormalizeDataverseId(v["_objectid_value"]?.Value<string>());
+				if (String.IsNullOrWhiteSpace(regardingId))
+				{
+					continue;
+				}
+
+				var inScope = scopedIds.Contains(regardingId);
+				if (!inScope)
+				{
+					var regardingLogicalName = v["_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
+					var matchedByAccountFallback =
+						String.Equals(regardingLogicalName, "account", StringComparison.OrdinalIgnoreCase) &&
+						AccountMatchesTextScope(scope, regardingId);
+					if (matchedByAccountFallback)
+					{
+						inScope = true;
+						scopedIds.Add(regardingId);
+					}
+				}
+
+				if (!inScope)
+				{
+					continue;
+				}
+
+				result.Add(new ActivityItem
+				{
+					Id = v["annotationid"]?.Value<string>(),
+					EntityType = "annotations",
+					TypeLabel = "Note",
+					Subject = v["subject"]?.Value<string>(),
+					Description = v["notetext"]?.Value<string>(),
+					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+					RegardingId = regardingId,
+					Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+				});
+			}
+
+			return result;
+		}
+
+		private bool AccountMatchesTextScope(ScopeContext scope, string accountId)
+		{
+			if (scope == null || String.IsNullOrWhiteSpace(accountId))
+			{
+				return false;
+			}
+
+			var normalizedScopeType = (scope.ScopeType ?? String.Empty).Trim().ToLowerInvariant();
+			var rawScopeValue = (scope.ScopeValue ?? String.Empty).Trim();
+			if (String.IsNullOrWhiteSpace(rawScopeValue))
+			{
+				return false;
+			}
+
+			string fieldName = null;
+			switch (normalizedScopeType)
+			{
+				case "region":
+					fieldName = "address1_stateorprovince";
+					break;
+				case "country":
+					fieldName = "address1_country";
+					break;
+				default:
+					return false;
+			}
+
+			var normalizedAccountId = NormalizeDataverseId(accountId);
+			var account = DataverseGet($"/accounts({normalizedAccountId})");
+			var fieldValue = (account[fieldName]?.Value<string>() ?? String.Empty).Trim();
+			if (ValueMatchesScope(fieldValue, rawScopeValue))
+			{
+				return true;
+			}
+
+			var targetToken = normalizedScopeType == "region" ? "state" : "country";
+			foreach (var property in account.Properties())
+			{
+				if (property.Value.Type != JTokenType.String)
+				{
+					continue;
+				}
+
+				var propertyName = property.Name ?? String.Empty;
+				if (propertyName.StartsWith("_", StringComparison.Ordinal) && propertyName.EndsWith("_value", StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+
+				var lowerName = propertyName.ToLowerInvariant();
+				if (lowerName.IndexOf(targetToken, StringComparison.Ordinal) < 0 &&
+					lowerName.IndexOf("address", StringComparison.Ordinal) < 0 &&
+					lowerName.IndexOf("billing", StringComparison.Ordinal) < 0)
+				{
+					continue;
+				}
+
+				var value = (property.Value.Value<string>() ?? String.Empty).Trim();
+				if (!ValueMatchesScope(value, rawScopeValue))
+				{
+					continue;
+				}
+
+				return true;
+			}
+			return false;
+		}
+
+		private static bool ValueMatchesScope(string value, string scopeValue)
+		{
+			if (String.IsNullOrWhiteSpace(value) || String.IsNullOrWhiteSpace(scopeValue))
+			{
+				return false;
+			}
+
+			return String.Equals(value.Trim(), scopeValue.Trim(), StringComparison.OrdinalIgnoreCase)
+				|| value.IndexOf(scopeValue.Trim(), StringComparison.OrdinalIgnoreCase) >= 0;
 		}
 
 		private List<ActivityItem> FetchAnnotationsLinkedToEscalations(List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
@@ -658,6 +813,29 @@ namespace DynamicsActivitiesNotifySubscribers
 			return null;
 		}
 
+		private static DateTime GetEffectiveSince(DateTime lastSentAt, DateTime? createdAt)
+		{
+			if (!createdAt.HasValue)
+			{
+				return lastSentAt;
+			}
+
+			// Dataverse createdon often has second-level precision.
+			// On first run, shift one second back to avoid dropping records created in the same second as subscription creation.
+			if (lastSentAt <= DateTime.MinValue.AddSeconds(1))
+			{
+				return createdAt.Value.AddSeconds(-1);
+			}
+
+			return createdAt.Value > lastSentAt ? createdAt.Value : lastSentAt;
+		}
+
+		private static DateTime UtcNowRoundedToSeconds(DateTime utcNow)
+		{
+			var normalized = utcNow.Kind == DateTimeKind.Utc ? utcNow : utcNow.ToUniversalTime();
+			return new DateTime(normalized.Year, normalized.Month, normalized.Day, normalized.Hour, normalized.Minute, normalized.Second, DateTimeKind.Utc);
+		}
+
 		private static List<string> ParseActivityTypes(string json)
 		{
 			if (string.IsNullOrEmpty(json)) return null;
@@ -713,6 +891,22 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static string EscapeODataString(string input)
 		{
 			return (input ?? string.Empty).Replace("'", "''");
+		}
+
+		private static string NormalizeDataverseId(string value)
+		{
+			if (String.IsNullOrWhiteSpace(value))
+			{
+				return String.Empty;
+			}
+
+			var trimmed = value.Trim();
+			if (Guid.TryParse(trimmed, out var guid))
+			{
+				return guid.ToString("D");
+			}
+
+			return trimmed;
 		}
 
 		private static string HtmlEncode(string value)
@@ -818,6 +1012,8 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private sealed class ScopeContext
 		{
+			public string ScopeType { get; set; } = String.Empty;
+			public string ScopeValue { get; set; } = String.Empty;
 			public List<string> AccountIds { get; set; } = new List<string>();
 			public List<string> ActivityLookupIds { get; set; } = new List<string>();
 		}
