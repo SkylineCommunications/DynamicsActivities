@@ -71,7 +71,7 @@ on:
         description: Node.js version for the frontend build.
         required: false
         type: string
-        default: "20"
+        default: "22"
 
       # ----------------------------------------------------------
       # Optional: .NET / DataMiner packaging
@@ -111,7 +111,7 @@ jobs:
       # 1. Source
       # --------------------------------------------------------
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # PR merge → always build from main; manual dispatch → build from the selected branch
           ref: ${{ github.event.pull_request.base.ref || github.ref }}
@@ -131,7 +131,7 @@ jobs:
       # 3. Frontend build (Vite / React / Angular)
       # --------------------------------------------------------
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ inputs.node_version }}
           cache: npm
@@ -148,7 +148,6 @@ jobs:
           VITE_TENANT_ID:             ${{ secrets.VITE_TENANT_ID }}
           VITE_DATAVERSE_URL:         ${{ secrets.VITE_DATAVERSE_URL }}
           VITE_REDIRECT_URI:          ${{ vars.VITE_REDIRECT_URI }}
-          VITE_FUNCTIONS_BASE_URL:    ${{ vars.VITE_FUNCTIONS_BASE_URL }}
 
       - name: Verify frontend dist
         run: |
@@ -162,7 +161,7 @@ jobs:
       # 4. .NET + Mono setup
       # --------------------------------------------------------
       - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ inputs.dotnet_version }}
 
