@@ -40,7 +40,6 @@ const BROWSE_VIEWS = [
     hint: 'Select an account under Regarding to browse sales opportunities.',
     typeIds: ['opportunity'],
     emptyTitle: 'No opportunities found',
-  }
   },
   {
     id: 'leads',
@@ -48,14 +47,14 @@ const BROWSE_VIEWS = [
     hint: 'Select an account under Regarding to browse lead records.',
     typeIds: ['lead'],
     emptyTitle: 'No leads found',
-  }
+  },
   {
     id: 'support',
     label: 'Support',
     hint: 'Select an account under Regarding to browse support renewals.',
     typeIds: ['support'],
     emptyTitle: 'No support records found',
-  }
+  },
 ]
 
 function fmtDate(d) {
