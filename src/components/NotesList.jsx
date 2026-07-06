@@ -52,10 +52,10 @@ const BROWSE_VIEWS = [
   {
     id: 'support',
     label: 'Support',
-    hint: 'Support renewal opportunities only.',
+    hint: 'Select an account under Regarding to browse support renewals.',
     typeIds: ['support'],
     emptyTitle: 'No support records found',
-  },
+  }
 ]
 
 function fmtDate(d) {
