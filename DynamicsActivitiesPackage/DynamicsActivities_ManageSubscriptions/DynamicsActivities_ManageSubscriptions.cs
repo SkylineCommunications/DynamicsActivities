@@ -149,7 +149,7 @@ namespace DynamicsActivitiesManageSubscriptions
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldActivityTypes), new ValueWrapper<string>(JsonConvert.SerializeObject(normalizedActivityTypes))));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(true)));
 			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldLastSentAt), new ValueWrapper<string>(string.Empty)));
-			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(DateTime.UtcNow.ToString("o"))));
+			section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(UtcNowRoundedToSeconds().ToString("o"))));
 
 			instance.Sections.Add(section);
 			var created = domHelper.DomInstances.Create(instance);
@@ -196,7 +196,7 @@ namespace DynamicsActivitiesManageSubscriptions
 			if (dto.Enabled.HasValue)
 				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldEnabled), new ValueWrapper<bool>(dto.Enabled.Value)));
 			if (String.IsNullOrWhiteSpace(GetFieldValue<string>(section, FieldCreatedAt)))
-				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(DateTime.UtcNow.ToString("o"))));
+				section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(UtcNowRoundedToSeconds().ToString("o"))));
 
 			var updated = domHelper.DomInstances.Update(existing);
 			return JsonConvert.SerializeObject(MapToDto(updated));
@@ -298,6 +298,12 @@ namespace DynamicsActivitiesManageSubscriptions
 				.Where(v => !string.IsNullOrEmpty(v))
 				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToList();
+		}
+
+		private static DateTime UtcNowRoundedToSeconds()
+		{
+			var now = DateTime.UtcNow;
+			return new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, now.Second, DateTimeKind.Utc);
 		}
 	}
 

@@ -109,7 +109,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				var createdAt = ParseDateTime(createdAtStr) ?? GetSubscriptionCreatedAt(instance);
 				if (!createdAt.HasValue)
 				{
-					createdAt = lastSentAt > DateTime.MinValue ? lastSentAt : now;
+					createdAt = lastSentAt > DateTime.MinValue ? lastSentAt : UtcNowRoundedToSeconds(now);
 					section.AddOrReplaceFieldValue(new FieldValue(new FieldDescriptorID(FieldCreatedAt), new ValueWrapper<string>(createdAt.Value.ToString("o"))));
 					domHelper.DomInstances.Update(instance);
 				}
@@ -508,8 +508,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
-
-			return json["value"]?.Select(v => new ActivityItem
+			var result = json["value"]?.Select(v => new ActivityItem
 			{
 				Id = v["annotationid"]?.Value<string>(),
 				EntityType = "annotations",
@@ -520,6 +519,8 @@ namespace DynamicsActivitiesNotifySubscribers
 				RegardingId = v["_objectid_value"]?.Value<string>(),
 				Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
+			engine?.GenerateInformation($"[NotifySubscribers] Annotation fetch in-scope returned {result.Count} row(s).");
+			return result;
 		}
 
 		private List<ActivityItem> FetchAnnotationsLinkedToEscalations(List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
@@ -698,7 +699,20 @@ namespace DynamicsActivitiesNotifySubscribers
 				return lastSentAt;
 			}
 
+			// Dataverse createdon often has second-level precision.
+			// On first run, shift one second back to avoid dropping records created in the same second as subscription creation.
+			if (lastSentAt <= DateTime.MinValue.AddSeconds(1))
+			{
+				return createdAt.Value.AddSeconds(-1);
+			}
+
 			return createdAt.Value > lastSentAt ? createdAt.Value : lastSentAt;
+		}
+
+		private static DateTime UtcNowRoundedToSeconds(DateTime utcNow)
+		{
+			var normalized = utcNow.Kind == DateTimeKind.Utc ? utcNow : utcNow.ToUniversalTime();
+			return new DateTime(normalized.Year, normalized.Month, normalized.Day, normalized.Hour, normalized.Minute, normalized.Second, DateTimeKind.Utc);
 		}
 
 		private DateTime? GetSubscriptionCreatedAt(DomInstance instance)
