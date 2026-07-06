@@ -39,6 +39,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private string accessToken;
 		private string clientSecret;
 		private IEngine engine;
+		private bool loggedDomCreatedAtShape;
 
 		public void Run(IEngine engine)
 		{
@@ -692,7 +693,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			return createdAt.Value > lastSentAt ? createdAt.Value : lastSentAt;
 		}
 
-		private static DateTime? GetSubscriptionCreatedAt(DomInstance instance)
+		private DateTime? GetSubscriptionCreatedAt(DomInstance instance)
 		{
 			if (instance == null) return null;
 
@@ -718,7 +719,71 @@ namespace DynamicsActivitiesNotifySubscribers
 				}
 			}
 
+			var nestedInfoPropertyNames = new[]
+			{
+				"TimeInfo",
+				"AuditInfo",
+				"Info",
+				"Metadata",
+				"MetaData",
+				"CrudInfo",
+				"HistoryInfo",
+			};
+
+			foreach (var nestedPropertyName in nestedInfoPropertyNames)
+			{
+				var nestedProperty = instance.GetType().GetProperty(nestedPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
+				if (nestedProperty == null) continue;
+
+				var nestedValue = nestedProperty.GetValue(instance, null);
+				if (nestedValue == null) continue;
+
+				var nestedCreatedAt = GetCreatedDateFromObject(nestedValue);
+				if (nestedCreatedAt.HasValue)
+				{
+					return nestedCreatedAt.Value;
+				}
+			}
+
+			LogDomCreatedAtShape(instance);
 			return null;
+		}
+
+		private DateTime? GetCreatedDateFromObject(object value)
+		{
+			if (value == null) return null;
+			var type = value.GetType();
+			var createLikeProperties = type
+				.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+				.Where(p => p.CanRead && p.Name.IndexOf("create", StringComparison.OrdinalIgnoreCase) >= 0);
+
+			foreach (var property in createLikeProperties)
+			{
+				var raw = property.GetValue(value, null);
+				var parsed = TryConvertToUtcDateTime(raw);
+				if (parsed.HasValue)
+				{
+					return parsed.Value;
+				}
+			}
+
+			return null;
+		}
+
+		private void LogDomCreatedAtShape(DomInstance instance)
+		{
+			if (loggedDomCreatedAtShape || engine == null || instance == null)
+			{
+				return;
+			}
+
+			loggedDomCreatedAtShape = true;
+			var topLevelProperties = instance.GetType()
+				.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+				.Select(p => p.Name)
+				.OrderBy(n => n)
+				.ToList();
+			engine.GenerateInformation($"[NotifySubscribers] DomInstance created-at not found. Available top-level properties: {String.Join(", ", topLevelProperties)}.");
 		}
 
 		private static DateTime? TryConvertToUtcDateTime(object value)
