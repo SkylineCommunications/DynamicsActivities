@@ -232,10 +232,10 @@ namespace DynamicsActivitiesNotifySubscribers
 					if (!string.IsNullOrWhiteSpace(scopeValue)) accountIds.Add(scopeValue.Trim());
 					break;
 				case "country":
-					accountIds = QueryAccountIds($"address1_country eq '{EscapeODataString(scopeValue)}'");
+					accountIds = QueryAccountIdsForTextField("address1_country", scopeValue);
 					break;
 				case "region":
-					accountIds = QueryAccountIds($"address1_stateorprovince eq '{EscapeODataString(scopeValue)}'");
+					accountIds = QueryAccountIdsForTextField("address1_stateorprovince", scopeValue);
 					break;
 				case "escalation":
 					break;
@@ -259,6 +259,26 @@ namespace DynamicsActivitiesNotifySubscribers
 				.Where(v => !String.IsNullOrWhiteSpace(v))
 				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToList();
+		}
+
+		private List<string> QueryAccountIdsForTextField(string fieldName, string scopeValue)
+		{
+			var escaped = EscapeODataString(scopeValue).Trim();
+			if (String.IsNullOrWhiteSpace(escaped))
+			{
+				return new List<string>();
+			}
+
+			var exact = QueryAccountIds($"{fieldName} eq '{escaped}'");
+			if (exact.Count > 0)
+			{
+				return exact;
+			}
+
+			// UI suggestions use contains() for region/country; keep notify matching aligned.
+			var contains = QueryAccountIds($"contains({fieldName},'{escaped}')");
+			engine?.GenerateInformation($"[NotifySubscribers] Scope fallback for {fieldName}='{escaped}': exact=0, contains={contains.Count}.");
+			return contains;
 		}
 
 		private List<string> ExpandRelatedLookupIds(List<string> accountIds)
