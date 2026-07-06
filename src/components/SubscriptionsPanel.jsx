@@ -141,7 +141,7 @@ export default function SubscriptionsPanel({ dmaAvailable = true }) {
   const load = useCallback(() => {
     if (!dmaAvailable) {
       setLoading(false)
-      setSubs([])
+      setSubs(null)
       setError('DataMiner connection unavailable. Subscriptions are disabled in this session.')
       return
     }
