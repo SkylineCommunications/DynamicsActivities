@@ -619,15 +619,73 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			var normalizedAccountId = NormalizeDataverseId(accountId);
-			var account = DataverseGet($"/accounts({normalizedAccountId})?$select={fieldName}");
+			var account = DataverseGet($"/accounts({normalizedAccountId})");
 			var fieldValue = (account[fieldName]?.Value<string>() ?? String.Empty).Trim();
-			if (String.IsNullOrWhiteSpace(fieldValue))
+			if (ValueMatchesScope(fieldValue, rawScopeValue))
+			{
+				return true;
+			}
+
+			var targetToken = normalizedScopeType == "region" ? "state" : "country";
+			foreach (var property in account.Properties())
+			{
+				if (property.Value.Type != JTokenType.String)
+				{
+					continue;
+				}
+
+				var propertyName = property.Name ?? String.Empty;
+				if (propertyName.StartsWith("_", StringComparison.Ordinal) && propertyName.EndsWith("_value", StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+
+				var lowerName = propertyName.ToLowerInvariant();
+				if (lowerName.IndexOf(targetToken, StringComparison.Ordinal) < 0 &&
+					lowerName.IndexOf("address", StringComparison.Ordinal) < 0 &&
+					lowerName.IndexOf("billing", StringComparison.Ordinal) < 0)
+				{
+					continue;
+				}
+
+				var value = (property.Value.Value<string>() ?? String.Empty).Trim();
+				if (!ValueMatchesScope(value, rawScopeValue))
+				{
+					continue;
+				}
+
+				engine?.GenerateInformation($"[NotifySubscribers] Account fallback matched on {propertyName}='{value}' for account {normalizedAccountId}.");
+				return true;
+			}
+
+			var diagnosticSample = String.Join(
+				"; ",
+				account.Properties()
+					.Where(p => p.Value.Type == JTokenType.String)
+					.Where(p =>
+					{
+						var n = (p.Name ?? String.Empty).ToLowerInvariant();
+						return n.IndexOf("state", StringComparison.Ordinal) >= 0
+							|| n.IndexOf("country", StringComparison.Ordinal) >= 0
+							|| n.IndexOf("address", StringComparison.Ordinal) >= 0
+							|| n.IndexOf("billing", StringComparison.Ordinal) >= 0;
+					})
+					.Take(6)
+					.Select(p => $"{p.Name}={(p.Value.Value<string>() ?? String.Empty)}"));
+
+			engine?.GenerateInformation($"[NotifySubscribers] Account fallback no match for account {normalizedAccountId}. ScopeType={normalizedScopeType}, ScopeValue='{rawScopeValue}', Sample={diagnosticSample}.");
+			return false;
+		}
+
+		private static bool ValueMatchesScope(string value, string scopeValue)
+		{
+			if (String.IsNullOrWhiteSpace(value) || String.IsNullOrWhiteSpace(scopeValue))
 			{
 				return false;
 			}
 
-			return String.Equals(fieldValue, rawScopeValue, StringComparison.OrdinalIgnoreCase)
-				|| fieldValue.IndexOf(rawScopeValue, StringComparison.OrdinalIgnoreCase) >= 0;
+			return String.Equals(value.Trim(), scopeValue.Trim(), StringComparison.OrdinalIgnoreCase)
+				|| value.IndexOf(scopeValue.Trim(), StringComparison.OrdinalIgnoreCase) >= 0;
 		}
 
 		private List<ActivityItem> FetchAnnotationsLinkedToEscalations(List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
