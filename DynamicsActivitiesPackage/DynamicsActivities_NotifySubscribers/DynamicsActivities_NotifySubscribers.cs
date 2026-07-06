@@ -501,25 +501,46 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<ActivityItem> FetchAnnotations(List<string> accountIds, string fromIso)
 		{
-			var filters = BuildLookupFilters("_objectid_value", accountIds);
+			var scopedIds = new HashSet<string>(
+				(accountIds ?? new List<string>()).Where(id => !String.IsNullOrWhiteSpace(id)),
+				StringComparer.OrdinalIgnoreCase);
+			if (scopedIds.Count == 0)
+			{
+				engine?.GenerateInformation("[NotifySubscribers] Annotation fetch skipped: no scoped lookup IDs.");
+				return new List<ActivityItem>();
+			}
+
+			var filters = new List<string>();
 			if (!string.IsNullOrEmpty(fromIso))
 			{
 				filters.Add($"createdon gt {fromIso}");
 			}
+
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc&$top=100");
-			var result = json["value"]?.Select(v => new ActivityItem
+			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc", 20);
+			var result = new List<ActivityItem>();
+			foreach (var v in values)
 			{
-				Id = v["annotationid"]?.Value<string>(),
-				EntityType = "annotations",
-				TypeLabel = "Note",
-				Subject = v["subject"]?.Value<string>(),
-				Description = v["notetext"]?.Value<string>(),
-				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				RegardingId = v["_objectid_value"]?.Value<string>(),
-				Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
-			}).ToList() ?? new List<ActivityItem>();
-			engine?.GenerateInformation($"[NotifySubscribers] Annotation fetch in-scope returned {result.Count} row(s).");
+				var regardingId = v["_objectid_value"]?.Value<string>();
+				if (String.IsNullOrWhiteSpace(regardingId) || !scopedIds.Contains(regardingId))
+				{
+					continue;
+				}
+
+				result.Add(new ActivityItem
+				{
+					Id = v["annotationid"]?.Value<string>(),
+					EntityType = "annotations",
+					TypeLabel = "Note",
+					Subject = v["subject"]?.Value<string>(),
+					Description = v["notetext"]?.Value<string>(),
+					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
+					RegardingId = regardingId,
+					Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+				});
+			}
+
+			engine?.GenerateInformation($"[NotifySubscribers] Annotation fetch in-scope: fetched {values.Count} row(s), matched {result.Count} row(s).");
 			return result;
 		}
 
