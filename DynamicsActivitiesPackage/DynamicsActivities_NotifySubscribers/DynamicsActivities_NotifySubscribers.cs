@@ -253,8 +253,12 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<string> QueryAccountIds(string filter)
 		{
-			var json = DataverseGet($"/accounts?$select=accountid&$filter={filter}&$top=200");
-			return json["value"]?.Select(v => v["accountid"]?.Value<string>()).Where(v => !string.IsNullOrEmpty(v)).ToList() ?? new List<string>();
+			var rows = DataverseGetAllValues($"/accounts?$select=accountid&$filter={filter}", 20);
+			return rows
+				.Select(v => v["accountid"]?.Value<string>())
+				.Where(v => !String.IsNullOrWhiteSpace(v))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
 		}
 
 		private List<string> ExpandRelatedLookupIds(List<string> accountIds)
@@ -275,35 +279,30 @@ namespace DynamicsActivitiesNotifySubscribers
 			var parentCustomerFilter = BuildOrFilter("_parentcustomerid_value", capped);
 			var regardingFilter = BuildOrFilter("_regardingobjectid_value", capped);
 
-			var opportunities = DataverseGet($"/opportunities?$select=opportunityid&$filter={accountFilter}&$top=200");
-			foreach (var v in opportunities["value"] ?? new JArray())
-			{
-				var id = v["opportunityid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
+			AddIdsFromQuery(ids, $"/opportunities?$select=opportunityid&$filter={accountFilter}&$top=200", "opportunityid");
+			AddIdsFromQuery(ids, $"/contacts?$select=contactid&$filter={parentCustomerFilter}&$top=200", "contactid");
+			AddIdsFromQuery(ids, $"/leads?$select=leadid&$filter={accountFilter}&$top=200", "leadid");
+			AddIdsFromQuery(ids, $"/slc_escalations?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
 
-			var contacts = DataverseGet($"/contacts?$select=contactid&$filter={parentCustomerFilter}&$top=200");
-			foreach (var v in contacts["value"] ?? new JArray())
-			{
-				var id = v["contactid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
-
-			var leads = DataverseGet($"/leads?$select=leadid&$filter={accountFilter}&$top=200");
-			foreach (var v in leads["value"] ?? new JArray())
-			{
-				var id = v["leadid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
-
-			var escalations = DataverseGet($"/slc_escalations?$select=activityid&$filter={regardingFilter}&$top=200");
-			foreach (var v in escalations["value"] ?? new JArray())
-			{
-				var id = v["activityid"]?.Value<string>();
-				if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
-			}
+			// Include direct activities so notes linked to those activity records can also be matched in-scope.
+			AddIdsFromQuery(ids, $"/phonecalls?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
+			AddIdsFromQuery(ids, $"/appointments?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
+			AddIdsFromQuery(ids, $"/emails?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
 
 			return ids.ToList();
+		}
+
+		private void AddIdsFromQuery(HashSet<string> ids, string relativePath, string idField)
+		{
+			var json = DataverseGet(relativePath);
+			foreach (var v in json["value"] ?? new JArray())
+			{
+				var id = v[idField]?.Value<string>();
+				if (!String.IsNullOrWhiteSpace(id))
+				{
+					ids.Add(id);
+				}
+			}
 		}
 
 		private static string BuildOrFilter(string fieldName, List<string> ids)
