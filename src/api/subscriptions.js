@@ -86,11 +86,11 @@ async function runSubscriptionScript(action, payload = {}) {
       popupType: 1,
       ClientTimeZone: { Type: 0, Info: null },
     },
-  })
+  }, { redirectOnAuthFailure: false })
 
   // Errors come as HTTP 500 (caught by jsonPost). A successful response has ScriptOutput.
   if (!result || !result.ScriptOutput) {
-    throw new Error(`Script returned no output: ${JSON.stringify(result)}`)
+    throw new Error('DataMiner connection unavailable. Subscriptions are currently unavailable.')
   }
 
   // Extract the "result" key from ScriptOutput [{Key, Value}]

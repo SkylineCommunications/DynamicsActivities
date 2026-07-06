@@ -30,7 +30,8 @@ export function signOut() {
   location.replace('/auth/logout?url=' + encodeURIComponent(target))
 }
 
-export async function jsonPost(method, body) {
+export async function jsonPost(method, body, options = {}) {
+  const { redirectOnAuthFailure = true } = options
   const r = await fetch(`${JSON_API}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -38,12 +39,12 @@ export async function jsonPost(method, body) {
     body: JSON.stringify(body),
   })
   if (r.status === 401 || r.status === 403) {
-    redirectToAuth()
+    if (redirectOnAuthFailure) redirectToAuth()
     return null
   }
   const json = await r.json()
   if (r.status === 500 && json?.ExceptionType?.includes('NoConnectionWebApiException')) {
-    redirectToAuth()
+    if (redirectOnAuthFailure) redirectToAuth()
     return null
   }
   return json.d
@@ -53,17 +54,18 @@ export async function jsonPost(method, body) {
  * Bootstrap the DataMiner session on app load.
  * Returns the connection GUID if valid, null otherwise (and redirects to /auth/).
  */
-export async function bootstrapSession() {
+export async function bootstrapSession(options = {}) {
+  const { redirectOnFailure = true } = options
   const connection = getConnectionFromCookie()
   if (connection) {
-    const ok = await jsonPost('IsConnectionAlive', { connection })
+    const ok = await jsonPost('IsConnectionAlive', { connection }, { redirectOnAuthFailure: redirectOnFailure })
     if (ok !== null) {
       sessionStorage.removeItem('dm_auth_attempted')
       return connection
     }
   }
   // No valid session — redirect unless we already tried
-  if (!sessionStorage.getItem('dm_auth_attempted')) {
+  if (redirectOnFailure && !sessionStorage.getItem('dm_auth_attempted')) {
     sessionStorage.setItem('dm_auth_attempted', '1')
     redirectToAuth()
   }

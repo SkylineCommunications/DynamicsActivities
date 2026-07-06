@@ -15,14 +15,22 @@ export default function AuthGuard({ children, onDmaConnection }) {
 
   // Step 1: On DataMiner host, verify the DMA session cookie first
   useEffect(() => {
-    if (!isDataMinerHost()) return
-    bootstrapSession().then((conn) => {
-      if (conn) {
-        setDmaReady(true)
+    if (!isDataMinerHost()) {
+      onDmaConnection?.(null)
+      return
+    }
+
+    bootstrapSession({ redirectOnFailure: false })
+      .then((conn) => {
         onDmaConnection?.(conn)
-      }
-      // If null, bootstrapSession already redirected to /auth/
-    })
+      })
+      .catch(() => {
+        onDmaConnection?.(null)
+      })
+      .finally(() => {
+        // Do not block Dynamics usage when DataMiner connection is unavailable.
+        setDmaReady(true)
+      })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle any pending redirect response at startup
