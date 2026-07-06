@@ -6,7 +6,6 @@ namespace DynamicsActivitiesNotifySubscribers
 	using System.Linq;
 	using System.Net.Http;
 	using System.Net.Http.Headers;
-	using System.Reflection;
 	using System.Text;
 	using System.Threading;
 	using Newtonsoft.Json;
@@ -40,7 +39,6 @@ namespace DynamicsActivitiesNotifySubscribers
 		private string accessToken;
 		private string clientSecret;
 		private IEngine engine;
-		private bool loggedDomCreatedAtShape;
 
 		public void Run(IEngine engine)
 		{
@@ -106,7 +104,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (string.IsNullOrEmpty(userEmail)) continue;
 
 				var lastSentAt = ParseDateTime(lastSentAtStr) ?? DateTime.MinValue;
-				var createdAt = ParseDateTime(createdAtStr) ?? GetSubscriptionCreatedAt(instance);
+				var createdAt = ParseDateTime(createdAtStr);
 				if (!createdAt.HasValue)
 				{
 					createdAt = lastSentAt > DateTime.MinValue ? lastSentAt : UtcNowRoundedToSeconds(now);
@@ -524,19 +522,11 @@ namespace DynamicsActivitiesNotifySubscribers
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
 			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc", 20);
 			var result = new List<ActivityItem>();
-			string firstUnmatchedId = null;
-			string firstUnmatchedLogicalName = null;
-			string firstFallbackMatchedId = null;
 			foreach (var v in values)
 			{
 				var regardingId = NormalizeDataverseId(v["_objectid_value"]?.Value<string>());
 				if (String.IsNullOrWhiteSpace(regardingId))
 				{
-					if (firstUnmatchedId == null)
-					{
-						firstUnmatchedId = regardingId;
-						firstUnmatchedLogicalName = v["_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
-					}
 					continue;
 				}
 
@@ -550,18 +540,12 @@ namespace DynamicsActivitiesNotifySubscribers
 					if (matchedByAccountFallback)
 					{
 						inScope = true;
-						firstFallbackMatchedId = firstFallbackMatchedId ?? regardingId;
 						scopedIds.Add(regardingId);
 					}
 				}
 
 				if (!inScope)
 				{
-					if (firstUnmatchedId == null)
-					{
-						firstUnmatchedId = regardingId;
-						firstUnmatchedLogicalName = v["_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname"]?.Value<string>();
-					}
 					continue;
 				}
 
@@ -578,16 +562,6 @@ namespace DynamicsActivitiesNotifySubscribers
 				});
 			}
 
-			engine?.GenerateInformation($"[NotifySubscribers] Annotation fetch in-scope: fetched {values.Count} row(s), matched {result.Count} row(s).");
-			if (values.Count > 0 && result.Count == 0)
-			{
-				var scopeSample = String.Join(",", scopedIds.Take(3));
-				engine?.GenerateInformation($"[NotifySubscribers] Annotation mismatch sample: regardingId={firstUnmatchedId ?? "n/a"}, logicalName={firstUnmatchedLogicalName ?? "n/a"}, scopeSample={scopeSample}.");
-			}
-			if (!String.IsNullOrWhiteSpace(firstFallbackMatchedId))
-			{
-				engine?.GenerateInformation($"[NotifySubscribers] Annotation account fallback matched account {firstFallbackMatchedId}.");
-			}
 			return result;
 		}
 
@@ -654,26 +628,8 @@ namespace DynamicsActivitiesNotifySubscribers
 					continue;
 				}
 
-				engine?.GenerateInformation($"[NotifySubscribers] Account fallback matched on {propertyName}='{value}' for account {normalizedAccountId}.");
 				return true;
 			}
-
-			var diagnosticSample = String.Join(
-				"; ",
-				account.Properties()
-					.Where(p => p.Value.Type == JTokenType.String)
-					.Where(p =>
-					{
-						var n = (p.Name ?? String.Empty).ToLowerInvariant();
-						return n.IndexOf("state", StringComparison.Ordinal) >= 0
-							|| n.IndexOf("country", StringComparison.Ordinal) >= 0
-							|| n.IndexOf("address", StringComparison.Ordinal) >= 0
-							|| n.IndexOf("billing", StringComparison.Ordinal) >= 0;
-					})
-					.Take(6)
-					.Select(p => $"{p.Name}={(p.Value.Value<string>() ?? String.Empty)}"));
-
-			engine?.GenerateInformation($"[NotifySubscribers] Account fallback no match for account {normalizedAccountId}. ScopeType={normalizedScopeType}, ScopeValue='{rawScopeValue}', Sample={diagnosticSample}.");
 			return false;
 		}
 
@@ -878,129 +834,6 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			var normalized = utcNow.Kind == DateTimeKind.Utc ? utcNow : utcNow.ToUniversalTime();
 			return new DateTime(normalized.Year, normalized.Month, normalized.Day, normalized.Hour, normalized.Minute, normalized.Second, DateTimeKind.Utc);
-		}
-
-		private DateTime? GetSubscriptionCreatedAt(DomInstance instance)
-		{
-			if (instance == null) return null;
-
-			var candidatePropertyNames = new[]
-			{
-				"CreatedAt",
-				"CreatedOn",
-				"CreationTime",
-				"CreatedDate",
-				"CreatedUtc",
-			};
-
-			foreach (var propertyName in candidatePropertyNames)
-			{
-				var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
-				if (property == null) continue;
-
-				var value = property.GetValue(instance, null);
-				var parsed = TryConvertToUtcDateTime(value);
-				if (parsed.HasValue)
-				{
-					return parsed.Value;
-				}
-			}
-
-			var nestedInfoPropertyNames = new[]
-			{
-				"TimeInfo",
-				"AuditInfo",
-				"Info",
-				"Metadata",
-				"MetaData",
-				"CrudInfo",
-				"HistoryInfo",
-			};
-
-			foreach (var nestedPropertyName in nestedInfoPropertyNames)
-			{
-				var nestedProperty = instance.GetType().GetProperty(nestedPropertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
-				if (nestedProperty == null) continue;
-
-				var nestedValue = nestedProperty.GetValue(instance, null);
-				if (nestedValue == null) continue;
-
-				var nestedCreatedAt = GetCreatedDateFromObject(nestedValue);
-				if (nestedCreatedAt.HasValue)
-				{
-					return nestedCreatedAt.Value;
-				}
-			}
-
-			LogDomCreatedAtShape(instance);
-			return null;
-		}
-
-		private DateTime? GetCreatedDateFromObject(object value)
-		{
-			if (value == null) return null;
-			var type = value.GetType();
-			var createLikeProperties = type
-				.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-				.Where(p => p.CanRead && p.Name.IndexOf("create", StringComparison.OrdinalIgnoreCase) >= 0);
-
-			foreach (var property in createLikeProperties)
-			{
-				var raw = property.GetValue(value, null);
-				var parsed = TryConvertToUtcDateTime(raw);
-				if (parsed.HasValue)
-				{
-					return parsed.Value;
-				}
-			}
-
-			return null;
-		}
-
-		private void LogDomCreatedAtShape(DomInstance instance)
-		{
-			if (loggedDomCreatedAtShape || engine == null || instance == null)
-			{
-				return;
-			}
-
-			loggedDomCreatedAtShape = true;
-			var topLevelProperties = instance.GetType()
-				.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-				.Select(p => p.Name)
-				.OrderBy(n => n)
-				.ToList();
-			engine.GenerateInformation($"[NotifySubscribers] DomInstance created-at not found. Available top-level properties: {String.Join(", ", topLevelProperties)}.");
-		}
-
-		private static DateTime? TryConvertToUtcDateTime(object value)
-		{
-			if (value == null) return null;
-
-			if (value is DateTimeOffset dto)
-			{
-				return dto.UtcDateTime;
-			}
-
-			if (value is DateTime dt)
-			{
-				return dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
-			}
-
-			var raw = Convert.ToString(value, CultureInfo.InvariantCulture);
-			if (String.IsNullOrWhiteSpace(raw)) return null;
-
-			if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedOffset))
-			{
-				return parsedOffset.UtcDateTime;
-			}
-
-			if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedDateTime))
-			{
-				return parsedDateTime.Kind == DateTimeKind.Utc ? parsedDateTime : parsedDateTime.ToUniversalTime();
-			}
-
-			return null;
 		}
 
 		private static List<string> ParseActivityTypes(string json)
