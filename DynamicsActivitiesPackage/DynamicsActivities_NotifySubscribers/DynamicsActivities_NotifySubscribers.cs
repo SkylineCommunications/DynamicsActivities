@@ -226,7 +226,8 @@ namespace DynamicsActivitiesNotifySubscribers
 		private ScopeContext ResolveScopeContext(string scopeType, string scopeValue)
 		{
 			var accountIds = new List<string>();
-			switch ((scopeType ?? string.Empty).ToLowerInvariant())
+			var normalizedScopeType = (scopeType ?? string.Empty).ToLowerInvariant();
+			switch (normalizedScopeType)
 			{
 				case "account":
 					if (!string.IsNullOrWhiteSpace(scopeValue)) accountIds.Add(scopeValue.Trim());
@@ -244,6 +245,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			var activityLookupIds = ExpandRelatedLookupIds(accountIds);
+			engine?.GenerateInformation($"[NotifySubscribers] Scope resolution for {normalizedScopeType}:{scopeValue} -> accounts={accountIds.Count}, lookupIds={activityLookupIds.Count}.");
 			return new ScopeContext
 			{
 				AccountIds = accountIds,
@@ -270,15 +272,15 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			var exact = QueryAccountIds($"{fieldName} eq '{escaped}'");
-			if (exact.Count > 0)
-			{
-				return exact;
-			}
-
-			// UI suggestions use contains() for region/country; keep notify matching aligned.
+			// UI suggestions use contains(); union both to avoid missing near-match values.
 			var contains = QueryAccountIds($"contains({fieldName},'{escaped}')");
-			engine?.GenerateInformation($"[NotifySubscribers] Scope fallback for {fieldName}='{escaped}': exact=0, contains={contains.Count}.");
-			return contains;
+			var union = exact
+				.Concat(contains)
+				.Where(v => !String.IsNullOrWhiteSpace(v))
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			engine?.GenerateInformation($"[NotifySubscribers] Scope text match for {fieldName}='{escaped}': exact={exact.Count}, contains={contains.Count}, union={union.Count}.");
+			return union;
 		}
 
 		private List<string> ExpandRelatedLookupIds(List<string> accountIds)
