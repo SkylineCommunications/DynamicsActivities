@@ -45,10 +45,10 @@ const BROWSE_VIEWS = [
   {
     id: 'leads',
     label: 'Leads',
-    hint: 'Lead records only.',
+    hint: 'Select an account under Regarding to browse lead records.',
     typeIds: ['lead'],
     emptyTitle: 'No leads found',
-  },
+  }
   {
     id: 'support',
     label: 'Support',
