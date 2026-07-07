@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
 import AuthGuard from './components/AuthGuard'
-import ActivityForm from './components/ActivityForm'
 import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
 import SubscriptionsPanel from './components/SubscriptionsPanel'
 import { signOut as dmaSignOut, isDataMinerHost, getDmaUser } from './api/dataminer'
 
 const TABS = [
-  { id: 'new', label: 'New Activity', icon: 'add' },
   { id: 'browse', label: 'Activities', icon: 'search' },
   { id: 'subscriptions', label: 'Subscriptions', icon: 'notifications' },
 ]
@@ -32,9 +30,7 @@ function resolveTheme(pref) {
 export default function App() {
   const { instance } = useMsal()
   const { managedAccounts, loading: tamLoading } = useTamContext()
-  const [activeTab, setActiveTab] = useState('new')
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [browseAccount, setBrowseAccount] = useState(null)
+  const [activeTab, setActiveTab] = useState('browse')
   const [themePref, setThemePref] = useState(getInitialTheme)
   const [dmaConnection, setDmaConnection] = useState(null)
 
@@ -62,12 +58,6 @@ function cycleTheme() {
   const subscriptionsAvailable = Boolean(dmaConnection)
 
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
-
-  function handleNoteCreated(account) {
-    setBrowseAccount(account || null)
-    setRefreshKey((k) => k + 1)
-    setActiveTab('browse')
-  }
 
   return (
     <div className="app">
@@ -121,20 +111,12 @@ function cycleTheme() {
       {/* Content */}
       <main className="app-main">
         <AuthGuard onDmaConnection={setDmaConnection}>
-          {(currentUserId) => (
+          {() => (
             <>
-              {activeTab === 'new' && (
-                <ActivityForm
-                  currentUserId={currentUserId}
-                  onNoteCreated={handleNoteCreated}
-                  managedAccounts={managedAccounts}
-                  tamLoading={tamLoading}
-                />
-              )}
               {activeTab === 'browse' && (
                 <NotesList
-                  refreshKey={refreshKey}
-                  initialAccount={browseAccount}
+                  refreshKey={0}
+                  initialAccount={null}
                   managedAccounts={managedAccounts}
                   tamLoading={tamLoading}
                 />
