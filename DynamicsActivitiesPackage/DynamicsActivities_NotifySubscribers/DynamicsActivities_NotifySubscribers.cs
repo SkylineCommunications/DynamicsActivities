@@ -4,9 +4,11 @@ namespace DynamicsActivitiesNotifySubscribers
 	using System.Collections.Generic;
 	using System.Globalization;
 	using System.Linq;
+	using System.Net;
 	using System.Net.Http;
 	using System.Net.Http.Headers;
 	using System.Text;
+	using System.Text.RegularExpressions;
 	using System.Threading;
 	using Newtonsoft.Json;
 	using Newtonsoft.Json.Linq;
@@ -33,6 +35,11 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static readonly Guid FieldEnabled = new Guid("3ab1c2d3-4e5f-6071-8293-041526374859");
 		private static readonly Guid FieldLastSentAt = new Guid("4bc2d3e4-5f60-7182-9304-15263748596a");
 		private static readonly Guid FieldCreatedAt = new Guid("5cd3e4f5-6071-8293-0415-263748596a7b");
+		private static readonly Regex HtmlLineBreakRegex = new Regex(@"<\s*(br|/p|/div|/li|/tr|/h[1-6])\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+		private static readonly Regex HtmlListItemOpenRegex = new Regex(@"<\s*li\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+		private static readonly Regex HtmlTagRegex = new Regex(@"<[^>]+>", RegexOptions.Compiled);
+		private static readonly Regex WhitespaceBeforeNewlineRegex = new Regex(@"[ \t]+\r?\n", RegexOptions.Compiled);
+		private static readonly Regex ExcessiveNewlinesRegex = new Regex(@"(\r?\n){3,}", RegexOptions.Compiled);
 
 		private DomHelper domHelper;
 		private HttpClient httpClient;
@@ -842,7 +849,11 @@ namespace DynamicsActivitiesNotifySubscribers
 				sb.AppendLine($"<div style='color:#727579;font-size:13px;margin-bottom:10px;'>Regarding: {HtmlEncode(item.Regarding)}</div>");
 				if (!string.IsNullOrWhiteSpace(item.Description))
 				{
-					sb.AppendLine($"<div style='color:#555;font-size:13px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;'>{HtmlEncode(TrimForEmail(item.Description, 400))}</div>");
+					var preview = TrimForEmail(FormatDescriptionForEmail(item.Description), 400);
+					if (!string.IsNullOrWhiteSpace(preview))
+					{
+						sb.AppendLine($"<div style='color:#555;font-size:13px;line-height:1.5;margin-bottom:10px;white-space:pre-wrap;'>{HtmlEncode(preview)}</div>");
+					}
 				}
 				sb.AppendLine("<div style='display:flex;gap:8px;flex-wrap:wrap;'>");
 				sb.AppendLine($"<a href='{HtmlEncode(link)}' style='color:#2563eb;font-size:12px;text-decoration:none;border:1px solid #2563eb;padding:5px 12px;border-radius:6px;'>View in Dynamics ↗</a>");
@@ -980,6 +991,24 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			if (string.IsNullOrEmpty(value) || value.Length <= max) return value;
 			return value.Substring(0, max) + "...";
+		}
+
+		private static string FormatDescriptionForEmail(string value)
+		{
+			if (string.IsNullOrWhiteSpace(value))
+			{
+				return String.Empty;
+			}
+
+			var normalized = value;
+			normalized = HtmlLineBreakRegex.Replace(normalized, "\n");
+			normalized = HtmlListItemOpenRegex.Replace(normalized, "• ");
+			normalized = HtmlTagRegex.Replace(normalized, String.Empty);
+			normalized = WebUtility.HtmlDecode(normalized ?? String.Empty);
+			normalized = normalized.Replace('\u00A0', ' ');
+			normalized = WhitespaceBeforeNewlineRegex.Replace(normalized, "\n");
+			normalized = ExcessiveNewlinesRegex.Replace(normalized, "\n\n");
+			return normalized.Trim();
 		}
 
 		private static string GetTypeColor(string entityType)
