@@ -74,7 +74,7 @@ function getImportRegardingPayload(regardingType, regardingItem) {
       ? regardingItem.slc_escalationid || null
       : regardingItem[`${regardingType}id`] || null,
     regardingAccountId: isEscalationLink
-      ? regardingItem._regardingobjectid_value || regardingItem.accountid || null
+      ? regardingItem._slc_accountid_value || regardingItem._regardingobjectid_value || regardingItem.accountid || null
       : null,
   }
 }

@@ -75,7 +75,8 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
   const attendees = extractAttendees(note)
-  const accountName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+  const accountName = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
     || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
     || ''
   const rawPreview = note.notetext || note.description || ''

@@ -97,6 +97,7 @@ export const ESCALATION_STATUSES = [
 ]
 
 // ─── Escalation helpers ──────────────────────────────────────────────────────
+const ESCALATION_ACCOUNT_LOOKUP_FIELD = '_slc_accountid_value'
 
 /**
  * Fetch the active escalation record for an account by querying slc_escalations directly.
@@ -105,7 +106,7 @@ export const ESCALATION_STATUSES = [
 export async function getActiveEscalation(msalInstance, accountId) {
   if (!accountId) return null
   // Query for active escalation record (slc_status=1 means Active)
-  const filter = `_regardingobjectid_value eq ${accountId} and slc_status eq 1`
+  const filter = `${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId} and slc_status eq 1`
   const data = await dvFetch(
     msalInstance,
     `/slc_escalations?$filter=${filter}&$select=slc_escalationid,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
@@ -821,7 +822,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
     ).catch(() => null),
     dvFetch(
       msalInstance,
-      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId}&$select=slc_escalationid&$top=50`,
+      `/slc_escalations?$filter=${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId}&$select=slc_escalationid&$top=50`,
     ).catch(() => null),
   ])
 
@@ -872,7 +873,7 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
 }
 
 // Escalations are custom entities (not activities) — select only known escalation columns
-const ESCALATION_SELECT = 'slc_escalationid,createdon,_regardingobjectid_value,slc_startdate,slc_resolveddate,slc_status'
+const ESCALATION_SELECT = `slc_escalationid,createdon,${ESCALATION_ACCOUNT_LOOKUP_FIELD},slc_startdate,slc_resolveddate,slc_status`
 
 function buildLookupFilter(fieldName, ids) {
   if (!ids.length) return ''
@@ -900,6 +901,9 @@ async function fetchEscalations(msalInstance, filterClauses) {
     ...r,
     subject: r.subject || 'Escalation',
     description: r.description || '',
+    _regardingobjectid_value: r[ESCALATION_ACCOUNT_LOOKUP_FIELD],
+    '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue':
+      r[`${ESCALATION_ACCOUNT_LOOKUP_FIELD}@OData.Community.Display.V1.FormattedValue`],
     _entityType: 'slc_escalations',
   }))
 }
@@ -1019,10 +1023,10 @@ export async function searchActivities(msalInstance, { accountIds, contactId, ac
       const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
       const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
       base.push(buildLookupFilter('_regardingobjectid_value', allIds))
-      escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
+      escalationBase.push(buildLookupFilter(ESCALATION_ACCOUNT_LOOKUP_FIELD, directIds))
     } else if (accountId) {
       base.push(`_regardingobjectid_value eq ${accountId}`)
-      escalationBase.push(`_regardingobjectid_value eq ${accountId}`)
+      escalationBase.push(`${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId}`)
     }
 
     addCreatedOnDateFilters(base, dateFrom, dateTo)
