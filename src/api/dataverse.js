@@ -92,25 +92,34 @@ export const ACTIVITY_TYPES = [
 
 // Escalation status labels (for display in browse only — escalations are managed in Dynamics)
 export const ESCALATION_STATUSES = [
-  { value: 1, label: 'Active', cssClass: 'status-active' },
-  { value: 2, label: 'Resolved', cssClass: 'status-resolved' },
+  { value: 0, label: 'Active', cssClass: 'status-active' },
+  { value: 1, label: 'Resolved', cssClass: 'status-resolved' },
 ]
 
 // ─── Escalation helpers ──────────────────────────────────────────────────────
+const ESCALATION_ACCOUNT_LOOKUP_FIELD = '_slc_accountid_value'
 
 /**
  * Fetch the active escalation record for an account by querying slc_escalations directly.
- * Business rule: an account can have at most ONE escalation that is open (1) or in-progress (2).
+ * Business rule: an account can have at most ONE active escalation.
  */
 export async function getActiveEscalation(msalInstance, accountId) {
   if (!accountId) return null
-  // Query for active escalation record (slc_status=1 means Active)
-  const filter = `_regardingobjectid_value eq ${accountId} and slc_status eq 1`
+  // Escalation uses status/state on a custom table. Keep query to stable logical names.
+  const filter = `${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId} and statecode eq 0`
   const data = await dvFetch(
     msalInstance,
-    `/slc_escalations?$filter=${filter}&$select=activityid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
+    `/slc_escalations?$filter=${filter}&$select=slc_escalationid,statecode,statuscode,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
   ).catch(() => null)
-  return data?.value?.[0] ?? null
+  const record = data?.value?.[0]
+  if (!record) return null
+  return {
+    ...record,
+    slc_escalationid: record.slc_escalationid || null,
+    slc_status: typeof record.statecode === 'number' ? record.statecode : null,
+    slc_startdate: record.slc_startdate || null,
+    slc_resolveddate: record.slc_resolveddate || null,
+  }
 }
 
 // ─── Lead helpers ────────────────────────────────────────────────────────────
@@ -803,7 +812,7 @@ const BASE_SELECT = 'activityid,subject,description,createdon,scheduledend,sched
  *   3. Via contact      (_parentcustomerid_value)
  *   4. Via lead         (_parentaccountid_value)
  *   5. Via escalation   (slc_escalations regarding the account — active + resolved)
- * Returns related entity IDs plus escalation activity IDs (does NOT include accountId itself).
+ * Returns related entity IDs plus escalation record IDs (does NOT include accountId itself).
  */
 async function getAccountRelatedEntityIds(msalInstance, accountId) {
   const [opportunitiesData, contactsData, leadsData, escalationsData] = await Promise.all([
@@ -821,7 +830,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
     ).catch(() => null),
     dvFetch(
       msalInstance,
-      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId}&$select=activityid&$top=50`,
+      `/slc_escalations?$filter=${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId}&$select=slc_escalationid&$top=50`,
     ).catch(() => null),
   ])
 
@@ -832,7 +841,10 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   for (const opp of opportunitiesData?.value ?? []) relatedIds.push(opp.opportunityid)
   for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
   for (const lead of leadsData?.value ?? []) { relatedIds.push(lead.leadid); leadIds.push(lead.leadid) }
-  for (const escalation of escalationsData?.value ?? []) escalationIds.push(escalation.activityid)
+  for (const escalation of escalationsData?.value ?? []) {
+    const escalationId = escalation.slc_escalationid
+    if (escalationId) escalationIds.push(escalationId)
+  }
 
   return { relatedIds, escalationIds, leadIds }
 }
@@ -869,8 +881,8 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
   })
 }
 
-// Escalations have custom columns and no activity parties — fetch with extended select
-const ESCALATION_SELECT = `${BASE_SELECT},slc_startdate,slc_resolveddate,slc_status`
+// Escalations are custom entities (not activities) — select only known escalation columns
+const ESCALATION_SELECT = `slc_escalationid,createdon,${ESCALATION_ACCOUNT_LOOKUP_FIELD},slc_startdate,statecode,statuscode,slc_name`
 
 function buildLookupFilter(fieldName, ids) {
   if (!ids.length) return ''
@@ -894,7 +906,19 @@ async function fetchEscalations(msalInstance, filterClauses) {
     `/slc_escalations?$select=${ESCALATION_SELECT}${filterStr}&$orderby=createdon desc`,
     { headers: { Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue",odata.maxpagesize=100' } },
   )
-  return (data?.value ?? []).map((r) => ({ ...r, _entityType: 'slc_escalations' }))
+  return (data?.value ?? []).map((r) => ({
+    ...r,
+    slc_escalationid: r.slc_escalationid || null,
+    subject: r.subject || r.slc_name || 'Escalation',
+    description: r.description || '',
+    slc_status: typeof r.statecode === 'number' ? r.statecode : null,
+    slc_startdate: r.slc_startdate || null,
+    slc_resolveddate: r.slc_resolveddate || null,
+    _regardingobjectid_value: r[ESCALATION_ACCOUNT_LOOKUP_FIELD],
+    '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue':
+      r[`${ESCALATION_ACCOUNT_LOOKUP_FIELD}@OData.Community.Display.V1.FormattedValue`],
+    _entityType: 'slc_escalations',
+  }))
 }
 
 // Leads (BD)
@@ -1012,10 +1036,10 @@ export async function searchActivities(msalInstance, { accountIds, contactId, ac
       const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
       const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
       base.push(buildLookupFilter('_regardingobjectid_value', allIds))
-      escalationBase.push(buildLookupFilter('_regardingobjectid_value', directIds))
+      escalationBase.push(buildLookupFilter(ESCALATION_ACCOUNT_LOOKUP_FIELD, directIds))
     } else if (accountId) {
       base.push(`_regardingobjectid_value eq ${accountId}`)
-      escalationBase.push(`_regardingobjectid_value eq ${accountId}`)
+      escalationBase.push(`${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId}`)
     }
 
     addCreatedOnDateFilters(base, dateFrom, dateTo)
@@ -1070,11 +1094,13 @@ export async function searchActivities(msalInstance, { accountIds, contactId, ac
     allResults.push(...results.flat())
   }
 
-  // Deduplicate by activityid (same record may appear for multiple accounts)
+  // Deduplicate by record ID (same record may appear for multiple accounts)
   const seen = new Set()
   const deduped = []
   for (const r of allResults) {
-    const id = r.activityid || r.annotationid
+    const id = r._entityType === 'slc_escalations'
+      ? r.slc_escalationid
+      : (r.activityid || r.annotationid)
     if (id && seen.has(id)) continue
     if (id) seen.add(id)
     deduped.push(r)

@@ -184,7 +184,9 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         note: note.trim(),
         attendees,
         currentUserId,
-        linkToEscalationId: (!linkToLeadId && linkToEscalation && activeEscalation) ? activeEscalation.activityid : undefined,
+        linkToEscalationId: (!linkToLeadId && linkToEscalation && activeEscalation)
+          ? activeEscalation.slc_escalationid
+          : undefined,
         linkToLeadId: linkToLeadId || undefined,
       })
       setSuccess(true)
