@@ -45,6 +45,13 @@ The app uses **triple authentication**:
 
 On localhost, the DataMiner session check is skipped and MSAL popup auth is used directly.
 
+MSAL uses a **fixed callback path** to avoid redirect drift:
+
+- DataMiner: `https://<dma-host>/public/DynamicsActivities/auth-callback`
+- Local dev: `http://localhost:5173/auth-callback`
+
+`VITE_REDIRECT_URI` should point to that callback endpoint (not a deep app route).
+
 ---
 
 ## Getting Started
@@ -63,7 +70,7 @@ Copy `.env.example` to `.env` and fill in the values:
 VITE_DATAVERSE_URL=https://yourorg.crm4.dynamics.com/
 VITE_CLIENT_ID=your-local-app-registration-client-id
 VITE_TENANT_ID=your-tenant-id
-VITE_REDIRECT_URI=http://localhost:5173
+VITE_REDIRECT_URI=http://localhost:5173/auth-callback
 ```
 
 For the DataMiner production build, `.env.dataminer` is used with the production client ID and redirect URI matching the DMA deployment URL.

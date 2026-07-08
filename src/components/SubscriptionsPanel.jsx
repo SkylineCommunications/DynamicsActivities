@@ -130,7 +130,7 @@ function SubscriptionCard({ sub, onEdit, onDelete, onToggle }) {
   )
 }
 
-export default function SubscriptionsPanel({ dmaAvailable = true }) {
+export default function SubscriptionsPanel({ dmaAvailable = true, onReconnectDma }) {
   const { instance } = useMsal()
   const [subs, setSubs] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -142,7 +142,7 @@ export default function SubscriptionsPanel({ dmaAvailable = true }) {
     if (!dmaAvailable) {
       setLoading(false)
       setSubs(null)
-      setError('DataMiner connection unavailable. Subscriptions are disabled in this session.')
+      setError(null)
       return
     }
 
@@ -212,11 +212,23 @@ export default function SubscriptionsPanel({ dmaAvailable = true }) {
           type="button"
           className="btn btn-primary"
           onClick={() => { setEditingSub(null); setShowForm(true) }}
-          disabled={showForm}
+          disabled={showForm || !dmaAvailable}
+          title={!dmaAvailable ? 'Sign in to DataMiner to manage subscriptions' : undefined}
         >
           <span className="icon icon-sm">add</span> New Subscription
         </button>
       </div>
+
+      {!dmaAvailable && (
+        <div className="alert alert-error">
+          DataMiner sign-in is required to manage subscriptions.
+          {typeof onReconnectDma === 'function' && (
+            <button type="button" className="btn btn-primary" onClick={onReconnectDma} style={{ marginLeft: '0.75rem' }}>
+              Sign in to DataMiner
+            </button>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <SubscriptionForm
