@@ -21,6 +21,7 @@ namespace DynamicsActivitiesNotifySubscribers
 	{
 		private const string ModuleId = "dynamics_activities";
 		private const string DataverseBaseUrl = "https://skyline365-qa.crm4.dynamics.com";
+		private const string DynamicsAppId = "7e38a9fc-8d19-f111-8341-7ced8d481cac";
 		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
@@ -1085,7 +1086,7 @@ namespace DynamicsActivitiesNotifySubscribers
 					break;
 			}
 
-			return $"{DataverseBaseUrl}/main.aspx?etn={etn}&id={activityId}&pagetype=entityrecord";
+			return $"{DataverseBaseUrl}/main.aspx?appid={DynamicsAppId}&pagetype=entityrecord&etn={etn}&id={activityId}";
 		}
 
 		private sealed class ActivityItem
