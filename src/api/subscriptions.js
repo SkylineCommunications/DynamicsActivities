@@ -4,7 +4,7 @@
  * Falls back gracefully if DataMiner session is unavailable.
  */
 
-import { getConnection, jsonPost, getDmaUser } from './dataminer'
+import { bootstrapSession, getConnection, jsonPost, getDmaUser } from './dataminer'
 
 const SCRIPT_NAME = 'DynamicsActivities_ManageSubscriptions'
 
@@ -12,81 +12,102 @@ const SCRIPT_NAME = 'DynamicsActivities_ManageSubscriptions'
  * Execute the CRUD automation script with given action and payload.
  */
 async function runSubscriptionScript(action, payload = {}) {
-  const connection = getConnection()
+  async function resolveConnection(redirectOnFailure) {
+    const current = getConnection()
+    if (current) {
+      const ok = await jsonPost('IsConnectionAlive', { connection: current }, { redirectOnAuthFailure: redirectOnFailure })
+      if (ok !== null) return current
+    }
+    return bootstrapSession({ redirectOnFailure, maxAttempts: 4, retryDelayMs: 300 })
+  }
+
+  let connection = await resolveConnection(false)
+  if (!connection) {
+    connection = await resolveConnection(true)
+  }
   if (!connection) throw new Error('No DataMiner connection')
 
   const dmaUser = getDmaUser()
   const userEmail = dmaUser?.EmailAddress || ''
   const userName = dmaUser?.FullName || ''
 
-  const result = await jsonPost('ExecuteAutomationScriptWithOutput', {
-    connection,
-    script: {
-      __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScript',
-      Name: SCRIPT_NAME,
-      Folder: '',
-      Description: '',
-      Settings: {
-        __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptSettings',
-        RequireInteractive: false,
-        HasFindInteractiveClient: false,
+  async function execute(connectionId, redirectOnAuthFailure) {
+    return jsonPost('ExecuteAutomationScriptWithOutput', {
+      connection: connectionId,
+      script: {
+        __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScript',
+        Name: SCRIPT_NAME,
+        Folder: '',
+        Description: '',
+        Settings: {
+          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptSettings',
+          RequireInteractive: false,
+          HasFindInteractiveClient: false,
+        },
+        Parameters: [
+          {
+            __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+            ParameterId: 10,
+            Values: null,
+            MemoryFile: '',
+            Name: 'Action',
+            Value: action,
+          },
+          {
+            __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+            ParameterId: 11,
+            Values: null,
+            MemoryFile: '',
+            Name: 'Payload',
+            Value: JSON.stringify(payload),
+          },
+          {
+            __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+            ParameterId: 12,
+            Values: null,
+            MemoryFile: '',
+            Name: 'UserEmail',
+            Value: userEmail,
+          },
+          {
+            __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+            ParameterId: 13,
+            Values: null,
+            MemoryFile: '',
+            Name: 'UserName',
+            Value: userName,
+          },
+        ],
+        Dummies: [],
+        MemoryFiles: [],
       },
-      Parameters: [
-        {
-          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 10,
-          Values: null,
-          MemoryFile: '',
-          Name: 'Action',
-          Value: action,
-        },
-        {
-          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 11,
-          Values: null,
-          MemoryFile: '',
-          Name: 'Payload',
-          Value: JSON.stringify(payload),
-        },
-        {
-          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 12,
-          Values: null,
-          MemoryFile: '',
-          Name: 'UserEmail',
-          Value: userEmail,
-        },
-        {
-          __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-          ParameterId: 13,
-          Values: null,
-          MemoryFile: '',
-          Name: 'UserName',
-          Value: userName,
-        },
-      ],
-      Dummies: [],
-      MemoryFiles: [],
-    },
-    scriptOptions: {
-      __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptOptions',
-      WaitForScript: true,
-      CheckSets: true,
-      LockElements: false,
-      ForceLockElements: false,
-      WaitWhenLocked: true,
-      IsInUse: false,
-      AskForConfirmation: false,
-      GenerateStartedInfoEvent: false,
-      customSuccessMessage: null,
-      hideSuccessPopup: true,
-      skipPresetsIfComplete: true,
-      hidePresets: true,
-      popupIsMinimizable: false,
-      popupType: 1,
-      ClientTimeZone: { Type: 0, Info: null },
-    },
-  }, { redirectOnAuthFailure: false })
+      scriptOptions: {
+        __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptOptions',
+        WaitForScript: true,
+        CheckSets: true,
+        LockElements: false,
+        ForceLockElements: false,
+        WaitWhenLocked: true,
+        IsInUse: false,
+        AskForConfirmation: false,
+        GenerateStartedInfoEvent: false,
+        customSuccessMessage: null,
+        hideSuccessPopup: true,
+        skipPresetsIfComplete: true,
+        hidePresets: true,
+        popupIsMinimizable: false,
+        popupType: 1,
+        ClientTimeZone: { Type: 0, Info: null },
+      },
+    }, { redirectOnAuthFailure })
+  }
+
+  let result = await execute(connection, false)
+  if (!result || !result.ScriptOutput) {
+    connection = await resolveConnection(true)
+    if (!connection) throw new Error('DataMiner connection unavailable. Subscriptions are currently unavailable.')
+    result = await execute(connection, true)
+  }
 
   // Errors come as HTTP 500 (caught by jsonPost). A successful response has ScriptOutput.
   if (!result || !result.ScriptOutput) {
