@@ -4,7 +4,7 @@ import AuthGuard from './components/AuthGuard'
 import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
 import SubscriptionsPanel from './components/SubscriptionsPanel'
-import { signOut as dmaSignOut, isDataMinerHost, getDmaUser } from './api/dataminer'
+import { signOut as dmaSignOut, isDataMinerHost, getDmaUser, redirectToAuth } from './api/dataminer'
 
 const TABS = [
   { id: 'browse', label: 'Activities', icon: 'search' },
@@ -98,8 +98,7 @@ function cycleTheme() {
           <button
             key={t.id}
             className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
-            disabled={t.id === 'subscriptions' && !subscriptionsAvailable}
-            title={t.id === 'subscriptions' && !subscriptionsAvailable ? 'Subscriptions require a DataMiner connection' : undefined}
+            title={t.id === 'subscriptions' && !subscriptionsAvailable ? 'DataMiner sign-in required for subscriptions' : undefined}
             onClick={() => setActiveTab(t.id)}
           >
             <span className="icon icon-sm" aria-hidden="true">{t.icon}</span>
@@ -122,7 +121,7 @@ function cycleTheme() {
                 />
               )}
               {activeTab === 'subscriptions' && (
-                <SubscriptionsPanel dmaAvailable={subscriptionsAvailable} />
+                <SubscriptionsPanel dmaAvailable={subscriptionsAvailable} onReconnectDma={redirectToAuth} />
               )}
             </>
           )}
