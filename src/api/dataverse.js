@@ -98,10 +98,6 @@ export const ESCALATION_STATUSES = [
 
 // ─── Escalation helpers ──────────────────────────────────────────────────────
 
-function getEscalationId(record) {
-  return record?.slc_escalationid || record?.activityid || null
-}
-
 /**
  * Fetch the active escalation record for an account by querying slc_escalations directly.
  * Business rule: an account can have at most ONE escalation that is open (1) or in-progress (2).
@@ -112,7 +108,7 @@ export async function getActiveEscalation(msalInstance, accountId) {
   const filter = `_regardingobjectid_value eq ${accountId} and slc_status eq 1`
   const data = await dvFetch(
     msalInstance,
-    `/slc_escalations?$filter=${filter}&$select=slc_escalationid,activityid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
+    `/slc_escalations?$filter=${filter}&$select=slc_escalationid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
   ).catch(() => null)
   return data?.value?.[0] ?? null
 }
@@ -825,7 +821,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
     ).catch(() => null),
     dvFetch(
       msalInstance,
-      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId}&$select=slc_escalationid,activityid&$top=50`,
+      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId}&$select=slc_escalationid&$top=50`,
     ).catch(() => null),
   ])
 
@@ -837,8 +833,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
   for (const lead of leadsData?.value ?? []) { relatedIds.push(lead.leadid); leadIds.push(lead.leadid) }
   for (const escalation of escalationsData?.value ?? []) {
-    const escalationId = getEscalationId(escalation)
-    if (escalationId) escalationIds.push(escalationId)
+    if (escalation.slc_escalationid) escalationIds.push(escalation.slc_escalationid)
   }
 
   return { relatedIds, escalationIds, leadIds }
@@ -877,7 +872,7 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
 }
 
 // Escalations have custom columns and no activity parties — fetch with extended select
-const ESCALATION_SELECT = `${BASE_SELECT},slc_escalationid,slc_startdate,slc_resolveddate,slc_status`
+const ESCALATION_SELECT = 'slc_escalationid,subject,description,createdon,scheduledend,scheduledstart,actualend,_regardingobjectid_value,slc_startdate,slc_resolveddate,slc_status'
 
 function buildLookupFilter(fieldName, ids) {
   if (!ids.length) return ''
@@ -1081,7 +1076,9 @@ export async function searchActivities(msalInstance, { accountIds, contactId, ac
   const seen = new Set()
   const deduped = []
   for (const r of allResults) {
-    const id = r.activityid || r.slc_escalationid || r.annotationid
+    const id = r._entityType === 'slc_escalations'
+      ? r.slc_escalationid
+      : (r.activityid || r.annotationid)
     if (id && seen.has(id)) continue
     if (id) seen.add(id)
     deduped.push(r)

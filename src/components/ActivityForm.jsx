@@ -185,7 +185,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         attendees,
         currentUserId,
         linkToEscalationId: (!linkToLeadId && linkToEscalation && activeEscalation)
-          ? (activeEscalation.slc_escalationid || activeEscalation.activityid)
+          ? activeEscalation.slc_escalationid
           : undefined,
         linkToLeadId: linkToLeadId || undefined,
       })

@@ -66,7 +66,8 @@ function fmtDate(d) {
 }
 
 function noteRecordId(note) {
-  return note.activityid || note.slc_escalationid || note.annotationid
+  if (note?._entityType === 'slc_escalations') return note.slc_escalationid
+  return note.activityid || note.annotationid
 }
 
 function NoteCard({ note, expanded, onToggle, onDelete }) {
