@@ -108,7 +108,7 @@ export async function getActiveEscalation(msalInstance, accountId) {
   const filter = `_regardingobjectid_value eq ${accountId} and slc_status eq 1`
   const data = await dvFetch(
     msalInstance,
-    `/slc_escalations?$filter=${filter}&$select=slc_escalationid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
+    `/slc_escalations?$filter=${filter}&$select=slc_escalationid,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
   ).catch(() => null)
   return data?.value?.[0] ?? null
 }
@@ -871,8 +871,8 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
   })
 }
 
-// Escalations have custom columns and no activity parties — fetch with extended select
-const ESCALATION_SELECT = 'slc_escalationid,subject,description,createdon,scheduledend,scheduledstart,actualend,_regardingobjectid_value,slc_startdate,slc_resolveddate,slc_status'
+// Escalations are custom entities (not activities) — select only known escalation columns
+const ESCALATION_SELECT = 'slc_escalationid,createdon,_regardingobjectid_value,slc_startdate,slc_resolveddate,slc_status'
 
 function buildLookupFilter(fieldName, ids) {
   if (!ids.length) return ''
@@ -896,7 +896,12 @@ async function fetchEscalations(msalInstance, filterClauses) {
     `/slc_escalations?$select=${ESCALATION_SELECT}${filterStr}&$orderby=createdon desc`,
     { headers: { Prefer: 'odata.include-annotations="OData.Community.Display.V1.FormattedValue",odata.maxpagesize=100' } },
   )
-  return (data?.value ?? []).map((r) => ({ ...r, _entityType: 'slc_escalations' }))
+  return (data?.value ?? []).map((r) => ({
+    ...r,
+    subject: r.subject || 'Escalation',
+    description: r.description || '',
+    _entityType: 'slc_escalations',
+  }))
 }
 
 // Leads (BD)
