@@ -873,7 +873,7 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
 }
 
 // Escalations are custom entities (not activities) — select only known escalation columns
-const ESCALATION_SELECT = `slc_escalationid,createdon,${ESCALATION_ACCOUNT_LOOKUP_FIELD},slc_startdate,slc_resolveddate,slc_status`
+const ESCALATION_SELECT = `slc_escalationid,createdon,${ESCALATION_ACCOUNT_LOOKUP_FIELD},slc_startdate,slc_status`
 
 function buildLookupFilter(fieldName, ids) {
   if (!ids.length) return ''
