@@ -92,8 +92,8 @@ export const ACTIVITY_TYPES = [
 
 // Escalation status labels (for display in browse only — escalations are managed in Dynamics)
 export const ESCALATION_STATUSES = [
-  { value: 1, label: 'Active', cssClass: 'status-active' },
-  { value: 2, label: 'Resolved', cssClass: 'status-resolved' },
+  { value: 0, label: 'Active', cssClass: 'status-active' },
+  { value: 1, label: 'Resolved', cssClass: 'status-resolved' },
 ]
 
 // ─── Escalation helpers ──────────────────────────────────────────────────────
@@ -101,17 +101,25 @@ const ESCALATION_ACCOUNT_LOOKUP_FIELD = '_slc_accountid_value'
 
 /**
  * Fetch the active escalation record for an account by querying slc_escalations directly.
- * Business rule: an account can have at most ONE escalation that is open (1) or in-progress (2).
+ * Business rule: an account can have at most ONE active escalation.
  */
 export async function getActiveEscalation(msalInstance, accountId) {
   if (!accountId) return null
-  // Query for active escalation record (slc_status=1 means Active)
-  const filter = `${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId} and slc_status eq 1`
+  // Escalation uses statecode (0=Active, 1=Inactive/Resolved)
+  const filter = `${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId} and statecode eq 0`
   const data = await dvFetch(
     msalInstance,
-    `/slc_escalations?$filter=${filter}&$select=slc_escalationid,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
+    `/slc_escalations?$filter=${filter}&$select=slc_EscalationId,statecode,statuscode,slc_StartDate,slc_EndDate,createdon&$orderby=createdon desc&$top=1`,
   ).catch(() => null)
-  return data?.value?.[0] ?? null
+  const record = data?.value?.[0]
+  if (!record) return null
+  return {
+    ...record,
+    slc_escalationid: record.slc_escalationid || record.slc_EscalationId || null,
+    slc_status: typeof record.statecode === 'number' ? record.statecode : null,
+    slc_startdate: record.slc_startdate || record.slc_StartDate || null,
+    slc_resolveddate: record.slc_resolveddate || record.slc_EndDate || null,
+  }
 }
 
 // ─── Lead helpers ────────────────────────────────────────────────────────────
@@ -834,7 +842,8 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
   for (const lead of leadsData?.value ?? []) { relatedIds.push(lead.leadid); leadIds.push(lead.leadid) }
   for (const escalation of escalationsData?.value ?? []) {
-    if (escalation.slc_escalationid) escalationIds.push(escalation.slc_escalationid)
+    const escalationId = escalation.slc_escalationid || escalation.slc_EscalationId
+    if (escalationId) escalationIds.push(escalationId)
   }
 
   return { relatedIds, escalationIds, leadIds }
@@ -873,7 +882,7 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
 }
 
 // Escalations are custom entities (not activities) — select only known escalation columns
-const ESCALATION_SELECT = `slc_escalationid,createdon,${ESCALATION_ACCOUNT_LOOKUP_FIELD},slc_startdate,slc_status`
+const ESCALATION_SELECT = `slc_EscalationId,createdon,${ESCALATION_ACCOUNT_LOOKUP_FIELD},slc_StartDate,slc_EndDate,statecode,statuscode,slc_name,slc_Description`
 
 function buildLookupFilter(fieldName, ids) {
   if (!ids.length) return ''
@@ -899,8 +908,12 @@ async function fetchEscalations(msalInstance, filterClauses) {
   )
   return (data?.value ?? []).map((r) => ({
     ...r,
-    subject: r.subject || 'Escalation',
-    description: r.description || '',
+    slc_escalationid: r.slc_escalationid || r.slc_EscalationId || null,
+    subject: r.subject || r.slc_name || 'Escalation',
+    description: r.description || r.slc_Description || '',
+    slc_status: typeof r.statecode === 'number' ? r.statecode : null,
+    slc_startdate: r.slc_startdate || r.slc_StartDate || null,
+    slc_resolveddate: r.slc_resolveddate || r.slc_EndDate || null,
     _regardingobjectid_value: r[ESCALATION_ACCOUNT_LOOKUP_FIELD],
     '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue':
       r[`${ESCALATION_ACCOUNT_LOOKUP_FIELD}@OData.Community.Display.V1.FormattedValue`],
