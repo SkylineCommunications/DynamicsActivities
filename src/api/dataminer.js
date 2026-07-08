@@ -3,10 +3,45 @@
 // cookie. This module reads and verifies that cookie.
 
 const JSON_API = `${window.location.protocol}//${window.location.host}/API/v1/Json.asmx`
+const DM_SESSION_RETRY_ATTEMPTS = 6
+const DM_SESSION_RETRY_DELAY_MS = 400
+const CONNECTION_STORAGE_KEY = 'dm_connection_guid'
+let activeConnection = null
+
+function readStoredConnection() {
+  try {
+    return sessionStorage.getItem(CONNECTION_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function persistConnection(connection) {
+  if (!connection) return
+  activeConnection = connection
+  try {
+    sessionStorage.setItem(CONNECTION_STORAGE_KEY, connection)
+  } catch {
+    // ignore storage failures (private mode, quota, etc.)
+  }
+}
+
+function clearPersistedConnection() {
+  activeConnection = null
+  try {
+    sessionStorage.removeItem(CONNECTION_STORAGE_KEY)
+  } catch {
+    // ignore storage failures
+  }
+}
 
 export function getConnectionFromCookie() {
   const match = document.cookie.match(/(?:^|;\s*)DMAConnection=([^;]+)/)
   return match ? decodeURIComponent(match[1]) : null
+}
+
+export function getConnection() {
+  return activeConnection || getConnectionFromCookie() || readStoredConnection()
 }
 
 export function getDmaUser() {
@@ -26,6 +61,7 @@ export function redirectToAuth() {
 
 export function signOut() {
   sessionStorage.removeItem('dm_auth_attempted')
+  clearPersistedConnection()
   const target = location.pathname + location.search
   location.replace('/auth/logout?url=' + encodeURIComponent(target))
 }
@@ -55,15 +91,26 @@ export async function jsonPost(method, body, options = {}) {
  * Returns the connection GUID if valid, null otherwise (and redirects to /auth/).
  */
 export async function bootstrapSession(options = {}) {
-  const { redirectOnFailure = true } = options
-  const connection = getConnectionFromCookie()
-  if (connection) {
-    const ok = await jsonPost('IsConnectionAlive', { connection }, { redirectOnAuthFailure: redirectOnFailure })
-    if (ok !== null) {
-      sessionStorage.removeItem('dm_auth_attempted')
-      return connection
+  const { redirectOnFailure = true, maxAttempts = DM_SESSION_RETRY_ATTEMPTS, retryDelayMs = DM_SESSION_RETRY_DELAY_MS } = options
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const connection = getConnection()
+    if (connection) {
+      const ok = await jsonPost('IsConnectionAlive', { connection }, { redirectOnAuthFailure: redirectOnFailure })
+      if (ok !== null) {
+        persistConnection(connection)
+        sessionStorage.removeItem('dm_auth_attempted')
+        return connection
+      }
+      clearPersistedConnection()
+    }
+
+    const hasAttemptsLeft = attempt + 1 < maxAttempts
+    if (hasAttemptsLeft && retryDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
     }
   }
+
   // No valid session — redirect unless we already tried
   if (redirectOnFailure && !sessionStorage.getItem('dm_auth_attempted')) {
     sessionStorage.setItem('dm_auth_attempted', '1')

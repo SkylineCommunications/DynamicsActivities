@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { InteractionStatus } from '@azure/msal-browser'
-import { loginRequest } from '../authConfig'
+import { appBasePath, loginRequest, redirectPathname } from '../authConfig'
 import { whoAmI } from '../api/dataverse'
 import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
 
@@ -35,7 +35,14 @@ export default function AuthGuard({ children, onDmaConnection }) {
 
   // Handle any pending redirect response at startup
   useEffect(() => {
-    instance.handleRedirectPromise().catch(() => {})
+    instance
+      .handleRedirectPromise()
+      .then(() => {
+        if (window.location.pathname === redirectPathname) {
+          window.history.replaceState({}, '', appBasePath)
+        }
+      })
+      .catch(() => {})
   }, [instance])
 
   // Step 2: Once DMA is ready, try MSAL silent login.

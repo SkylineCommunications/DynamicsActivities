@@ -4,7 +4,7 @@
  * Falls back gracefully if DataMiner session is unavailable.
  */
 
-import { getConnectionFromCookie, jsonPost, getDmaUser } from './dataminer'
+import { getConnection, jsonPost, getDmaUser } from './dataminer'
 
 const SCRIPT_NAME = 'DynamicsActivities_ManageSubscriptions'
 
@@ -12,7 +12,7 @@ const SCRIPT_NAME = 'DynamicsActivities_ManageSubscriptions'
  * Execute the CRUD automation script with given action and payload.
  */
 async function runSubscriptionScript(action, payload = {}) {
-  const connection = getConnectionFromCookie()
+  const connection = getConnection()
   if (!connection) throw new Error('No DataMiner connection')
 
   const dmaUser = getDmaUser()

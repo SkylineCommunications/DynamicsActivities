@@ -1,6 +1,6 @@
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 import { skylineRequest, skylineApiUrl } from '../authConfig'
-import { isDataMinerHost, getConnectionFromCookie, jsonPost } from './dataminer'
+import { isDataMinerHost, getConnection, jsonPost } from './dataminer'
 
 // ─── Skyline Collaboration API client ────────────────────────────────────────
 // All functions degrade gracefully: if the Skyline API is unreachable, token
@@ -56,7 +56,7 @@ async function skyFetch(msalInstance, path) {
   if (!token) return null
 
   if (isDataMinerHost()) {
-    const connection = getConnectionFromCookie()
+    const connection = getConnection()
     if (!connection) return null
 
     const result = await jsonPost('ExecuteAutomationScriptWithOutput', {

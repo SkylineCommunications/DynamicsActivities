@@ -1,7 +1,27 @@
 const dataverseUrl = (import.meta.env.VITE_DATAVERSE_URL || '').replace(/\/$/, '')
-
 const clientId = import.meta.env.VITE_CLIENT_ID || ''
 const tenantId = import.meta.env.VITE_TENANT_ID || ''
+const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+
+function normalizePath(path) {
+  const trimmed = String(path || '').trim()
+  if (!trimmed) return '/'
+  const withLeading = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return withLeading.endsWith('/') ? withLeading : `${withLeading}/`
+}
+
+const appBasePath = normalizePath(
+  import.meta.env.VITE_APP_BASE_PATH || (isLocalHost ? '/' : '/public/DynamicsActivities/'),
+)
+
+function buildAbsoluteUrl(path) {
+  return new URL(path, window.location.origin).toString()
+}
+
+const configuredRedirectUri = import.meta.env.VITE_REDIRECT_URI || ''
+const redirectUri = configuredRedirectUri || buildAbsoluteUrl(`${appBasePath}auth-callback`)
+const postLogoutRedirectUri = buildAbsoluteUrl(appBasePath)
+const redirectPathname = new URL(redirectUri, window.location.origin).pathname
 
 export const msalConfigValid = !!(clientId && tenantId && dataverseUrl)
 
@@ -9,14 +29,17 @@ export const msalConfig = {
   auth: {
     clientId,
     authority: `https://login.microsoftonline.com/${tenantId}`,
-    redirectUri: import.meta.env.VITE_REDIRECT_URI || window.location.origin,
-    navigateToLoginRequestUrl: false,
+    redirectUri,
+    postLogoutRedirectUri,
+    navigateToLoginRequestUrl: true,
   },
   cache: {
     cacheLocation: 'localStorage',
     storeAuthStateInCookie: false,
   },
 }
+
+export { appBasePath, redirectPathname }
 
 // Scopes for initial login (Graph)
 export const loginRequest = {
