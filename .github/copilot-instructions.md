@@ -128,6 +128,8 @@ VITE_SKYLINE_API_URL        — Skyline API base URL (proxied on DMA, direct on 
 
 See the **dataverse-api** skill for the full `slc_escalation` entity schema, account escalation fields (`slc_activeescalationcount`, `slc_inescalation`), and business rules.
 
+When Dataverse schema details are corrected (for example escalation field logical names), update the `dataverse-api` skill in `SkylineCommunications/.github-private` via PR as the source of truth. Do not rely on Copilot memory for schema persistence.
+
 App-specific behavior:
 - **Auto-link default** — The UI auto-checks "Link to escalation" when an active escalation is detected for the selected account. Users can uncheck to link directly to the account instead.
 
