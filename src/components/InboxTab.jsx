@@ -75,7 +75,7 @@ function getImportRegardingPayload(regardingType, regardingItem) {
   const isEscalationLink = ['escalation', 'slc_escalation', 'slc_escalations'].includes(regardingType)
   return {
     regardingId: isEscalationLink
-      ? regardingItem.activityid || regardingItem.slc_escalationid || null
+      ? regardingItem.slc_escalationid || regardingItem.activityid || null
       : regardingItem[`${regardingType}id`] || null,
     regardingAccountId: isEscalationLink
       ? regardingItem._regardingobjectid_value || regardingItem.accountid || null

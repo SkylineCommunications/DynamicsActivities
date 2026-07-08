@@ -65,6 +65,10 @@ function fmtDate(d) {
   })
 }
 
+function noteRecordId(note) {
+  return note.activityid || note.slc_escalationid || note.annotationid
+}
+
 function NoteCard({ note, expanded, onToggle, onDelete }) {
   const { instance } = useMsal()
   const label = noteTypeLabel(note)
@@ -75,7 +79,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
     || ''
   const rawPreview = note.notetext || note.description || ''
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
-  const recordId = note.activityid || note.annotationid
+  const recordId = noteRecordId(note)
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
   const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities' || note._entityType === 'support'
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -456,7 +460,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       {notes !== null && notes.length > 0 && (
         <div className="notes-list">
           {notes.map((n) => {
-            const recordId = n.activityid || n.annotationid
+            const recordId = noteRecordId(n)
 
             return (
               <NoteCard
@@ -464,7 +468,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
                 note={n}
                 expanded={expandedId === recordId}
                 onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
-                onDelete={(id) => setNotes((prev) => prev.filter((x) => (x.activityid || x.annotationid) !== id))}
+                onDelete={(id) => setNotes((prev) => prev.filter((x) => noteRecordId(x) !== id))}
               />
             )
           })}

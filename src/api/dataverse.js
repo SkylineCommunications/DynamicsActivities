@@ -98,6 +98,10 @@ export const ESCALATION_STATUSES = [
 
 // ─── Escalation helpers ──────────────────────────────────────────────────────
 
+function getEscalationId(record) {
+  return record?.slc_escalationid || record?.activityid || null
+}
+
 /**
  * Fetch the active escalation record for an account by querying slc_escalations directly.
  * Business rule: an account can have at most ONE escalation that is open (1) or in-progress (2).
@@ -108,7 +112,7 @@ export async function getActiveEscalation(msalInstance, accountId) {
   const filter = `_regardingobjectid_value eq ${accountId} and slc_status eq 1`
   const data = await dvFetch(
     msalInstance,
-    `/slc_escalations?$filter=${filter}&$select=activityid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
+    `/slc_escalations?$filter=${filter}&$select=slc_escalationid,activityid,subject,description,slc_status,slc_startdate,createdon&$orderby=createdon desc&$top=1`,
   ).catch(() => null)
   return data?.value?.[0] ?? null
 }
@@ -803,7 +807,7 @@ const BASE_SELECT = 'activityid,subject,description,createdon,scheduledend,sched
  *   3. Via contact      (_parentcustomerid_value)
  *   4. Via lead         (_parentaccountid_value)
  *   5. Via escalation   (slc_escalations regarding the account — active + resolved)
- * Returns related entity IDs plus escalation activity IDs (does NOT include accountId itself).
+ * Returns related entity IDs plus escalation record IDs (does NOT include accountId itself).
  */
 async function getAccountRelatedEntityIds(msalInstance, accountId) {
   const [opportunitiesData, contactsData, leadsData, escalationsData] = await Promise.all([
@@ -821,7 +825,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
     ).catch(() => null),
     dvFetch(
       msalInstance,
-      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId}&$select=activityid&$top=50`,
+      `/slc_escalations?$filter=_regardingobjectid_value eq ${accountId}&$select=slc_escalationid,activityid&$top=50`,
     ).catch(() => null),
   ])
 
@@ -832,7 +836,10 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   for (const opp of opportunitiesData?.value ?? []) relatedIds.push(opp.opportunityid)
   for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
   for (const lead of leadsData?.value ?? []) { relatedIds.push(lead.leadid); leadIds.push(lead.leadid) }
-  for (const escalation of escalationsData?.value ?? []) escalationIds.push(escalation.activityid)
+  for (const escalation of escalationsData?.value ?? []) {
+    const escalationId = getEscalationId(escalation)
+    if (escalationId) escalationIds.push(escalationId)
+  }
 
   return { relatedIds, escalationIds, leadIds }
 }
@@ -870,7 +877,7 @@ async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {
 }
 
 // Escalations have custom columns and no activity parties — fetch with extended select
-const ESCALATION_SELECT = `${BASE_SELECT},slc_startdate,slc_resolveddate,slc_status`
+const ESCALATION_SELECT = `${BASE_SELECT},slc_escalationid,slc_startdate,slc_resolveddate,slc_status`
 
 function buildLookupFilter(fieldName, ids) {
   if (!ids.length) return ''
@@ -1070,11 +1077,11 @@ export async function searchActivities(msalInstance, { accountIds, contactId, ac
     allResults.push(...results.flat())
   }
 
-  // Deduplicate by activityid (same record may appear for multiple accounts)
+  // Deduplicate by record ID (same record may appear for multiple accounts)
   const seen = new Set()
   const deduped = []
   for (const r of allResults) {
-    const id = r.activityid || r.annotationid
+    const id = r.activityid || r.slc_escalationid || r.annotationid
     if (id && seen.has(id)) continue
     if (id) seen.add(id)
     deduped.push(r)
