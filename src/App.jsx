@@ -60,57 +60,57 @@ function cycleTheme() {
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
 
   return (
-    <div className="app">
-      {/* Header — 49px with logo */}
-      <header className="app-header">
-        <span className="header-title">Activities</span>
-        <div className="header-right">
-          {dmaUser?.FullName && (
-            <span className="dma-user-name">
-              <span className="icon icon-sm" aria-hidden="true">person</span>
-              {dmaUser.FullName}
-            </span>
-          )}
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={cycleTheme}
-            title={`Theme: ${themePref}`}
-            aria-label={`Theme: ${themePref}`}
-          >
-            <span className="icon" aria-hidden="true">{themeIcon}</span>
-          </button>
-          <button
-            type="button"
-            className="sign-out-btn"
-            onClick={() => isDataMinerHost() ? dmaSignOut() : instance.logoutRedirect()}
-            title="Sign out"
-          >
-            <span className="icon">logout</span>
-            <span className="sign-out-label">Sign out</span>
-          </button>
-        </div>
-      </header>
+    <AuthGuard onDmaConnection={setDmaConnection}>
+      {() => (
+        <div className="app">
+          {/* Header — 49px with logo */}
+          <header className="app-header">
+            <span className="header-title">Activities</span>
+            <div className="header-right">
+              {dmaUser?.FullName && (
+                <span className="dma-user-name">
+                  <span className="icon icon-sm" aria-hidden="true">person</span>
+                  {dmaUser.FullName}
+                </span>
+              )}
+              <button
+                type="button"
+                className="theme-toggle"
+                onClick={cycleTheme}
+                title={`Theme: ${themePref}`}
+                aria-label={`Theme: ${themePref}`}
+              >
+                <span className="icon" aria-hidden="true">{themeIcon}</span>
+              </button>
+              <button
+                type="button"
+                className="sign-out-btn"
+                onClick={() => isDataMinerHost() ? dmaSignOut() : instance.logoutRedirect()}
+                title="Sign out"
+              >
+                <span className="icon">logout</span>
+                <span className="sign-out-label">Sign out</span>
+              </button>
+            </div>
+          </header>
 
-      {/* Tab nav */}
-      <nav className="tab-nav">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
-            title={t.id === 'subscriptions' && !subscriptionsAvailable ? 'DataMiner sign-in required for subscriptions' : undefined}
-            onClick={() => setActiveTab(t.id)}
-          >
-            <span className="icon icon-sm" aria-hidden="true">{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
-      </nav>
+          {/* Tab nav */}
+          <nav className="tab-nav">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                className={`tab-btn ${activeTab === t.id ? 'active' : ''}`}
+                title={t.id === 'subscriptions' && !subscriptionsAvailable ? 'DataMiner sign-in required for subscriptions' : undefined}
+                onClick={() => setActiveTab(t.id)}
+              >
+                <span className="icon icon-sm" aria-hidden="true">{t.icon}</span>
+                {t.label}
+              </button>
+            ))}
+          </nav>
 
-      {/* Content */}
-      <main className="app-main">
-        <AuthGuard onDmaConnection={setDmaConnection}>
-          {() => (
+          {/* Content */}
+          <main className="app-main">
             <>
               {activeTab === 'browse' && (
                 <NotesList
@@ -124,9 +124,9 @@ function cycleTheme() {
                 <SubscriptionsPanel dmaAvailable={subscriptionsAvailable} onReconnectDma={redirectToAuth} />
               )}
             </>
-          )}
-        </AuthGuard>
-      </main>
-    </div>
+          </main>
+        </div>
+      )}
+    </AuthGuard>
   )
 }

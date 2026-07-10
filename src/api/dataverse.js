@@ -175,6 +175,19 @@ export async function whoAmI(msalInstance) {
   return dvFetch(msalInstance, '/WhoAmI')
 }
 
+const VALID_DYNAMICS_LICENSE_CAL_TYPES = new Set([0, 2, 5, 7, 8, 9, 10, 11, 12])
+
+export async function getUserCalType(msalInstance, userId) {
+  if (!userId) return null
+  const user = await dvFetch(msalInstance, `/systemusers(${userId})?$select=caltype`)
+  return typeof user?.caltype === 'number' ? user.caltype : null
+}
+
+export async function getUserHasDynamicsTeamsLicense(msalInstance, userId) {
+  const calType = await getUserCalType(msalInstance, userId)
+  return calType !== null && VALID_DYNAMICS_LICENSE_CAL_TYPES.has(calType)
+}
+
 // CAL types that can create/manage leads in Dynamics Sales
 const SALES_CAL_TYPES = new Set([7, 8, 9, 10, 11, 12]) // Enterprise, Device Enterprise, Sales, Service, Field Service, Project Service
 
@@ -183,9 +196,8 @@ const SALES_CAL_TYPES = new Set([7, 8, 9, 10, 11, 12]) // Enterprise, Device Ent
  * Team Member (caltype 0/Professional, 2/Basic, 5/Essential) cannot create leads.
  */
 export async function getUserCanManageLeads(msalInstance, userId) {
-  if (!userId) return false
-  const user = await dvFetch(msalInstance, `/systemusers(${userId})?$select=caltype`).catch(() => null)
-  return user ? SALES_CAL_TYPES.has(user.caltype) : false
+  const calType = await getUserCalType(msalInstance, userId)
+  return calType !== null && SALES_CAL_TYPES.has(calType)
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────

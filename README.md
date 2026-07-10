@@ -14,6 +14,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - Browse and filter the full organisation's activity history with lazy server-side OData queries
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
 - **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types
+- **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled license request email to IT
 - Open any activity directly in Dynamics 365 with a single click
 - Delete activities with an inline confirm flow
 - DataMiner design system — Inter font, DataMinerIcons, CSS custom properties
@@ -42,6 +43,7 @@ The app uses **triple authentication**:
 1. **DataMiner session** — User signs in via DataMiner's `/auth/` page (Entra SSO). Sets `DMAConnection` and `DMAUser` cookies. Verified with `IsConnectionAlive` on app load.
 2. **MSAL for Dynamics 365 / Graph** — After DMA session is verified, acquires tokens via `ssoSilent` (same Entra tenant) or popup fallback. Used for Dataverse and Graph API calls.
 3. **MSAL for Skyline API** — Separate scope for the Skyline Collaboration API. Token acquired silently or via popup.
+4. **Dynamics license validation** — After sign-in, the app verifies the user's Dynamics license (`caltype`). Users without a valid license are redirected to a dedicated "No license" page with a prefilled "Request license for access" mailto action.
 
 On localhost, the DataMiner session check is skipped and MSAL popup auth is used directly.
 
