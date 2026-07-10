@@ -941,6 +941,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   white-space: pre-wrap;
 }
 
+.note-text-shadow-host { display: block; }
+
 .note-text.clamped {
   display: -webkit-box;
   -webkit-line-clamp: 2;
