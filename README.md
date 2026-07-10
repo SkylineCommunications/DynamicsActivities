@@ -276,7 +276,7 @@ src/
     subscriptions.js            # Subscription CRUD through automation
     activitySummary.js          # Browse/digest summary automation client
     leads.js                    # Standalone lead submission client
-    opportunities.js           # Standalone opportunity submission client
+    opportunities.js            # Standalone opportunity submission client
   components/
     AuthGuard.jsx               # Access gate and no-access UX
     NotesList.jsx               # Mounted browse experience
