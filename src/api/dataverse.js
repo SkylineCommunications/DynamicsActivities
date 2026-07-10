@@ -857,10 +857,6 @@ export function getDynamicsUrl(entityType, activityid) {
   return `${BASE_URL}/main.aspx?etn=${etn}&id=${activityid}&pagetype=entityrecord`
 }
 
-export async function deleteActivity(msalInstance, entityType, activityid) {
-  return dvFetch(msalInstance, `/${entityType}(${activityid})`, { method: 'DELETE' })
-}
-
 // Note: Dataverse rejects combining $expand (one-to-many) with $top (error 0x80060888).
 // Tasks carry no meaningful parties so they use $top without expand.
 async function fetchFiltered(msalInstance, entity, partyKey, filterClauses) {

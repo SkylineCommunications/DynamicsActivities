@@ -8,7 +8,6 @@ import {
   noteTypeLabel,
   noteDate,
   getDynamicsUrl,
-  deleteActivity,
   ACTIVITY_TYPES,
   ESCALATION_STATUSES,
 } from '../api/dataverse'
@@ -70,8 +69,7 @@ function noteRecordId(note) {
   return note.activityid || note.annotationid
 }
 
-function NoteCard({ note, expanded, onToggle, onDelete }) {
-  const { instance } = useMsal()
+function NoteCard({ note, expanded, onToggle }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
   const attendees = extractAttendees(note)
@@ -83,28 +81,6 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const recordId = noteRecordId(note)
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
-  const isReadOnly = note._entityType === 'slc_escalations' || note._entityType === 'leads' || note._entityType === 'opportunities' || note._entityType === 'support'
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-
-  async function handleDelete(e) {
-    e.stopPropagation()
-    if (!confirmDelete) { setConfirmDelete(true); return }
-    setDeleting(true)
-    try {
-      await deleteActivity(instance, note._entityType, recordId)
-      onDelete(recordId)
-    } catch (err) {
-      alert('Delete failed: ' + err.message)
-      setDeleting(false)
-      setConfirmDelete(false)
-    }
-  }
-
-  function cancelDelete(e) {
-    e.stopPropagation()
-    setConfirmDelete(false)
-  }
 
   return (
     <div className={`note-card ${expanded ? 'expanded' : ''}`} onClick={onToggle}>
@@ -125,36 +101,6 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
               Open in Dynamics <span className="icon icon-sm" aria-hidden="true">open_in_new</span>
             </a>
           )}
-          {!isReadOnly && (confirmDelete ? (
-            <>
-              <button
-                type="button"
-                className="btn-card-action btn-confirm-delete"
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                {deleting ? 'Deleting…' : 'Confirm delete'}
-              </button>
-              <button
-                type="button"
-                className="btn-card-action btn-cancel"
-                onClick={cancelDelete}
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="btn-card-action btn-delete"
-                onClick={handleDelete}
-                title="Delete activity"
-              >
-                <span className="icon icon-sm">delete</span>
-              </button>
-            </>
-          ))}
         </div>
       </div>
 
@@ -470,7 +416,6 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
                 note={n}
                 expanded={expandedId === recordId}
                 onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
-                onDelete={(id) => setNotes((prev) => prev.filter((x) => noteRecordId(x) !== id))}
               />
             )
           })}
