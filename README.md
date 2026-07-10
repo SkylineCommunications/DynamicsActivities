@@ -147,7 +147,7 @@ Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesP
 src/
   api/
     dataminer.js       # DataMiner session bootstrap, cookies, sign-out
-    dataverse.js       # All Dataverse ops (auth, search, create, delete)
+    dataverse.js       # All Dataverse ops (auth, search, create)
     graph.js           # Graph calendar fetch for attendee prefill
     skyline.js         # Skyline Collaboration API (TAM accounts)
     subscriptions.js   # Subscription CRUD via DataMiner Automation scripts (DOM-backed)
