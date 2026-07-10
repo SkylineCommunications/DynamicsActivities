@@ -941,26 +941,7 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   white-space: pre-wrap;
 }
 
-.note-text p,
-.note-text ul,
-.note-text ol {
-  margin: 0 0 8px;
-}
-
-.note-text p:last-child,
-.note-text ul:last-child,
-.note-text ol:last-child {
-  margin-bottom: 0;
-}
-
-.note-text ul,
-.note-text ol {
-  padding-left: 18px;
-}
-
-.note-text a {
-  color: var(--hyperlink);
-}
+.note-text-shadow-host { display: block; }
 
 .note-text.clamped {
   display: -webkit-box;

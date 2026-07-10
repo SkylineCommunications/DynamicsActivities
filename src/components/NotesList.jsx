@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useMsal } from '@azure/msal-react'
 import {
   searchActivities,
@@ -18,6 +18,40 @@ const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.icon
 const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cssClass]))
 const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i
 const UNSAFE_TAG_SELECTOR = 'script,style,iframe,object,embed,link,meta,base,form,input,button,textarea,select,option,svg,math'
+const RICH_PREVIEW_SHADOW_CSS = `
+  :host { display: block; }
+  .content {
+    font-size: 14px;
+    color: var(--color10);
+    line-height: 24px;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .content p,
+  .content ul,
+  .content ol {
+    margin: 0 0 8px;
+  }
+  .content p:last-child,
+  .content ul:last-child,
+  .content ol:last-child {
+    margin-bottom: 0;
+  }
+  .content ul,
+  .content ol {
+    padding-left: 18px;
+  }
+  .content a {
+    color: var(--hyperlink);
+  }
+  .content.clamped {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+`
 
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= 'contact_phone'
@@ -129,6 +163,27 @@ function previewVisibleLength(value) {
   return (doc.body.textContent || '').trim().length
 }
 
+function RichPreview({ html, clamped }) {
+  const hostRef = useRef(null)
+
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+
+    const shadowRoot = host.shadowRoot || host.attachShadow({ mode: 'open' })
+    const styleEl = document.createElement('style')
+    styleEl.textContent = RICH_PREVIEW_SHADOW_CSS
+
+    const contentEl = document.createElement('div')
+    contentEl.className = clamped ? 'content clamped' : 'content'
+    contentEl.innerHTML = html
+
+    shadowRoot.replaceChildren(styleEl, contentEl)
+  }, [html, clamped])
+
+  return <div className="note-text-shadow-host" ref={hostRef} />
+}
+
 function NoteCard({ note, expanded, onToggle }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
@@ -234,10 +289,9 @@ function NoteCard({ note, expanded, onToggle }) {
       )}
 
       {preview ? (
-        <div
-          className={`note-text ${expanded ? '' : 'clamped'}`}
-          dangerouslySetInnerHTML={{ __html: previewHtml }}
-        />
+        <div className="note-text">
+          <RichPreview html={previewHtml} clamped={!expanded} />
+        </div>
       ) : (
         <div className={`note-text ${expanded ? '' : 'clamped'}`}>
           <em className="empty-text">No note text</em>
