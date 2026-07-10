@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { InteractionStatus } from '@azure/msal-browser'
 import { appBasePath, loginRequest, redirectPathname } from '../authConfig'
-import { getUserHasDynamicsTeamsLicense, whoAmI } from '../api/dataverse'
+import { whoAmI } from '../api/dataverse'
+import { getUserHasDynamicsTeamsLicense } from '../api/graph'
 import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
 
 const LICENSE_REQUEST_TO = 'IT@skyline.be'
@@ -106,14 +107,16 @@ export default function AuthGuard({ children, onDmaConnection }) {
   useEffect(() => {
     if (!isAuthenticated || licenseChecked) return
 
-    whoAmI(instance)
-      .then(async (r) => {
-        setCurrentUserId(r.UserId)
-        const licensed = await getUserHasDynamicsTeamsLicense(instance, r.UserId)
+    Promise.all([
+      whoAmI(instance),
+      getUserHasDynamicsTeamsLicense(instance),
+    ])
+      .then(([whoAmIResult, licensed]) => {
+        setCurrentUserId(whoAmIResult.UserId)
         setHasLicense(licensed)
         setLicenseChecked(true)
       })
-        .catch((e) => setAuthError(`Dataverse connection failed: ${e.message}`))
+      .catch((e) => setAuthError(`Authentication check failed: ${e.message}`))
   }, [isAuthenticated, instance, licenseChecked])
 
   function handleLogin() {

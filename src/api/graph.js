@@ -33,6 +33,23 @@ async function graphGet(msalInstance, path) {
   return res.json()
 }
 
+const DYNAMICS_TEAMS_MARKERS = ['DYN365_TEAM_MEMBERS', 'D365_TEAM_MEMBERS']
+
+function hasDynamicsTeamsMarker(value) {
+  const text = String(value || '').toUpperCase()
+  return DYNAMICS_TEAMS_MARKERS.some((marker) => text.includes(marker))
+}
+
+function hasDynamicsTeamsLicenseInDetail(detail) {
+  if (hasDynamicsTeamsMarker(detail?.skuPartNumber)) return true
+  return (detail?.servicePlans ?? []).some((plan) => hasDynamicsTeamsMarker(plan?.servicePlanName))
+}
+
+export async function getUserHasDynamicsTeamsLicense(msalInstance) {
+  const details = await graphGet(msalInstance, '/me/licenseDetails')
+  return (details?.value ?? []).some(hasDynamicsTeamsLicenseInDetail)
+}
+
 // ─── Inbox mail ───────────────────────────────────────────────────────────────
 export async function getRecentInboxMessages(msalInstance, { nextLink, mailbox } = {}) {
   const token = await getGraphToken(msalInstance)
