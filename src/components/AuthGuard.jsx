@@ -9,7 +9,7 @@ import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
 const LICENSE_REQUEST_TO = 'IT@skyline.be'
 const LICENSE_REQUEST_CC = 'squad.maximize-amplify@skyline.be'
 const APP_NAME = 'Dynamics Activities'
-const REQUESTED_LICENSE = 'MS Dynamics 365'
+const REQUESTED_LICENSE = 'Dynamics 365 Sales Team Member'
 
 function buildLicenseRequestMailto() {
   const subject = `[License Request] ${APP_NAME}`
