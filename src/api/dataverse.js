@@ -175,6 +175,10 @@ export async function whoAmI(msalInstance) {
   return dvFetch(msalInstance, '/WhoAmI')
 }
 
+export async function assertDataverseAppAccess(msalInstance) {
+  await dvFetch(msalInstance, '/accounts?$select=accountid&$top=1')
+}
+
 export async function getUserCalType(msalInstance, userId) {
   if (!userId) return null
   const user = await dvFetch(msalInstance, `/systemusers(${userId})?$select=caltype`)

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { InteractionStatus } from '@azure/msal-browser'
 import { appBasePath, loginRequest, redirectPathname } from '../authConfig'
-import { whoAmI } from '../api/dataverse'
+import { assertDataverseAppAccess, whoAmI } from '../api/dataverse'
 import { getUserHasDynamicsLicense } from '../api/graph'
 import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
 
@@ -22,6 +22,18 @@ function buildLicenseRequestMailto() {
   ].join('\n')
 
   return `mailto:${LICENSE_REQUEST_TO}?cc=${encodeURIComponent(LICENSE_REQUEST_CC)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
+function looksLikeDynamicsAccessDenied(err) {
+  const msg = String(err?.message || '').toLowerCase()
+  return (
+    msg.includes('insufficient')
+    || msg.includes('permission')
+    || msg.includes('access is denied')
+    || msg.includes('prv')
+    || msg.includes('license')
+    || msg.includes('authorization has been denied')
+  )
 }
 
 export default function AuthGuard({ children, onDmaConnection }) {
@@ -110,9 +122,19 @@ export default function AuthGuard({ children, onDmaConnection }) {
         // Only attempt Dataverse sign-in for users that have a Dynamics license.
         if (!licensed) return
 
-        return whoAmI(instance).then((whoAmIResult) => {
-          setCurrentUserId(whoAmIResult.UserId)
-        })
+        return whoAmI(instance)
+          .then((whoAmIResult) => {
+            setCurrentUserId(whoAmIResult.UserId)
+            return assertDataverseAppAccess(instance)
+          })
+          .catch((e) => {
+            if (looksLikeDynamicsAccessDenied(e)) {
+              setCurrentUserId(null)
+              setHasLicense(false)
+              return
+            }
+            throw e
+          })
       })
       .catch((e) => setAuthError(`Authentication check failed: ${e.message}`))
   }, [isAuthenticated, instance, licenseChecked])
