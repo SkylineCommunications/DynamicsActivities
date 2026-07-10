@@ -270,7 +270,7 @@ src/
   authConfig.js                 # MSAL config, redirect handling, scopes
   api/
     dataminer.js                # DataMiner session bootstrap and JSON API helpers
-    dataverse.js                # Dataverse search, browse, create/import helpers
+    dataverse.js                # Dataverse search, browse, create/import/delete helpers
     graph.js                    # Graph license, inbox, and calendar helpers
     skyline.js                  # Skyline API token + proxy/direct fetch helpers
     subscriptions.js            # Subscription CRUD through automation
