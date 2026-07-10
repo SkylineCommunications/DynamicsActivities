@@ -33,6 +33,8 @@ function looksLikeDynamicsAccessDenied(err) {
     || msg.includes('prv')
     || msg.includes('license')
     || msg.includes('authorization has been denied')
+    || msg.includes('not a member of the organization')
+    || msg.includes('0x80072560')
   )
 }
 
@@ -207,9 +209,9 @@ export default function AuthGuard({ children, onDmaConnection }) {
       <div className="auth-screen">
         <div className="auth-card">
           <div className="auth-icon"><span className="icon icon-lg" aria-hidden="true">warning</span></div>
-          <h2>No Dynamics license found</h2>
+          <h2>No Dynamics access found</h2>
           <p>
-            You need an MS Dynamics license to use this app.
+            You need Dynamics access for this environment to use this app.
           </p>
           <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
             Request license for access
