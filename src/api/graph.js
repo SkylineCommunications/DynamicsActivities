@@ -33,6 +33,23 @@ async function graphGet(msalInstance, path) {
   return res.json()
 }
 
+function isDynamicsServiceName(value) {
+  const service = String(value || '').toLowerCase()
+  return (
+    service.includes('crm')
+    || service.includes('dynamics')
+    || service.includes('dyn365')
+  )
+}
+
+export async function getUserHasDynamicsLicense(msalInstance) {
+  const me = await graphGet(msalInstance, '/me?$select=assignedPlans')
+  return (me?.assignedPlans ?? []).some((plan) =>
+    String(plan?.capabilityStatus || '').toLowerCase() === 'enabled'
+    && isDynamicsServiceName(plan?.service),
+  )
+}
+
 // ─── Inbox mail ───────────────────────────────────────────────────────────────
 export async function getRecentInboxMessages(msalInstance, { nextLink, mailbox } = {}) {
   const token = await getGraphToken(msalInstance)

@@ -2,13 +2,48 @@ import { useState, useEffect } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { InteractionStatus } from '@azure/msal-browser'
 import { appBasePath, loginRequest, redirectPathname } from '../authConfig'
-import { whoAmI } from '../api/dataverse'
+import { assertDataverseAppAccess, whoAmI } from '../api/dataverse'
+import { getUserHasDynamicsLicense } from '../api/graph'
 import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
+
+const LICENSE_REQUEST_TO = 'IT@skyline.be'
+const LICENSE_REQUEST_CC = 'squad.maximize-amplify@skyline.be'
+const APP_NAME = 'Dynamics Activities'
+const REQUESTED_LICENSE = 'Dynamics 365 Sales Team Member'
+
+function buildLicenseRequestMailto() {
+  const subject = `[License Request] ${APP_NAME}`
+  const body = [
+    'Hello IT team,',
+    '',
+    `I would like to request an ${REQUESTED_LICENSE} license for access to ${APP_NAME}.`,
+    '',
+    'Thanks.',
+  ].join('\n')
+
+  return `mailto:${LICENSE_REQUEST_TO}?cc=${encodeURIComponent(LICENSE_REQUEST_CC)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
+function looksLikeDynamicsAccessDenied(err) {
+  const msg = String(err?.message || '').toLowerCase()
+  return (
+    msg.includes('insufficient')
+    || msg.includes('permission')
+    || msg.includes('access is denied')
+    || msg.includes('prv')
+    || msg.includes('license')
+    || msg.includes('authorization has been denied')
+    || msg.includes('not a member of the organization')
+    || msg.includes('0x80072560')
+  )
+}
 
 export default function AuthGuard({ children, onDmaConnection }) {
   const { instance, inProgress } = useMsal()
   const isAuthenticated = useIsAuthenticated()
   const [currentUserId, setCurrentUserId] = useState(null)
+  const [licenseChecked, setLicenseChecked] = useState(false)
+  const [hasLicense, setHasLicense] = useState(false)
   const [authError, setAuthError] = useState(null)
   const [needsManualLogin, setNeedsManualLogin] = useState(false)
   const [dmaReady, setDmaReady] = useState(!isDataMinerHost()) // skip DMA check on localhost
@@ -70,17 +105,41 @@ export default function AuthGuard({ children, onDmaConnection }) {
     if (isAuthenticated) {
       setAuthError(null)
       setNeedsManualLogin(false)
+    } else {
+      setCurrentUserId(null)
+      setLicenseChecked(false)
+      setHasLicense(false)
     }
   }, [isAuthenticated])
 
-  // Step 3: Once MSAL authenticated, fetch current user ID from Dataverse
+  // Step 3: Once MSAL authenticated, fetch current user and validate Dynamics license.
   useEffect(() => {
-    if (isAuthenticated && !currentUserId) {
-      whoAmI(instance)
-        .then((r) => setCurrentUserId(r.UserId))
-        .catch((e) => setAuthError(`Dataverse connection failed: ${e.message}`))
-    }
-  }, [isAuthenticated, instance, currentUserId])
+    if (!isAuthenticated || licenseChecked) return
+
+    getUserHasDynamicsLicense(instance)
+      .then((licensed) => {
+        setHasLicense(licensed)
+        setLicenseChecked(true)
+
+        // Only attempt Dataverse sign-in for users that have a Dynamics license.
+        if (!licensed) return
+
+        return whoAmI(instance)
+          .then((whoAmIResult) => {
+            setCurrentUserId(whoAmIResult.UserId)
+            return assertDataverseAppAccess(instance)
+          })
+          .catch((e) => {
+            if (looksLikeDynamicsAccessDenied(e)) {
+              setCurrentUserId(null)
+              setHasLicense(false)
+              return
+            }
+            throw e
+          })
+      })
+      .catch((e) => setAuthError(`Authentication check failed: ${e.message}`))
+  }, [isAuthenticated, instance, licenseChecked])
 
   function handleLogin() {
     setAuthError(null)
@@ -133,12 +192,41 @@ export default function AuthGuard({ children, onDmaConnection }) {
     )
   }
 
-  if (!isAuthenticated || !currentUserId) {
+  if (!isAuthenticated || !licenseChecked) {
     return (
       <div className="auth-screen">
         <div className="auth-card">
           <div className="auth-spinner" />
-          <p>{!isAuthenticated ? 'Signing in…' : 'Connecting to Dynamics…'}</p>
+          <p>{!isAuthenticated ? 'Signing in…' : 'Checking license…'}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!hasLicense) {
+    const mailtoHref = buildLicenseRequestMailto()
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="auth-icon"><span className="icon icon-lg" aria-hidden="true">warning</span></div>
+          <h2>No Dynamics access found</h2>
+          <p>
+            You need Dynamics access for this environment to use this app.
+          </p>
+          <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
+            Request license for access
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  if (!currentUserId) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="auth-spinner" />
+          <p>Loading user profile…</p>
         </div>
       </div>
     )
