@@ -16,6 +16,8 @@ import AutocompletePicker from './AutocompletePicker'
 // Derive icon and CSS class maps from ACTIVITY_TYPES
 const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.iconLigature || t.icon]))
 const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cssClass]))
+const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i
+const UNSAFE_TAG_SELECTOR = 'script,style,iframe,object,embed,link,meta,base,form,input,button,textarea,select,option,svg,math'
 
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= 'contact_phone'
@@ -69,6 +71,64 @@ function noteRecordId(note) {
   return note.activityid || note.annotationid
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function sanitizeHtml(value) {
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') return escapeHtml(value)
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(value, 'text/html')
+
+  doc.querySelectorAll(UNSAFE_TAG_SELECTOR).forEach((node) => node.remove())
+  doc.querySelectorAll('*').forEach((el) => {
+    for (const attr of [...el.attributes]) {
+      const name = attr.name.toLowerCase()
+      const val = attr.value.trim()
+      if (name.startsWith('on') || name === 'style') {
+        el.removeAttribute(attr.name)
+        continue
+      }
+      if (name === 'href' || name === 'src' || name === 'xlink:href') {
+        const lower = val.toLowerCase()
+        const allowed = lower.startsWith('http://')
+          || lower.startsWith('https://')
+          || lower.startsWith('mailto:')
+          || lower.startsWith('tel:')
+          || lower.startsWith('/')
+          || lower.startsWith('#')
+        if (!allowed) el.removeAttribute(attr.name)
+      }
+    }
+  })
+
+  return doc.body.innerHTML
+}
+
+function formatPreviewHtml(value) {
+  const raw = String(value ?? '')
+  if (!raw.trim()) return ''
+  if (!HTML_TAG_REGEX.test(raw)) return escapeHtml(raw).replace(/\r?\n/g, '<br />')
+  return sanitizeHtml(raw)
+}
+
+function previewVisibleLength(value) {
+  const raw = String(value ?? '')
+  if (!raw.trim()) return 0
+  if (!HTML_TAG_REGEX.test(raw)) return raw.length
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return raw.replace(/<[^>]+>/g, '').length
+  }
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(raw, 'text/html')
+  return (doc.body.textContent || '').trim().length
+}
+
 function NoteCard({ note, expanded, onToggle }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
@@ -79,6 +139,8 @@ function NoteCard({ note, expanded, onToggle }) {
     || ''
   const rawPreview = note.notetext || note.description || ''
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
+  const previewHtml = formatPreviewHtml(preview)
+  const previewLength = previewVisibleLength(preview)
   const recordId = noteRecordId(note)
   const dynamicsUrl = recordId ? getDynamicsUrl(note._entityType, recordId) : null
 
@@ -171,11 +233,18 @@ function NoteCard({ note, expanded, onToggle }) {
         </div>
       )}
 
-      <div className={`note-text ${expanded ? '' : 'clamped'}`}>
-        {preview || <em className="empty-text">No note text</em>}
-      </div>
+      {preview ? (
+        <div
+          className={`note-text ${expanded ? '' : 'clamped'}`}
+          dangerouslySetInnerHTML={{ __html: previewHtml }}
+        />
+      ) : (
+        <div className={`note-text ${expanded ? '' : 'clamped'}`}>
+          <em className="empty-text">No note text</em>
+        </div>
+      )}
 
-      {!expanded && preview.length > 140 && (
+      {!expanded && previewLength > 140 && (
         <span className="show-more">Show more ▾</span>
       )}
     </div>
