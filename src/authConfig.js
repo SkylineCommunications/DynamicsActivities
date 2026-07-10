@@ -43,7 +43,7 @@ export { appBasePath, redirectPathname }
 
 // Scopes for initial login (Graph)
 export const loginRequest = {
-  scopes: ['User.Read', 'Calendars.Read', 'Mail.Read', 'Mail.Read.Shared', 'LicenseAssignment.Read.All'],
+  scopes: ['User.Read', 'Calendars.Read', 'Mail.Read', 'Mail.Read.Shared'],
 }
 
 // Scopes for Dataverse token
@@ -57,7 +57,6 @@ export const graphRequest = {
     'https://graph.microsoft.com/Calendars.Read',
     'https://graph.microsoft.com/Mail.Read',
     'https://graph.microsoft.com/Mail.Read.Shared',
-    'https://graph.microsoft.com/LicenseAssignment.Read.All',
   ],
 }
 

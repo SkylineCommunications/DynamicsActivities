@@ -43,7 +43,7 @@ The app uses **triple authentication**:
 1. **DataMiner session** — User signs in via DataMiner's `/auth/` page (Entra SSO). Sets `DMAConnection` and `DMAUser` cookies. Verified with `IsConnectionAlive` on app load.
 2. **MSAL for Dynamics 365 / Graph** — After DMA session is verified, acquires tokens via `ssoSilent` (same Entra tenant) or popup fallback. Used for Dataverse and Graph API calls.
 3. **MSAL for Skyline API** — Separate scope for the Skyline Collaboration API. Token acquired silently or via popup.
-4. **Dynamics license validation** — After sign-in, the app verifies the user's Entra license assignments via Microsoft Graph (`/me/licenseDetails`). Users without a valid Dynamics Teams license are redirected to a dedicated "No license" page with a prefilled "Request license for access" mailto action.
+4. **Dynamics license validation** — After sign-in, the app first verifies the signed-in user's Entra assigned plans via Microsoft Graph (`/me?$select=assignedPlans`) and allows access when any Dynamics-related plan is enabled (for example Team Member, Enterprise, Sales, etc.). Only licensed users continue to Dataverse sign-in; users without a Dynamics license are redirected to a dedicated "No license" page with a prefilled "Request license for access" mailto action.
 
 On localhost, the DataMiner session check is skipped and MSAL popup auth is used directly.
 

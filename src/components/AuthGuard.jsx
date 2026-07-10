@@ -3,25 +3,20 @@ import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { InteractionStatus } from '@azure/msal-browser'
 import { appBasePath, loginRequest, redirectPathname } from '../authConfig'
 import { whoAmI } from '../api/dataverse'
-import { getUserHasDynamicsTeamsLicense } from '../api/graph'
+import { getUserHasDynamicsLicense } from '../api/graph'
 import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
 
 const LICENSE_REQUEST_TO = 'IT@skyline.be'
 const LICENSE_REQUEST_CC = 'squad.maximize-amplify@skyline.be'
 const APP_NAME = 'Dynamics Activities'
-const REQUESTED_LICENSE = 'MS Dynamics Teams'
+const REQUESTED_LICENSE = 'MS Dynamics 365'
 
-function buildLicenseRequestMailto(account) {
-  const displayName = account?.name || 'Unknown user'
-  const email = account?.username || 'Unknown email'
-  const subject = `[License Request] ${APP_NAME} - ${displayName}`
+function buildLicenseRequestMailto() {
+  const subject = `[License Request] ${APP_NAME}`
   const body = [
     'Hello IT team,',
     '',
     `I would like to request an ${REQUESTED_LICENSE} license for access to ${APP_NAME}.`,
-    '',
-    `User: ${displayName}`,
-    `Email: ${email}`,
     '',
     'Thanks.',
   ].join('\n')
@@ -107,14 +102,17 @@ export default function AuthGuard({ children, onDmaConnection }) {
   useEffect(() => {
     if (!isAuthenticated || licenseChecked) return
 
-    Promise.all([
-      whoAmI(instance),
-      getUserHasDynamicsTeamsLicense(instance),
-    ])
-      .then(([whoAmIResult, licensed]) => {
-        setCurrentUserId(whoAmIResult.UserId)
+    getUserHasDynamicsLicense(instance)
+      .then((licensed) => {
         setHasLicense(licensed)
         setLicenseChecked(true)
+
+        // Only attempt Dataverse sign-in for users that have a Dynamics license.
+        if (!licensed) return
+
+        return whoAmI(instance).then((whoAmIResult) => {
+          setCurrentUserId(whoAmIResult.UserId)
+        })
       })
       .catch((e) => setAuthError(`Authentication check failed: ${e.message}`))
   }, [isAuthenticated, instance, licenseChecked])
@@ -175,22 +173,21 @@ export default function AuthGuard({ children, onDmaConnection }) {
       <div className="auth-screen">
         <div className="auth-card">
           <div className="auth-spinner" />
-          <p>{!isAuthenticated ? 'Signing in…' : 'Connecting to Dynamics…'}</p>
+          <p>{!isAuthenticated ? 'Signing in…' : 'Checking license…'}</p>
         </div>
       </div>
     )
   }
 
   if (!hasLicense) {
-    const account = instance.getAllAccounts()[0]
-    const mailtoHref = buildLicenseRequestMailto(account)
+    const mailtoHref = buildLicenseRequestMailto()
     return (
       <div className="auth-screen">
         <div className="auth-card">
           <div className="auth-icon"><span className="icon icon-lg" aria-hidden="true">warning</span></div>
           <h2>No Dynamics license found</h2>
           <p>
-            You need an MS Dynamics Teams license to use this app.
+            You need an MS Dynamics license to use this app.
           </p>
           <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
             Request license for access

@@ -33,21 +33,21 @@ async function graphGet(msalInstance, path) {
   return res.json()
 }
 
-const DYNAMICS_TEAMS_MARKERS = ['DYN365_TEAM_MEMBERS', 'D365_TEAM_MEMBERS']
-
-function hasDynamicsTeamsMarker(value) {
-  const text = String(value || '').toUpperCase()
-  return DYNAMICS_TEAMS_MARKERS.some((marker) => text.includes(marker))
+function isDynamicsServiceName(value) {
+  const service = String(value || '').toLowerCase()
+  return (
+    service.includes('crm')
+    || service.includes('dynamics')
+    || service.includes('dyn365')
+  )
 }
 
-function hasDynamicsTeamsLicenseInDetail(detail) {
-  if (hasDynamicsTeamsMarker(detail?.skuPartNumber)) return true
-  return (detail?.servicePlans ?? []).some((plan) => hasDynamicsTeamsMarker(plan?.servicePlanName))
-}
-
-export async function getUserHasDynamicsTeamsLicense(msalInstance) {
-  const details = await graphGet(msalInstance, '/me/licenseDetails')
-  return (details?.value ?? []).some(hasDynamicsTeamsLicenseInDetail)
+export async function getUserHasDynamicsLicense(msalInstance) {
+  const me = await graphGet(msalInstance, '/me?$select=assignedPlans')
+  return (me?.assignedPlans ?? []).some((plan) =>
+    String(plan?.capabilityStatus || '').toLowerCase() === 'enabled'
+    && isDynamicsServiceName(plan?.service),
+  )
 }
 
 // ─── Inbox mail ───────────────────────────────────────────────────────────────
