@@ -11,6 +11,7 @@ namespace DynamicsActivitiesNotifySubscribers
 	using System.Text;
 	using System.Text.RegularExpressions;
 	using System.Threading;
+	using System.Threading.Tasks;
 	using Newtonsoft.Json;
 	using Newtonsoft.Json.Linq;
 	using Skyline.DataMiner.Automation;
@@ -890,8 +891,8 @@ namespace DynamicsActivitiesNotifySubscribers
 					return null;
 				}
 
-				var helperResolution = ResolveAgentHelperType();
-				var helperType = helperResolution.HelperType;
+				var helperResolution = ResolveChatHelperType();
+				var helperType = helperResolution.ChatHelperType;
 				if (helperType == null)
 				{
 					warning = "Assistant integration assembly/type was not found on this DMA.";
@@ -899,29 +900,48 @@ namespace DynamicsActivitiesNotifySubscribers
 					return null;
 				}
 
-				var helper = Activator.CreateInstance(helperType, userConnection, AssistantAgentId);
+				var helper = Activator.CreateInstance(helperType, userConnection, TimeSpan.FromSeconds(45));
 				if (helper == null)
 				{
-					warning = "Failed to create AgentHelper.";
+					warning = "Failed to create ChatHelper.";
 					diagnostics = "Activator.CreateInstance returned null for '" + helperType.AssemblyQualifiedName + "'.";
 					return null;
 				}
 
 				try
 				{
-					var sendMessage = helperType.GetMethod("SendMessage", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+					var sendMessage = helperType
+						.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+						.FirstOrDefault(method => String.Equals(method.Name, "SendMessageAsync", StringComparison.Ordinal) && method.GetParameters().Length == 3);
 					if (sendMessage == null)
 					{
-						warning = "AgentHelper.SendMessage(string) not found.";
-						diagnostics = "SendMessage(string) reflection lookup failed on '" + helperType.AssemblyQualifiedName + "'.";
+						warning = "ChatHelper.SendMessageAsync(...) not found.";
+						diagnostics = "SendMessageAsync(...) reflection lookup failed on '" + helperType.AssemblyQualifiedName + "'.";
 						return null;
 					}
 
-					var responseObject = sendMessage.Invoke(helper, new object[] { prompt });
+					var responseTaskObject = sendMessage.Invoke(helper, new object[] { prompt, AssistantAgentId.ToString(), null });
+					if (responseTaskObject == null)
+					{
+						warning = "Assistant returned no response task.";
+						diagnostics = "SendMessageAsync returned null task object.";
+						return null;
+					}
+
+					var responseTask = responseTaskObject as Task;
+					if (responseTask == null)
+					{
+						warning = "Assistant response was not a Task instance.";
+						diagnostics = "SendMessageAsync returned unexpected type '" + responseTaskObject.GetType().FullName + "'.";
+						return null;
+					}
+
+					var awaiter = responseTaskObject.GetType().GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.Instance)?.Invoke(responseTaskObject, null);
+					var responseObject = awaiter?.GetType().GetMethod("GetResult", BindingFlags.Public | BindingFlags.Instance)?.Invoke(awaiter, null);
 					if (responseObject == null)
 					{
 						warning = "Assistant returned no response object.";
-						diagnostics = "SendMessage returned null response object.";
+						diagnostics = "SendMessageAsync completed with null response object.";
 						return null;
 					}
 
@@ -946,27 +966,27 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 		}
 
-		private static AgentHelperResolution ResolveAgentHelperType()
+		private static ChatHelperResolution ResolveChatHelperType()
 		{
 			var diagnostics = new List<string>();
-			var direct = Type.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper, Skyline.DataMiner.Assistant.Integration", false);
+			var direct = Type.GetType("Skyline.DataMiner.Assistant.Integration.ChatHelper, Skyline.DataMiner.Assistant.Integration", false);
 			if (direct != null)
 			{
-				return new AgentHelperResolution(direct, "Resolved through direct type lookup.");
+				return new ChatHelperResolution(direct, "Resolved through direct type lookup.");
 			}
 
-			foreach (var assemblyName in new[] { "Skyline.DataMiner.Assistant.Integration", "Skyline.DataMiner.Core.Assistant", "Skyline.DataMiner.Core.Assistant.Integration" })
+			foreach (var assemblyName in new[] { "Skyline.DataMiner.Assistant.Integration" })
 			{
 				try
 				{
 					var loadedAssembly = Assembly.Load(assemblyName);
-					var loadedType = loadedAssembly?.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
+					var loadedType = loadedAssembly?.GetType("Skyline.DataMiner.Assistant.Integration.ChatHelper", false);
 					if (loadedType != null)
 					{
-						return new AgentHelperResolution(loadedType, "Resolved after loading assembly '" + assemblyName + "'.");
+						return new ChatHelperResolution(loadedType, "Resolved after loading assembly '" + assemblyName + "'.");
 					}
 
-					diagnostics.Add("Loaded '" + assemblyName + "' but AgentHelper type not found.");
+					diagnostics.Add("Loaded '" + assemblyName + "' but ChatHelper type not found.");
 				}
 				catch (Exception ex)
 				{
@@ -976,10 +996,10 @@ namespace DynamicsActivitiesNotifySubscribers
 
 			foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
 			{
-				var candidate = assembly.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
+				var candidate = assembly.GetType("Skyline.DataMiner.Assistant.Integration.ChatHelper", false);
 				if (candidate != null)
 				{
-					return new AgentHelperResolution(candidate, "Resolved from already loaded assembly '" + assembly.FullName + "'.");
+					return new ChatHelperResolution(candidate, "Resolved from already loaded assembly '" + assembly.FullName + "'.");
 				}
 			}
 
@@ -990,18 +1010,18 @@ namespace DynamicsActivitiesNotifySubscribers
 				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToList();
 			diagnostics.Add("Loaded assemblies containing 'Assistant': " + (loadedAssistantAssemblies.Count == 0 ? "(none)" : String.Join(", ", loadedAssistantAssemblies)));
-			return new AgentHelperResolution(null, String.Join(" | ", diagnostics));
+			return new ChatHelperResolution(null, String.Join(" | ", diagnostics));
 		}
 
-		private sealed class AgentHelperResolution
+		private sealed class ChatHelperResolution
 		{
-			public AgentHelperResolution(Type helperType, string diagnostics)
+			public ChatHelperResolution(Type chatHelperType, string diagnostics)
 			{
-				HelperType = helperType;
+				ChatHelperType = chatHelperType;
 				Diagnostics = diagnostics;
 			}
 
-			public Type HelperType { get; private set; }
+			public Type ChatHelperType { get; private set; }
 
 			public string Diagnostics { get; private set; }
 		}

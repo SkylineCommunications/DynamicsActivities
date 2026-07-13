@@ -22,5 +22,11 @@
 		</PackageReference>
 	</ItemGroup>
 	<ItemGroup>
+		<Reference Include="Skyline.DataMiner.Assistant.Integration" Condition="Exists('..\Dependencies\Assistant\Skyline.DataMiner.Assistant.Integration.dll')">
+			<HintPath>..\Dependencies\Assistant\Skyline.DataMiner.Assistant.Integration.dll</HintPath>
+			<Private>true</Private>
+		</Reference>
+	</ItemGroup>
+	<ItemGroup>
 	</ItemGroup>
 </Project>

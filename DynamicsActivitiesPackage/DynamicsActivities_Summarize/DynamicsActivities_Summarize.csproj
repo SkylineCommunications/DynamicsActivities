@@ -20,4 +20,10 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 	</ItemGroup>
+	<ItemGroup>
+		<Reference Include="Skyline.DataMiner.Assistant.Integration" Condition="Exists('..\Dependencies\Assistant\Skyline.DataMiner.Assistant.Integration.dll')">
+			<HintPath>..\Dependencies\Assistant\Skyline.DataMiner.Assistant.Integration.dll</HintPath>
+			<Private>true</Private>
+		</Reference>
+	</ItemGroup>
 </Project>
