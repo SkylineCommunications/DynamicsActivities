@@ -861,7 +861,7 @@ namespace DynamicsActivitiesNotifySubscribers
 						["description"] = TrimForEmail(FormatDescriptionForEmail(activity.Description), 260),
 					})),
 			};
-			return payload.ToString(Formatting.None);
+			return JsonConvert.SerializeObject(payload);
 		}
 
 		private string TryGenerateSummaryViaSubScript(string payload, out string warning, out string diagnostics)
