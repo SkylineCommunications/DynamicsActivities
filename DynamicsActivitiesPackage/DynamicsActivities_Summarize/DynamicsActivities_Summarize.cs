@@ -176,7 +176,9 @@ namespace DynamicsActivitiesSummarize
 					return null;
 				}
 
-				var createAsync = helperType.GetMethod("CreateAsync", BindingFlags.Public | BindingFlags.Static, null, null, null);
+				var createAsync = helperType
+					.GetMethods(BindingFlags.Public | BindingFlags.Static)
+					.FirstOrDefault(method => String.Equals(method.Name, "CreateAsync", StringComparison.Ordinal) && method.GetParameters().Length == 3);
 				if (createAsync == null)
 				{
 					warning = "ChatHelper.CreateAsync(...) method not found.";

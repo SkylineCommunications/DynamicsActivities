@@ -1,6 +1,7 @@
 namespace DynamicsActivitiesNotifySubscribers
 {
 	using System;
+	using System.Collections;
 	using System.Collections.Generic;
 	using System.Globalization;
 	using System.Linq;
@@ -11,7 +12,6 @@ namespace DynamicsActivitiesNotifySubscribers
 	using System.Text;
 	using System.Text.RegularExpressions;
 	using System.Threading;
-	using System.Threading.Tasks;
 	using Newtonsoft.Json;
 	using Newtonsoft.Json.Linq;
 	using Skyline.DataMiner.Automation;
@@ -27,7 +27,9 @@ namespace DynamicsActivitiesNotifySubscribers
 		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
-		private static readonly Guid AssistantAgentId = new Guid("7a7ee855-cb26-4067-bc8e-122a961ac4cf");
+		private const string SummarizeScriptName = "DynamicsActivities_Summarize";
+		private const string SummarizePayloadParamName = "Payload";
+		private const int SummarizePayloadParamId = 10;
 
 		private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
 		private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
@@ -818,237 +820,239 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private string GenerateDigestSummary(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
 		{
-			var prompt = BuildDigestSummaryPrompt(scopeLabel, since, until, activities);
-			engine?.GenerateInformation($"[NotifySubscribers] Attempting Assistant digest generation for scope '{(String.IsNullOrWhiteSpace(scopeLabel) ? "selected scope" : scopeLabel.Trim())}' with {activities.Count} activity item(s).");
-			var summary = TryGenerateAssistantSummary(prompt, out var warning, out var diagnostics);
+			var payload = BuildSummarizePayload(scopeLabel, since, until, activities);
+			engine?.GenerateInformation($"[NotifySubscribers] Calling {SummarizeScriptName} for digest summary (scope='{(String.IsNullOrWhiteSpace(scopeLabel) ? "selected scope" : scopeLabel.Trim())}', activities={activities.Count}).");
+			var summary = TryGenerateSummaryViaSubScript(payload, out var warning, out var diagnostics);
 			if (!String.IsNullOrWhiteSpace(summary))
 			{
-				engine?.GenerateInformation("[NotifySubscribers] Assistant digest generation succeeded.");
+				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} returned digest summary.");
 				return summary;
 			}
 
 			if (!String.IsNullOrWhiteSpace(warning))
 			{
-				engine?.GenerateInformation($"[NotifySubscribers] Assistant digest generation unavailable: {warning}");
+				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} summary unavailable: {warning}");
 			}
 
 			if (!String.IsNullOrWhiteSpace(diagnostics))
 			{
-				engine?.GenerateInformation($"[NotifySubscribers] Assistant diagnostics: {diagnostics}");
+				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} diagnostics: {diagnostics}");
 			}
 
 			return BuildFallbackDigestSummary(scopeLabel, activities);
 		}
 
-		private static string BuildDigestSummaryPrompt(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
+		private static string BuildSummarizePayload(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
 		{
-			var lines = new List<string>();
-			lines.Add("You are preparing a customer activity digest for a TAM.");
-			lines.Add("Create a concise summary with these sections in plain text:");
-			lines.Add("1) What changed recently");
-			lines.Add("2) Why it matters");
-			lines.Add("3) Follow-up actions");
-			lines.Add("Keep the response under 280 words and avoid repeating metadata.");
-			lines.Add(String.Empty);
-			lines.Add("Scope: " + (String.IsNullOrWhiteSpace(scopeLabel) ? "Selected scope" : scopeLabel.Trim()));
-			lines.Add("Period UTC: " + since.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " to " + until.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
-			lines.Add("Activities (newest first):");
-
-			foreach (var activity in activities.Take(60))
+			var payload = new JObject
 			{
-				var typeLabel = GetTypeBadgeLabel(activity);
-				var createdOn = activity.CreatedOn == DateTime.MinValue
-					? "-"
-					: activity.CreatedOn.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
-				var subject = String.IsNullOrWhiteSpace(activity.Subject) ? "(No subject)" : activity.Subject.Trim();
-				var regarding = String.IsNullOrWhiteSpace(activity.Regarding) ? "-" : activity.Regarding.Trim();
-				var description = TrimForEmail(FormatDescriptionForEmail(activity.Description), 260);
-				lines.Add($"- [{createdOn}] {typeLabel} | Regarding: {regarding} | Subject: {subject} | Note: {description}");
-			}
-
-			return String.Join(Environment.NewLine, lines);
+				["scopeLabel"] = String.IsNullOrWhiteSpace(scopeLabel) ? "Selected scope" : scopeLabel.Trim(),
+				["fromUtc"] = since.ToString("o", CultureInfo.InvariantCulture),
+				["untilUtc"] = until.ToString("o", CultureInfo.InvariantCulture),
+				["activities"] = new JArray(activities
+					.Take(60)
+					.Select(activity => new JObject
+					{
+						["createdOnUtc"] = activity.CreatedOn == DateTime.MinValue ? null : activity.CreatedOn.ToString("o", CultureInfo.InvariantCulture),
+						["type"] = GetTypeBadgeLabel(activity),
+						["subject"] = String.IsNullOrWhiteSpace(activity.Subject) ? "(No subject)" : activity.Subject.Trim(),
+						["regarding"] = String.IsNullOrWhiteSpace(activity.Regarding) ? "-" : activity.Regarding.Trim(),
+						["description"] = TrimForEmail(FormatDescriptionForEmail(activity.Description), 260),
+					})),
+			};
+			return payload.ToString(Formatting.None);
 		}
 
-		private string TryGenerateAssistantSummary(string prompt, out string warning, out string diagnostics)
+		private string TryGenerateSummaryViaSubScript(string payload, out string warning, out string diagnostics)
 		{
 			warning = null;
 			diagnostics = null;
+
 			try
 			{
-				var getUserConnection = engine.GetType().GetMethod("GetUserConnection", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
-				if (getUserConnection == null)
+				var prepareSubScript = engine.GetType().GetMethod("PrepareSubScript", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+				if (prepareSubScript == null)
 				{
-					warning = "IEngine.GetUserConnection() is unavailable.";
-					diagnostics = "GetUserConnection reflection lookup returned null.";
+					warning = "IEngine.PrepareSubScript(string) is unavailable.";
 					return null;
 				}
 
-				var userConnection = getUserConnection.Invoke(engine, null);
-				if (userConnection == null)
+				var subScript = prepareSubScript.Invoke(engine, new object[] { SummarizeScriptName });
+				if (subScript == null)
 				{
-					warning = "No user connection available.";
-					diagnostics = "GetUserConnection() returned null.";
+					warning = "Failed to prepare summarize sub-script.";
+					diagnostics = $"PrepareSubScript returned null for '{SummarizeScriptName}'.";
 					return null;
 				}
 
-				var helperResolution = ResolveChatHelperType();
-				var helperType = helperResolution.ChatHelperType;
-				if (helperType == null)
+				if (!TrySelectSummarizePayload(subScript, payload, out var selectDiagnostics))
 				{
-					warning = "Assistant integration assembly/type was not found on this DMA.";
-					diagnostics = helperResolution.Diagnostics;
+					warning = "Failed to pass payload to summarize sub-script.";
+					diagnostics = selectDiagnostics;
 					return null;
 				}
 
-				var createAsync = helperType.GetMethod("CreateAsync", BindingFlags.Public | BindingFlags.Static, null, null, null);
-				if (createAsync == null)
+				var startScript = subScript.GetType().GetMethod("StartScript", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+				if (startScript == null)
 				{
-					warning = "ChatHelper.CreateAsync(...) not found.";
-					diagnostics = "CreateAsync reflection lookup failed on '" + helperType.AssemblyQualifiedName + "'.";
+					warning = "Sub-script start method not found.";
+					diagnostics = "StartScript reflection lookup failed on '" + subScript.GetType().FullName + "'.";
 					return null;
 				}
 
-				var createTaskObject = createAsync.Invoke(null, new object[] { userConnection, AssistantAgentId, (TimeSpan?)TimeSpan.FromSeconds(45) });
-				if (createTaskObject == null)
+				startScript.Invoke(subScript, null);
+
+				var hadErrorProperty = subScript.GetType().GetProperty("HadError", BindingFlags.Public | BindingFlags.Instance);
+				var hadError = hadErrorProperty != null && hadErrorProperty.PropertyType == typeof(bool) && (bool)hadErrorProperty.GetValue(subScript, null);
+				if (hadError)
 				{
-					warning = "Assistant returned no chat helper creation task.";
-					diagnostics = "CreateAsync returned null task object.";
+					var getErrorMessages = subScript.GetType().GetMethod("GetErrorMessages", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+					var errors = getErrorMessages?.Invoke(subScript, null) as string[];
+					warning = $"{SummarizeScriptName} failed.";
+					diagnostics = errors == null || errors.Length == 0 ? "Sub-script returned HadError=true." : String.Join(" | ", errors);
 					return null;
 				}
 
-				var createTask = createTaskObject as Task;
-				if (createTask == null)
+				var getScriptResult = subScript.GetType().GetMethod("GetScriptResult", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+				var scriptResult = getScriptResult?.Invoke(subScript, null);
+				var rawResult = ExtractScriptOutputValue(scriptResult, "result");
+				if (String.IsNullOrWhiteSpace(rawResult))
 				{
-					warning = "Assistant chat helper creation was not a Task instance.";
-					diagnostics = "CreateAsync returned unexpected type '" + createTaskObject.GetType().FullName + "'.";
-					return null;
-				}
-
-				var createAwaiter = createTaskObject.GetType().GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.Instance)?.Invoke(createTaskObject, null);
-				var helper = createAwaiter?.GetType().GetMethod("GetResult", BindingFlags.Public | BindingFlags.Instance)?.Invoke(createAwaiter, null);
-				if (helper == null)
-				{
-					warning = "Failed to create ChatHelper.";
-					diagnostics = "CreateAsync completed with null chat helper for '" + helperType.AssemblyQualifiedName + "'.";
+					warning = $"{SummarizeScriptName} returned no 'result' output.";
+					diagnostics = scriptResult == null ? "GetScriptResult returned null." : "Unable to read key 'result' from script result.";
 					return null;
 				}
 
 				try
 				{
-					var sendMessage = helperType
-						.GetMethods(BindingFlags.Public | BindingFlags.Instance)
-						.FirstOrDefault(method => String.Equals(method.Name, "SendMessageAsync", StringComparison.Ordinal) && method.GetParameters().Length == 3);
-					if (sendMessage == null)
-					{
-						warning = "ChatHelper.SendMessageAsync(...) not found.";
-						diagnostics = "SendMessageAsync(...) reflection lookup failed on '" + helperType.AssemblyQualifiedName + "'.";
-						return null;
-					}
-
-					var responseTaskObject = sendMessage.Invoke(helper, new object[] { prompt, null, null });
-					if (responseTaskObject == null)
-					{
-						warning = "Assistant returned no response task.";
-						diagnostics = "SendMessageAsync returned null task object.";
-						return null;
-					}
-
-					var responseTask = responseTaskObject as Task;
-					if (responseTask == null)
-					{
-						warning = "Assistant response was not a Task instance.";
-						diagnostics = "SendMessageAsync returned unexpected type '" + responseTaskObject.GetType().FullName + "'.";
-						return null;
-					}
-
-					var awaiter = responseTaskObject.GetType().GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.Instance)?.Invoke(responseTaskObject, null);
-					var responseObject = awaiter?.GetType().GetMethod("GetResult", BindingFlags.Public | BindingFlags.Instance)?.Invoke(awaiter, null);
-					if (responseObject == null)
-					{
-						warning = "Assistant returned no response object.";
-						diagnostics = "SendMessageAsync completed with null response object.";
-						return null;
-					}
-
-					var responseText = responseObject?.GetType().GetProperty("Response", BindingFlags.Public | BindingFlags.Instance)?.GetValue(responseObject) as string;
-					if (String.IsNullOrWhiteSpace(responseText))
-					{
-						responseText = responseObject?.ToString();
-					}
-
-					return String.IsNullOrWhiteSpace(responseText) ? null : responseText.Trim();
+					var parsed = JObject.Parse(rawResult);
+					warning = parsed["warning"]?.Value<string>();
+					diagnostics = parsed["diagnostics"]?.Value<string>();
+					return parsed["summary"]?.Value<string>();
 				}
-				finally
+				catch
 				{
-					(helper as IDisposable)?.Dispose();
+					return rawResult.Trim();
 				}
 			}
 			catch (Exception ex)
 			{
-				warning = "Assistant call failed: " + ex.Message;
+				warning = "Sub-script summary call failed: " + ex.Message;
 				diagnostics = ex.ToString();
 				return null;
 			}
 		}
 
-		private static ChatHelperResolution ResolveChatHelperType()
+		private static bool TrySelectSummarizePayload(object subScript, string payload, out string diagnostics)
 		{
-			var diagnostics = new List<string>();
-			var direct = Type.GetType("Skyline.DataMiner.Assistant.Integration.ChatHelper, Skyline.DataMiner.Assistant.Integration", false);
-			if (direct != null)
+			try
 			{
-				return new ChatHelperResolution(direct, "Resolved through direct type lookup.");
-			}
-
-			foreach (var assemblyName in new[] { "Skyline.DataMiner.Assistant.Integration" })
-			{
-				try
-				{
-					var loadedAssembly = Assembly.Load(assemblyName);
-					var loadedType = loadedAssembly?.GetType("Skyline.DataMiner.Assistant.Integration.ChatHelper", false);
-					if (loadedType != null)
+				var selectByName = subScript
+					.GetType()
+					.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+					.FirstOrDefault(method =>
 					{
-						return new ChatHelperResolution(loadedType, "Resolved after loading assembly '" + assemblyName + "'.");
-					}
+						if (!String.Equals(method.Name, "SelectScriptParam", StringComparison.Ordinal))
+						{
+							return false;
+						}
 
-					diagnostics.Add("Loaded '" + assemblyName + "' but ChatHelper type not found.");
-				}
-				catch (Exception ex)
+						var parameters = method.GetParameters();
+						return parameters.Length == 2 && parameters[0].ParameterType == typeof(string) && parameters[1].ParameterType == typeof(string);
+					});
+				if (selectByName != null)
 				{
-					diagnostics.Add("Failed to load '" + assemblyName + "': " + ex.Message);
+					selectByName.Invoke(subScript, new object[] { SummarizePayloadParamName, payload });
+					diagnostics = null;
+					return true;
+				}
+
+				var selectById = subScript
+					.GetType()
+					.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+					.FirstOrDefault(method =>
+					{
+						if (!String.Equals(method.Name, "SelectScriptParam", StringComparison.Ordinal))
+						{
+							return false;
+						}
+
+						var parameters = method.GetParameters();
+						return parameters.Length == 2 && parameters[0].ParameterType == typeof(int) && parameters[1].ParameterType == typeof(string);
+					});
+				if (selectById != null)
+				{
+					selectById.Invoke(subScript, new object[] { SummarizePayloadParamId, payload });
+					diagnostics = null;
+					return true;
 				}
 			}
-
-			foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+			catch (Exception ex)
 			{
-				var candidate = assembly.GetType("Skyline.DataMiner.Assistant.Integration.ChatHelper", false);
-				if (candidate != null)
-				{
-					return new ChatHelperResolution(candidate, "Resolved from already loaded assembly '" + assembly.FullName + "'.");
-				}
+				diagnostics = ex.ToString();
+				return false;
 			}
 
-			var loadedAssistantAssemblies = AppDomain.CurrentDomain
-				.GetAssemblies()
-				.Select(assembly => assembly.GetName().Name)
-				.Where(name => !String.IsNullOrWhiteSpace(name) && name.IndexOf("Assistant", StringComparison.OrdinalIgnoreCase) >= 0)
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.ToList();
-			diagnostics.Add("Loaded assemblies containing 'Assistant': " + (loadedAssistantAssemblies.Count == 0 ? "(none)" : String.Join(", ", loadedAssistantAssemblies)));
-			return new ChatHelperResolution(null, String.Join(" | ", diagnostics));
+			diagnostics = "No supported SelectScriptParam overload found on type '" + subScript.GetType().FullName + "'.";
+			return false;
 		}
 
-		private sealed class ChatHelperResolution
+		private static string ExtractScriptOutputValue(object scriptResult, string key)
 		{
-			public ChatHelperResolution(Type chatHelperType, string diagnostics)
+			if (scriptResult == null || String.IsNullOrWhiteSpace(key))
 			{
-				ChatHelperType = chatHelperType;
-				Diagnostics = diagnostics;
+				return null;
 			}
 
-			public Type ChatHelperType { get; private set; }
+			var getScriptOutput = scriptResult.GetType().GetMethod("GetScriptOutput", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+			if (getScriptOutput != null)
+			{
+				var value = getScriptOutput.Invoke(scriptResult, new object[] { key }) as string;
+				if (!String.IsNullOrWhiteSpace(value))
+				{
+					return value;
+				}
+			}
 
-			public string Diagnostics { get; private set; }
+			var dictionaryResult = scriptResult as IDictionary;
+			if (dictionaryResult != null)
+			{
+				foreach (DictionaryEntry entry in dictionaryResult)
+				{
+					if (String.Equals(Convert.ToString(entry.Key, CultureInfo.InvariantCulture), key, StringComparison.Ordinal))
+					{
+						return entry.Value as string;
+					}
+				}
+			}
+
+			var indexer = scriptResult.GetType().GetProperty("Item", BindingFlags.Public | BindingFlags.Instance, null, typeof(string), new[] { typeof(string) }, null);
+			if (indexer != null)
+			{
+				var indexedValue = indexer.GetValue(scriptResult, new object[] { key }) as string;
+				if (!String.IsNullOrWhiteSpace(indexedValue))
+				{
+					return indexedValue;
+				}
+			}
+
+			var valuesProperty = scriptResult.GetType().GetProperty("Values", BindingFlags.Public | BindingFlags.Instance);
+			var values = valuesProperty?.GetValue(scriptResult, null) as IEnumerable;
+			if (values != null)
+			{
+				foreach (var item in values)
+				{
+					var keyProperty = item?.GetType().GetProperty("Key", BindingFlags.Public | BindingFlags.Instance);
+					var valueProperty = item?.GetType().GetProperty("Value", BindingFlags.Public | BindingFlags.Instance);
+					var candidateKey = keyProperty?.GetValue(item, null) as string;
+					if (String.Equals(candidateKey, key, StringComparison.Ordinal))
+					{
+						return valueProperty?.GetValue(item, null) as string;
+					}
+				}
+			}
+
+			return null;
 		}
 
 		private static string BuildFallbackDigestSummary(string scopeLabel, List<ActivityItem> activities)

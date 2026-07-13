@@ -33,7 +33,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 | Calendar | Microsoft Graph API v1.0 |
 | TAM | Skyline Collaboration API (`api.skyline.be`) |
 | Notifications | DataMiner DOM + Automation scripts (`ManageSubscriptions`, `NotifySubscribers`) |
-| AI summarization | DataMiner Assistant DxM Agent Integration (`DynamicsActivities_Summarize`, digest summarization in `NotifySubscribers`) |
+| AI summarization | DataMiner Assistant DxM Agent Integration (`DynamicsActivities_Summarize`; reused by browse and digest flows) |
 | Styling | CSS custom properties, Inter font (DataMiner design system) |
 
 ---
@@ -128,7 +128,7 @@ Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesP
 ## Notification Subscriptions (DataMiner-native)
 
 - Subscriptions are stored in **DataMiner DOM** and managed via `DynamicsActivities_ManageSubscriptions`.
-- Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually).
+- Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually), which invokes `DynamicsActivities_Summarize` to generate timeline highlights.
 - Digest emails now include a top-level Assistant-generated timeline summary (with deterministic fallback if Assistant integration is unavailable).
 - Browse view (`NotesList`) can request timeline highlights through `DynamicsActivities_Summarize`.
 - Timeline highlights now show whether Assistant or deterministic fallback generated the text, and surface fallback warning details from script output.
@@ -179,6 +179,6 @@ src/
 public/
   web.config           # IIS SPA rewrite rule
 DynamicsActivitiesPackage/  # .NET project for .dmapp packaging
-  DynamicsActivities_Summarize/ # Assistant agent summary script for browse timeline
+  DynamicsActivities_Summarize/ # Assistant summary script reused by browse timeline and digest flow
 .github/workflows/     # CI/CD workflows
 ```
