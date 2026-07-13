@@ -107,14 +107,25 @@ function fmtIsoDate(d) {
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString()
 }
 
+function stripHtmlTags(value) {
+  const raw = String(value ?? '')
+  if (!raw.trim()) return ''
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return raw.replace(/<[^>]+>/g, ' ')
+  }
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(raw, 'text/html')
+  return doc.body.textContent || ''
+}
+
 function noteRecordId(note) {
   if (note?._entityType === 'slc_escalations') return note.slc_escalationid
   return note.activityid || note.annotationid
 }
 
 function toSummaryActivity(note) {
-  const description = (note.notetext || note.description || '')
-    .replace(/<[^>]+>/g, ' ')
+  const description = stripHtmlTags(note.notetext || note.description || '')
     .replace(/\s+/g, ' ')
     .trim()
   const regarding = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']

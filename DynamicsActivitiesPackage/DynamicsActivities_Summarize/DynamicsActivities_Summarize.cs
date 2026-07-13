@@ -19,6 +19,11 @@ namespace DynamicsActivitiesSummarize
 	{
 		private static readonly Guid AssistantAgentId = new Guid("7a7ee855-cb26-4067-bc8e-122a961ac4cf");
 		private const string InfoPrefix = "[Summarize]";
+		private const string SummaryHeadingStyle = "font-size:13px;font-weight:700;color:#1d4ed8;margin:0 0 8px;";
+		private const string TimelineHeadingStyle = "font-size:13px;font-weight:700;color:#1d4ed8;margin:8px 0;";
+		private const string ParagraphStyle = "margin:0 0 8px;";
+		private const string ListStyle = "margin:0 0 8px;padding-left:18px;";
+		private const string ListItemStyle = "margin:0 0 6px;";
 
 		public void Run(IEngine engine)
 		{
@@ -404,21 +409,31 @@ namespace DynamicsActivitiesSummarize
 			var topActivities = (request?.Activities ?? new List<ActivityInput>()).Take(3).ToList();
 
 			var sb = new StringBuilder();
-			sb.Append("<div style='font-size:13px;font-weight:700;color:#1d4ed8;margin:0 0 8px;'>Summary</div>");
+			sb.Append("<div style='");
+			sb.Append(SummaryHeadingStyle);
+			sb.Append("'>Summary</div>");
 			AppendPlainTextAsHtml(sb, safeSummary);
-			sb.Append("<div style='font-size:13px;font-weight:700;color:#1d4ed8;margin:8px 0;'>Latest timeline points</div>");
+			sb.Append("<div style='");
+			sb.Append(TimelineHeadingStyle);
+			sb.Append("'>Latest timeline points</div>");
 			if (topActivities.Count == 0)
 			{
-				sb.Append("<p style='margin:0 0 8px;'>No recent activity points available.</p>");
+				sb.Append("<p style='");
+				sb.Append(ParagraphStyle);
+				sb.Append("'>No recent activity points available.</p>");
 			}
 			else
 			{
-				sb.Append("<ul style='margin:0 0 8px;padding-left:18px;'>");
+				sb.Append("<ul style='");
+				sb.Append(ListStyle);
+				sb.Append("'>");
 				foreach (var activity in topActivities)
 				{
 					var createdOn = SafeValue(activity.CreatedOnUtc);
 					var hasKnownTimestamp = !String.Equals(createdOn, "-", StringComparison.Ordinal);
-					sb.Append("<li style='margin:0 0 6px;'>");
+					sb.Append("<li style='");
+					sb.Append(ListItemStyle);
+					sb.Append("'>");
 					if (hasKnownTimestamp)
 					{
 						sb.Append("<strong>[");
