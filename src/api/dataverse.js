@@ -998,16 +998,22 @@ async function fetchAnnotations(msalInstance, filterClauses) {
 /**
  * Search activities using server-side OData filters.
  * Returns [] immediately when no filters are provided (lazy-load pattern).
- * @param {{ accountIds, contactId, activityTypes, dateFrom, dateTo }} filters
+ * @param {{ accountIds, contactId, contactIds, activityTypes, dateFrom, dateTo }} filters
  *   accountIds: array of account GUIDs (or null/empty for no filter)
  *   activityTypes: array of type IDs (or null/empty for all types)
  */
-export async function searchActivities(msalInstance, { accountIds, contactId, activityTypes, dateFrom, dateTo }) {
+export async function searchActivities(msalInstance, { accountIds, contactId, contactIds, activityTypes, dateFrom, dateTo }) {
   // Backwards compat: accept old single-value params
   const accountIdList = Array.isArray(accountIds) ? accountIds : (accountIds ? [accountIds] : [])
   const typeList = Array.isArray(activityTypes) ? activityTypes : (activityTypes ? [activityTypes] : [])
+  const contactIdList = Array.isArray(contactIds)
+    ? contactIds.filter(Boolean)
+    : (contactIds ? [contactIds] : (contactId ? [contactId] : []))
+  // Multi-attendee filtering is OR-based: an activity is included when ANY selected
+  // attendee appears in its activity parties. AND would be overly restrictive.
+  const attendeeFilterActive = contactIdList.length > 0
 
-  if (!accountIdList.length && !contactId && !typeList.length && !dateFrom && !dateTo) return []
+  if (!accountIdList.length && !contactIdList.length && !typeList.length && !dateFrom && !dateTo) return []
 
   const typeConfigs = typeList.length ? typeList.map((id) => ACTIVITY_TYPES.find((t) => t.id === id)).filter(Boolean) : []
   const typeEntities = new Set(typeConfigs.map((t) => t.entity))
@@ -1015,11 +1021,11 @@ export async function searchActivities(msalInstance, { accountIds, contactId, ac
   const wantCalls = !typeList.length || typeEntities.has('phonecalls')
   const wantAppts = !typeList.length || typeEntities.has('appointments')
   const wantEmails = !typeList.length || typeEntities.has('emails')
-  const wantEscalations = !typeList.length || typeEntities.has('slc_escalations')
-  const wantLeads = !typeList.length || typeEntities.has('leads')
-  const wantOpportunities = !typeList.length || typeEntities.has('opportunities')
-  const wantSupport = !typeList.length || typeEntities.has('support')
-  const wantAnnotations = !typeList.length || typeEntities.has('annotations')
+  const wantEscalations = !attendeeFilterActive && (!typeList.length || typeEntities.has('slc_escalations'))
+  const wantLeads = !attendeeFilterActive && (!typeList.length || typeEntities.has('leads'))
+  const wantOpportunities = !attendeeFilterActive && (!typeList.length || typeEntities.has('opportunities'))
+  const wantSupport = !attendeeFilterActive && (!typeList.length || typeEntities.has('support'))
+  const wantAnnotations = !attendeeFilterActive && (!typeList.length || typeEntities.has('annotations'))
 
   // Collect results from all accounts (or a single pass with no account filter)
   const accountPasses = accountIdList.length ? accountIdList : [null]
@@ -1052,19 +1058,19 @@ export async function searchActivities(msalInstance, { accountIds, contactId, ac
 
     if (wantCalls) {
       const clauses = [...base]
-      if (contactId) clauses.push(`phonecall_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
+      if (contactIdList.length) clauses.push(`phonecall_activity_parties/any(p: ${buildLookupFilter('p/_partyid_value', contactIdList)})`)
       fetches.push(fetchFiltered(msalInstance, 'phonecalls', 'phonecall', clauses))
     }
 
     if (wantAppts) {
       const clauses = [...base]
-      if (contactId) clauses.push(`appointment_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
+      if (contactIdList.length) clauses.push(`appointment_activity_parties/any(p: ${buildLookupFilter('p/_partyid_value', contactIdList)})`)
       fetches.push(fetchFiltered(msalInstance, 'appointments', 'appointment', clauses))
     }
 
     if (wantEmails) {
       const clauses = [...base]
-      if (contactId) clauses.push(`email_activity_parties/any(p: p/_partyid_value eq ${contactId})`)
+      if (contactIdList.length) clauses.push(`email_activity_parties/any(p: ${buildLookupFilter('p/_partyid_value', contactIdList)})`)
       fetches.push(fetchFiltered(msalInstance, 'emails', 'email', clauses))
     }
 

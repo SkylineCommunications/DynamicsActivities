@@ -11,6 +11,7 @@ import {
   ACTIVITY_TYPES,
   ESCALATION_STATUSES,
 } from '../api/dataverse'
+import { summarizeActivities } from '../api/activitySummary'
 import AutocompletePicker from './AutocompletePicker'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
@@ -100,9 +101,45 @@ function fmtDate(d) {
   })
 }
 
+function fmtIsoDate(d) {
+  if (!d) return ''
+  const parsed = new Date(d)
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString()
+}
+
+function stripHtmlTags(value) {
+  const raw = String(value ?? '')
+  if (!raw.trim()) return ''
+  if (typeof DOMParser === 'undefined') {
+    return raw.replace(/<[^>]+>/g, ' ')
+  }
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(raw, 'text/html')
+  return doc.body.textContent || ''
+}
+
 function noteRecordId(note) {
   if (note?._entityType === 'slc_escalations') return note.slc_escalationid
   return note.activityid || note.annotationid
+}
+
+function toSummaryActivity(note) {
+  const description = stripHtmlTags(note.notetext || note.description || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const regarding = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
+    || ''
+
+  return {
+    createdOnUtc: fmtIsoDate(noteDate(note)),
+    type: noteTypeLabel(note),
+    subject: note.subject || '',
+    regarding,
+    description: description.slice(0, 260),
+  }
 }
 
 function escapeHtml(value) {
@@ -307,16 +344,19 @@ function NoteCard({ note, expanded, onToggle }) {
 
 export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false }) {
   const { instance } = useMsal()
+  const summaryRequestRef = useRef(0)
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [timelineSummary, setTimelineSummary] = useState(null)
+  const [timelineSummaryLoading, setTimelineSummaryLoading] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [tamAutoApplied, setTamAutoApplied] = useState(false)
   const [activeViewId, setActiveViewId] = useState('activities')
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
-  const [attendee, setAttendee] = useState(null) // { contactid, fullname }
+  const [attendees, setAttendees] = useState([]) // [{ contactid, fullname }]
   const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -350,19 +390,21 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const runSearch = useCallback(() => {
     setLoading(true)
     setError(null)
+    setTimelineSummary(null)
+    setTimelineSummaryLoading(false)
     searchActivities(instance, {
       accountIds: accounts.map((a) => a.accountid),
-      contactId: attendee?.contactid ?? null,
+      contactIds: attendees.map((a) => a.contactid),
       activityTypes: [...(selectedTypes.size ? [...selectedTypes].filter((t) => allowedTypeIds.has(t)) : activeView.typeIds)],
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
     })
-      .then(async (results) => {
+      .then((results) => {
         setNotes(results)
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [instance, accounts, attendee, selectedTypes, dateFrom, dateTo, activeViewId])
+  }, [instance, accounts, attendees, selectedTypes, dateFrom, dateTo, activeViewId])
 
   // Auto-search when navigated here after note creation, or re-run on refresh
   useEffect(() => {
@@ -373,6 +415,57 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   useEffect(() => {
     if (tamAutoApplied && accounts.length && notes === null) runSearch()
   }, [tamAutoApplied]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeViewId !== 'activities') {
+      setTimelineSummary(null)
+      setTimelineSummaryLoading(false)
+      return
+    }
+
+    if (!Array.isArray(notes) || notes.length === 0) {
+      setTimelineSummary(null)
+      setTimelineSummaryLoading(false)
+      return
+    }
+
+    const payload = {
+      scopeLabel: accounts.length ? accounts.map((account) => account.name).join(', ') : 'All accounts',
+      fromUtc: dateFrom ? new Date(dateFrom).toISOString() : null,
+      untilUtc: dateTo ? new Date(dateTo).toISOString() : null,
+      activities: notes.slice(0, 50).map(toSummaryActivity),
+    }
+
+    const requestId = summaryRequestRef.current + 1
+    summaryRequestRef.current = requestId
+    setTimelineSummaryLoading(true)
+    setTimelineSummary(null)
+
+    summarizeActivities(payload)
+      .then((result) => {
+        if (summaryRequestRef.current !== requestId) return
+        const summaryText = typeof result?.summary === 'string' ? result.summary.trim() : ''
+        if (!summaryText) {
+          setTimelineSummary(null)
+          return
+        }
+
+        const generatedBy = result.generatedBy === 'assistant' ? 'assistant' : 'fallback'
+        const summaryHtmlRaw = typeof result?.summaryHtml === 'string' ? result.summaryHtml.trim() : ''
+        setTimelineSummary({
+          text: summaryText,
+          html: formatPreviewHtml(summaryHtmlRaw || summaryText),
+          generatedBy,
+          warning: result.warning || null,
+        })
+      })
+      .catch(() => {
+        if (summaryRequestRef.current === requestId) setTimelineSummary(null)
+      })
+      .finally(() => {
+        if (summaryRequestRef.current === requestId) setTimelineSummaryLoading(false)
+      })
+  }, [notes, activeViewId, dateFrom, dateTo, accounts])
 
   return (
     <div className="notes-container">
@@ -422,24 +515,46 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               getKey={(c) => c.contactid}
               getLabel={(c) => c.fullname}
               getSublabel={(c) => c.emailaddress1}
-              value={attendee}
-              onChange={setAttendee}
+              value={null}
+              onChange={(item) => {
+                if (!item) return
+                setAttendees((prev) => (prev.some((a) => a.contactid === item.contactid) ? prev : [...prev, item]))
+              }}
               onEnter={runSearch}
               placeholder="Search contact…"
               minChars={2}
+              clearOnPick
               autoSelectSingle
             />
           </div>
         </div>
 
-        {accounts.length > 0 && (
+        {(accounts.length > 0 || attendees.length > 0) && (
           <div className="filter-chips">
             {accounts.map((a) => (
               <span key={a.accountid} className="filter-chip">
                 {a.name}
-<button type="button" className="chip-remove" aria-label={`Remove ${a.name}`} onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
-  <span className="icon icon-xs" aria-hidden="true">close</span>
-</button>
+                <button
+                  type="button"
+                  className="chip-remove"
+                  aria-label={`Remove ${a.name}`}
+                  onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}
+                >
+                  <span className="icon icon-xs" aria-hidden="true">close</span>
+                </button>
+              </span>
+            ))}
+            {attendees.map((attendee) => (
+              <span key={attendee.contactid} className="filter-chip">
+                Attendee: {attendee.fullname}
+                <button
+                  type="button"
+                  className="chip-remove"
+                  aria-label={`Remove attendee ${attendee.fullname}`}
+                  onClick={() => setAttendees((prev) => prev.filter((x) => x.contactid !== attendee.contactid))}
+                >
+                  <span className="icon icon-xs" aria-hidden="true">close</span>
+                </button>
               </span>
             ))}
           </div>
@@ -529,20 +644,47 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       {loading && <div className="loading-text">Searching…</div>}
 
       {notes !== null && notes.length > 0 && (
-        <div className="notes-list">
-          {notes.map((n) => {
-            const recordId = noteRecordId(n)
+        <>
+          {(timelineSummaryLoading || timelineSummary) && (
+            <div className="timeline-summary-card">
+              <div className="timeline-summary-title">
+                <span className="icon icon-sm" aria-hidden="true">auto_awesome</span>
+                Timeline highlights
+              </div>
+              {timelineSummaryLoading ? (
+                <div className="timeline-summary-text">Generating summary…</div>
+              ) : (
+                <>
+                  <div
+                    className="timeline-summary-html"
+                    dangerouslySetInnerHTML={{ __html: timelineSummary?.html || '' }}
+                  />
+                  <div className="timeline-summary-meta">
+                    {timelineSummary?.generatedBy === 'assistant' ? 'Generated by Assistant DxM' : 'Generated by deterministic fallback'}
+                  </div>
+                  {timelineSummary?.warning && (
+                    <div className="timeline-summary-warning">{timelineSummary.warning}</div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
-            return (
-              <NoteCard
-                key={recordId}
-                note={n}
-                expanded={expandedId === recordId}
-                onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
-              />
-            )
-          })}
-        </div>
+          <div className="notes-list">
+            {notes.map((n) => {
+              const recordId = noteRecordId(n)
+
+              return (
+                <NoteCard
+                  key={recordId}
+                  note={n}
+                  expanded={expandedId === recordId}
+                  onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
+                />
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

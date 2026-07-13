@@ -1,12 +1,14 @@
 namespace DynamicsActivitiesNotifySubscribers
 {
 	using System;
+	using System.Collections;
 	using System.Collections.Generic;
 	using System.Globalization;
 	using System.Linq;
 	using System.Net;
 	using System.Net.Http;
 	using System.Net.Http.Headers;
+	using System.Reflection;
 	using System.Text;
 	using System.Text.RegularExpressions;
 	using System.Threading;
@@ -25,6 +27,10 @@ namespace DynamicsActivitiesNotifySubscribers
 		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
+		private const string EscalationAccountLookupField = "_slc_accountid_value";
+		private const string SummarizeScriptName = "DynamicsActivities_Summarize";
+		private const string SummarizePayloadParamName = "Payload";
+		private const int SummarizePayloadParamId = 10;
 
 		private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
 		private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
@@ -131,7 +137,8 @@ namespace DynamicsActivitiesNotifySubscribers
 					}
 
 					var subject = $"[DynamicsActivities] Activity digest for {scopeLabel ?? scopeValue}";
-					var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, since, now, activities);
+					var summary = GenerateDigestSummary(scopeLabel ?? scopeValue, since, now, activities);
+					var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, since, now, summary, activities);
 
 					try
 					{
@@ -333,11 +340,12 @@ namespace DynamicsActivitiesNotifySubscribers
 			var accountFilter = BuildOrFilter("_parentaccountid_value", capped);
 			var parentCustomerFilter = BuildOrFilter("_parentcustomerid_value", capped);
 			var regardingFilter = BuildOrFilter("_regardingobjectid_value", capped);
+			var escalationAccountFilter = BuildOrFilter(EscalationAccountLookupField, capped);
 
 			AddIdsFromQuery(ids, $"/opportunities?$select=opportunityid&$filter={accountFilter}&$top=200", "opportunityid");
 			AddIdsFromQuery(ids, $"/contacts?$select=contactid&$filter={parentCustomerFilter}&$top=200", "contactid");
 			AddIdsFromQuery(ids, $"/leads?$select=leadid&$filter={accountFilter}&$top=200", "leadid");
-			AddIdsFromQuery(ids, $"/slc_escalations?$select=slc_escalationid&$filter={regardingFilter}&$top=200", "slc_escalationid");
+			AddIdsFromQuery(ids, $"/slc_escalations?$select=slc_escalationid&$filter={escalationAccountFilter}&$top=200", "slc_escalationid");
 
 			// Include direct activities so notes linked to those activity records can also be matched in-scope.
 			AddIdsFromQuery(ids, $"/phonecalls?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
@@ -462,24 +470,24 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<ActivityItem> FetchEscalations(List<string> accountIds, string fromIso)
 		{
-			var filters = BuildLookupFilters("_regardingobjectid_value", accountIds);
+			var filters = BuildLookupFilters(EscalationAccountLookupField, accountIds);
 			if (!string.IsNullOrEmpty(fromIso))
 			{
 				filters.Add($"createdon gt {fromIso}");
 			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/slc_escalations?$select=slc_escalationid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
+			var json = DataverseGet($"/slc_escalations?$select=slc_escalationid,slc_name,createdon,{EscalationAccountLookupField},slc_startdate,statecode,statuscode{filter}&$orderby=createdon desc&$top=100");
 
 			return json["value"]?.Select(v => new ActivityItem
 			{
 				Id = NormalizeDataverseId(v["slc_escalationid"]?.Value<string>()),
 				EntityType = "slc_escalations",
 				TypeLabel = "Escalation",
-				Subject = v["subject"]?.Value<string>(),
-				Description = v["description"]?.Value<string>(),
+				Subject = v["slc_name"]?.Value<string>() ?? "Escalation",
+				Description = String.Empty,
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				RegardingId = NormalizeDataverseId(v["_regardingobjectid_value"]?.Value<string>()),
-				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+				RegardingId = NormalizeDataverseId(v[EscalationAccountLookupField]?.Value<string>()),
+				Regarding = v[$"{EscalationAccountLookupField}@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
 		}
 
@@ -812,9 +820,304 @@ namespace DynamicsActivitiesNotifySubscribers
 			return JObject.Parse(payload);
 		}
 
-		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, List<ActivityItem> activities)
+		private SummaryResult GenerateDigestSummary(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
+		{
+			var payload = BuildSummarizePayload(scopeLabel, since, until, activities);
+			engine?.GenerateInformation($"[NotifySubscribers] Calling {SummarizeScriptName} for digest summary (scope='{(String.IsNullOrWhiteSpace(scopeLabel) ? "selected scope" : scopeLabel.Trim())}', activities={activities.Count}).");
+			var summary = TryGenerateSummaryViaSubScript(payload, out var warning, out var diagnostics);
+			if (!String.IsNullOrWhiteSpace(summary?.Text))
+			{
+				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} returned digest summary.");
+				return summary;
+			}
+
+			if (!String.IsNullOrWhiteSpace(warning))
+			{
+				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} summary unavailable: {warning}");
+			}
+
+			if (!String.IsNullOrWhiteSpace(diagnostics))
+			{
+				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} diagnostics: {diagnostics}");
+			}
+
+			var fallbackText = BuildFallbackDigestSummary(scopeLabel, activities);
+			return new SummaryResult
+			{
+				Text = fallbackText,
+				Html = BuildSummaryHtmlFromText(fallbackText),
+				Warning = warning,
+				Diagnostics = diagnostics,
+				GeneratedBy = "fallback",
+			};
+		}
+
+		private static string BuildSummarizePayload(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
+		{
+			var payload = new JObject
+			{
+				["scopeLabel"] = String.IsNullOrWhiteSpace(scopeLabel) ? "Selected scope" : scopeLabel.Trim(),
+				["fromUtc"] = since.ToString("o", CultureInfo.InvariantCulture),
+				["untilUtc"] = until.ToString("o", CultureInfo.InvariantCulture),
+				["activities"] = new JArray(activities
+					.Take(60)
+					.Select(activity => new JObject
+					{
+						["createdOnUtc"] = activity.CreatedOn == DateTime.MinValue ? null : activity.CreatedOn.ToString("o", CultureInfo.InvariantCulture),
+						["type"] = GetTypeBadgeLabel(activity),
+						["subject"] = String.IsNullOrWhiteSpace(activity.Subject) ? "(No subject)" : activity.Subject.Trim(),
+						["regarding"] = String.IsNullOrWhiteSpace(activity.Regarding) ? "-" : activity.Regarding.Trim(),
+						["description"] = TrimForEmail(FormatDescriptionForEmail(activity.Description), 260),
+					})),
+			};
+			return JsonConvert.SerializeObject(payload);
+		}
+
+		private SummaryResult TryGenerateSummaryViaSubScript(string payload, out string warning, out string diagnostics)
+		{
+			warning = null;
+			diagnostics = null;
+
+			try
+			{
+				var prepareSubScript = engine.GetType().GetMethod("PrepareSubScript", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+				if (prepareSubScript == null)
+				{
+					warning = "IEngine.PrepareSubScript(string) is unavailable.";
+					return null;
+				}
+
+				var subScript = prepareSubScript.Invoke(engine, new object[] { SummarizeScriptName });
+				if (subScript == null)
+				{
+					warning = "Failed to prepare summarize sub-script.";
+					diagnostics = $"PrepareSubScript returned null for '{SummarizeScriptName}'.";
+					return null;
+				}
+
+				if (!TrySelectSummarizePayload(subScript, payload, out var selectDiagnostics))
+				{
+					warning = "Failed to pass payload to summarize sub-script.";
+					diagnostics = selectDiagnostics;
+					return null;
+				}
+
+				var startScript = subScript.GetType().GetMethod("StartScript", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+				if (startScript == null)
+				{
+					warning = "Sub-script start method not found.";
+					diagnostics = "StartScript reflection lookup failed on '" + subScript.GetType().FullName + "'.";
+					return null;
+				}
+
+				startScript.Invoke(subScript, null);
+
+				var hadErrorProperty = subScript.GetType().GetProperty("HadError", BindingFlags.Public | BindingFlags.Instance);
+				var hadError = hadErrorProperty != null && hadErrorProperty.PropertyType == typeof(bool) && (bool)hadErrorProperty.GetValue(subScript, null);
+				if (hadError)
+				{
+					var getErrorMessages = subScript.GetType().GetMethod("GetErrorMessages", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+					var errors = getErrorMessages?.Invoke(subScript, null) as string[];
+					warning = $"{SummarizeScriptName} failed.";
+					diagnostics = errors == null || errors.Length == 0 ? "Sub-script returned HadError=true." : String.Join(" | ", errors);
+					return null;
+				}
+
+				var getScriptResult = subScript.GetType().GetMethod("GetScriptResult", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+				var scriptResult = getScriptResult?.Invoke(subScript, null);
+				var rawResult = ExtractScriptOutputValue(scriptResult, "result");
+				if (String.IsNullOrWhiteSpace(rawResult))
+				{
+					warning = $"{SummarizeScriptName} returned no 'result' output.";
+					diagnostics = scriptResult == null ? "GetScriptResult returned null." : "Unable to read key 'result' from script result.";
+					return null;
+				}
+
+				try
+				{
+					var parsed = JObject.Parse(rawResult);
+					warning = parsed["warning"]?.Value<string>();
+					diagnostics = parsed["diagnostics"]?.Value<string>();
+					return new SummaryResult
+					{
+						Text = parsed["summary"]?.Value<string>(),
+						Html = parsed["summaryHtml"]?.Value<string>(),
+						Warning = warning,
+						Diagnostics = diagnostics,
+						GeneratedBy = parsed["generatedBy"]?.Value<string>(),
+					};
+				}
+				catch
+				{
+					return new SummaryResult
+					{
+						Text = rawResult.Trim(),
+						Html = BuildSummaryHtmlFromText(rawResult.Trim()),
+						Warning = warning,
+						Diagnostics = diagnostics,
+						GeneratedBy = "fallback",
+					};
+				}
+			}
+			catch (Exception ex)
+			{
+				warning = "Sub-script summary call failed: " + ex.Message;
+				diagnostics = ex.ToString();
+				return null;
+			}
+		}
+
+		private static bool TrySelectSummarizePayload(object subScript, string payload, out string diagnostics)
+		{
+			try
+			{
+				var selectByName = subScript
+					.GetType()
+					.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+					.FirstOrDefault(method =>
+					{
+						if (!String.Equals(method.Name, "SelectScriptParam", StringComparison.Ordinal))
+						{
+							return false;
+						}
+
+						var parameters = method.GetParameters();
+						return parameters.Length == 2 && parameters[0].ParameterType == typeof(string) && parameters[1].ParameterType == typeof(string);
+					});
+				if (selectByName != null)
+				{
+					selectByName.Invoke(subScript, new object[] { SummarizePayloadParamName, payload });
+					diagnostics = null;
+					return true;
+				}
+
+				var selectById = subScript
+					.GetType()
+					.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+					.FirstOrDefault(method =>
+					{
+						if (!String.Equals(method.Name, "SelectScriptParam", StringComparison.Ordinal))
+						{
+							return false;
+						}
+
+						var parameters = method.GetParameters();
+						return parameters.Length == 2 && parameters[0].ParameterType == typeof(int) && parameters[1].ParameterType == typeof(string);
+					});
+				if (selectById != null)
+				{
+					selectById.Invoke(subScript, new object[] { SummarizePayloadParamId, payload });
+					diagnostics = null;
+					return true;
+				}
+			}
+			catch (Exception ex)
+			{
+				diagnostics = ex.ToString();
+				return false;
+			}
+
+			diagnostics = "No supported SelectScriptParam overload found on type '" + subScript.GetType().FullName + "'.";
+			return false;
+		}
+
+		private static string ExtractScriptOutputValue(object scriptResult, string key)
+		{
+			if (scriptResult == null || String.IsNullOrWhiteSpace(key))
+			{
+				return null;
+			}
+
+			var getScriptOutput = scriptResult.GetType().GetMethod("GetScriptOutput", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+			if (getScriptOutput != null)
+			{
+				var value = getScriptOutput.Invoke(scriptResult, new object[] { key }) as string;
+				if (!String.IsNullOrWhiteSpace(value))
+				{
+					return value;
+				}
+			}
+
+			var dictionaryResult = scriptResult as IDictionary;
+			if (dictionaryResult != null)
+			{
+				foreach (DictionaryEntry entry in dictionaryResult)
+				{
+					if (String.Equals(Convert.ToString(entry.Key, CultureInfo.InvariantCulture), key, StringComparison.Ordinal))
+					{
+						return entry.Value as string;
+					}
+				}
+			}
+
+			var indexer = scriptResult.GetType().GetProperty("Item", BindingFlags.Public | BindingFlags.Instance, null, typeof(string), new[] { typeof(string) }, null);
+			if (indexer != null)
+			{
+				var indexedValue = indexer.GetValue(scriptResult, new object[] { key }) as string;
+				if (!String.IsNullOrWhiteSpace(indexedValue))
+				{
+					return indexedValue;
+				}
+			}
+
+			var valuesProperty = scriptResult.GetType().GetProperty("Values", BindingFlags.Public | BindingFlags.Instance);
+			var values = valuesProperty?.GetValue(scriptResult, null) as IEnumerable;
+			if (values != null)
+			{
+				foreach (var item in values)
+				{
+					var keyProperty = item?.GetType().GetProperty("Key", BindingFlags.Public | BindingFlags.Instance);
+					var valueProperty = item?.GetType().GetProperty("Value", BindingFlags.Public | BindingFlags.Instance);
+					var candidateKey = keyProperty?.GetValue(item, null) as string;
+					if (String.Equals(candidateKey, key, StringComparison.Ordinal))
+					{
+						return valueProperty?.GetValue(item, null) as string;
+					}
+				}
+			}
+
+			return null;
+		}
+
+		private static string BuildFallbackDigestSummary(string scopeLabel, List<ActivityItem> activities)
+		{
+			var groupedByType = activities
+				.GroupBy(activity => GetTypeBadgeLabel(activity))
+				.OrderByDescending(group => group.Count())
+				.ToList();
+
+			var latestItems = activities
+				.Take(3)
+				.Select(activity => $"{activity.CreatedOn:yyyy-MM-dd HH:mm} UTC — {GetTypeBadgeLabel(activity)} — {activity.Subject ?? "(No subject)"}")
+				.ToList();
+
+			var summary = new StringBuilder();
+			summary.Append("Recent changes for ");
+			summary.Append(String.IsNullOrWhiteSpace(scopeLabel) ? "the selected scope" : scopeLabel.Trim());
+			summary.Append(": ");
+			summary.Append(String.Join(", ", groupedByType.Take(3).Select(group => group.Key + " (" + group.Count().ToString(CultureInfo.InvariantCulture) + ")")));
+			summary.Append(". ");
+
+			if (latestItems.Count > 0)
+			{
+				summary.Append("Latest activity points: ");
+				summary.Append(String.Join("; ", latestItems));
+				summary.Append(". ");
+			}
+
+			summary.Append("Follow-up: verify escalation progress, confirm ownership of open actions, and align customer communication before the next meeting.");
+			return summary.ToString();
+		}
+
+		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, SummaryResult summary, List<ActivityItem> activities)
 		{
 			var activityTypes = ParseActivityTypes(activityTypesJson);
+			var summaryHtml = summary?.Html;
+			if (String.IsNullOrWhiteSpace(summaryHtml) && !String.IsNullOrWhiteSpace(summary?.Text))
+			{
+				summaryHtml = BuildSummaryHtmlFromText(summary.Text);
+			}
+
 			var sb = new StringBuilder();
 			sb.AppendLine("<!DOCTYPE html><html><head><meta charset='utf-8' />");
 			sb.AppendLine("<meta name='viewport' content='width=device-width,initial-scale=1' />");
@@ -826,13 +1129,21 @@ namespace DynamicsActivitiesNotifySubscribers
 			sb.AppendLine("</div>");
 			sb.AppendLine("<div style='padding:24px 28px;'>");
 			sb.AppendLine("<div style='background:#eff0f0;border-left:3px solid #2563eb;padding:14px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;color:#44484e;font-size:14px;line-height:1.5;'>");
-			sb.AppendLine($"<div><strong>Scope:</strong> {HtmlEncode(scopeType)} — {HtmlEncode(scopeLabel ?? scopeValue)}</div>");
-			sb.AppendLine($"<div><strong>Period:</strong> {since:yyyy-MM-dd HH:mm} UTC → {until:yyyy-MM-dd HH:mm} UTC</div>");
-			sb.AppendLine($"<div><strong>New activities:</strong> {activities.Count}</div>");
+			sb.AppendLine($"<div><strong>Scope:</strong> {HtmlEncode(scopeLabel ?? scopeValue)}</div>");
+			sb.AppendLine($"<div><strong>New activities:</strong> {activities.Count} since {since:yyyy-MM-dd HH:mm} UTC</div>");
 			sb.AppendLine(activityTypes != null && activityTypes.Count > 0
 				? $"<div><strong>Activity types:</strong> {HtmlEncode(string.Join(", ", activityTypes))}</div>"
 				: "<div><strong>Activity types:</strong> All</div>");
 			sb.AppendLine("</div>");
+
+			if (!String.IsNullOrWhiteSpace(summaryHtml))
+			{
+				sb.AppendLine("<div style='background:#f7f9ff;border:1px solid #dbe7ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;'>");
+				sb.AppendLine("<div style='font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:8px;'>Timeline highlights</div>");
+				sb.AppendLine($"<div style='color:#1f2937;font-size:13px;line-height:1.6;'>{summaryHtml}</div>");
+				sb.AppendLine("</div>");
+			}
+
 			sb.AppendLine($"<div style='margin-bottom:16px;'><a href='{HtmlEncode(ActivitiesAppUrl)}' style='display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;'>Open Dynamics Activities</a></div>");
 
 			foreach (var item in activities)
@@ -1012,6 +1323,34 @@ namespace DynamicsActivitiesNotifySubscribers
 			return normalized.Trim();
 		}
 
+		private static string BuildSummaryHtmlFromText(string summary)
+		{
+			if (String.IsNullOrWhiteSpace(summary))
+			{
+				return String.Empty;
+			}
+
+			var lines = summary
+				.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+				.Select(line => (line ?? String.Empty).Trim())
+				.Where(line => line.Length > 0)
+				.ToList();
+			if (lines.Count == 0)
+			{
+				return String.Empty;
+			}
+
+			var sb = new StringBuilder();
+			foreach (var line in lines)
+			{
+				sb.Append("<p style='margin:0 0 8px;'>");
+				sb.Append(HtmlEncode(line));
+				sb.Append("</p>");
+			}
+
+			return sb.ToString();
+		}
+
 		private static string GetTypeColor(string entityType)
 		{
 			switch ((entityType ?? string.Empty).ToLowerInvariant())
@@ -1107,6 +1446,19 @@ namespace DynamicsActivitiesNotifySubscribers
 			public string ScopeValue { get; set; } = String.Empty;
 			public List<string> AccountIds { get; set; } = new List<string>();
 			public List<string> ActivityLookupIds { get; set; } = new List<string>();
+		}
+
+		private sealed class SummaryResult
+		{
+			public string Text { get; set; }
+
+			public string Html { get; set; }
+
+			public string Warning { get; set; }
+
+			public string Diagnostics { get; set; }
+
+			public string GeneratedBy { get; set; }
 		}
 	}
 }

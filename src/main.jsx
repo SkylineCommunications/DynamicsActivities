@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { PublicClientApplication } from '@azure/msal-browser'
 import { MsalProvider } from '@azure/msal-react'
 import { msalConfig, msalConfigValid } from './authConfig'
+import { bootstrapSession, isDataMinerHost } from './api/dataminer'
 import App from './App'
 import './styles/main.css'
 
@@ -31,6 +32,10 @@ if (!msalConfigValid) {
     </React.StrictMode>,
   )
 } else {
+  if (isDataMinerHost()) {
+    bootstrapSession({ redirectOnFailure: true }).catch(() => {})
+  }
+
   const msalInstance = new PublicClientApplication(msalConfig)
 
   root.render(

@@ -4,7 +4,7 @@
  * Falls back gracefully if DataMiner session is unavailable.
  */
 
-import { bootstrapSession, getConnection, jsonPost, getDmaUser } from './dataminer'
+import { bootstrapSession, getConnection, jsonPost, getDmaUser, validateConnection } from './dataminer'
 
 const SCRIPT_NAME = 'DynamicsActivities_ManageSubscriptions'
 
@@ -15,8 +15,8 @@ async function runSubscriptionScript(action, payload = {}) {
   async function resolveConnection(redirectOnFailure) {
     const current = getConnection()
     if (current) {
-      const ok = await jsonPost('IsConnectionAlive', { connection: current }, { redirectOnAuthFailure: redirectOnFailure })
-      if (ok !== null) return current
+      const ok = await validateConnection(current, { redirectOnFailure })
+      if (ok) return current
     }
     return bootstrapSession({ redirectOnFailure, maxAttempts: 4, retryDelayMs: 300 })
   }
