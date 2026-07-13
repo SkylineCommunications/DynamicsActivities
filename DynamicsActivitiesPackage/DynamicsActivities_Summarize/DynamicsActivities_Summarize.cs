@@ -407,7 +407,7 @@ namespace DynamicsActivitiesSummarize
 			var topActivities = (request?.Activities ?? new List<ActivityInput>()).Take(3).ToList();
 
 			var sb = new StringBuilder();
-			sb.Append("<section><h4>Key highlights</h4>");
+			sb.Append("<section><h4>Summary</h4>");
 			AppendPlainTextAsHtml(sb, safeSummary);
 			sb.Append("</section>");
 
@@ -432,9 +432,15 @@ namespace DynamicsActivitiesSummarize
 				sb.Append("<ul>");
 				foreach (var activity in topActivities)
 				{
-					sb.Append("<li><strong>[");
-					sb.Append(HtmlEncode(SafeValue(activity.CreatedOnUtc)));
-					sb.Append("]</strong> ");
+					var createdOn = SafeValue(activity.CreatedOnUtc);
+					var hasKnownTimestamp = !String.Equals(createdOn, "-", StringComparison.Ordinal);
+					sb.Append("<li>");
+					if (hasKnownTimestamp)
+					{
+						sb.Append("<strong>[");
+						sb.Append(HtmlEncode(createdOn));
+						sb.Append("]</strong> ");
+					}
 					sb.Append(HtmlEncode(SafeValue(activity.Type)));
 					sb.Append(" — ");
 					sb.Append(HtmlEncode(SafeValue(activity.Subject)));
@@ -461,7 +467,8 @@ namespace DynamicsActivitiesSummarize
 			}
 
 			var bulletLines = lines
-				.Select(line => line.TrimStart('-', '*', '•', ' '))
+				.Select(line => line.TrimStart('-', '*', '•', ' ').Trim())
+				.Where(line => !IsSectionHeadingLine(line))
 				.Where(line => line.Length > 0)
 				.ToList();
 			var allLinesAreBullets = lines.All(line => IsLikelyBulletLine(line));
@@ -485,6 +492,29 @@ namespace DynamicsActivitiesSummarize
 				sb.Append(HtmlEncode(line));
 				sb.Append("</p>");
 			}
+		}
+
+		private static bool IsSectionHeadingLine(string line)
+		{
+			if (String.IsNullOrWhiteSpace(line))
+			{
+				return false;
+			}
+
+			var normalized = line.Trim().TrimEnd(':').Trim();
+			var closeParen = normalized.IndexOf(')');
+			if (closeParen > 0 && closeParen <= 3)
+			{
+				var prefix = normalized.Substring(0, closeParen);
+				if (prefix.All(Char.IsDigit))
+				{
+					normalized = normalized.Substring(closeParen + 1).Trim();
+				}
+			}
+
+			return String.Equals(normalized, "Key highlights", StringComparison.OrdinalIgnoreCase)
+				|| String.Equals(normalized, "Account health and escalation status", StringComparison.OrdinalIgnoreCase)
+				|| String.Equals(normalized, "Follow-up actions", StringComparison.OrdinalIgnoreCase);
 		}
 
 		private static bool IsLikelyBulletLine(string line)
