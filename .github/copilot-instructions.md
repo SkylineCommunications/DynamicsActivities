@@ -140,6 +140,7 @@ App-specific behavior:
 - **`$expand` + `$top` on the same query causes HTTP 400 (`0x80060888`)**. Use `Prefer: odata.maxpagesize=100` instead of `$top` when expanding activity parties.
 - Activity party skip masks: phonecalls/emails skip 1+9 (sender+owner), appointments skip 7+9 (organizer+owner).
 - `noteDate()` falls back: `scheduledstart || scheduledend || actualend || createdon`.
+- Browse attendee filtering supports selecting multiple contacts and uses **OR** semantics (`any` matching party per record), not AND. Keep this behavior unless explicitly requested otherwise: activities often have varying attendee sets, and AND produces unexpectedly empty or overly narrow results.
 
 ---
 
