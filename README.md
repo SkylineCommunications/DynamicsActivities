@@ -111,7 +111,7 @@ Deployment is automated via the **"Build, Register and Deploy DMAPP"** GitHub Ac
 4. Uploads to the DataMiner Catalog
 5. Deploys to the target DMA agent
 
-Issue investigation is automated by the **"Copilot bug triage"** workflow. It auto-triggers on every newly opened issue and also supports manual command-triggering by commenting `/investigate`. The mention handle is configurable via repository variable `COPILOT_MENTION_HANDLE` (default: `@svc-IntDocPub`).
+Bug reports are auto-triaged by the **"Copilot bug triage"** workflow, which triggers on `bug`-labeled issues and asks `@copilot` to investigate and propose a limited-scope fix PR when appropriate.
 
 The build output (`dist-dataminer/`) is packaged as companion files and installed to:
 ```
