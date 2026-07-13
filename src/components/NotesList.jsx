@@ -356,7 +356,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
-  const [attendee, setAttendee] = useState(null) // { contactid, fullname }
+  const [attendees, setAttendees] = useState([]) // [{ contactid, fullname }]
   const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -394,7 +394,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     setTimelineSummaryLoading(false)
     searchActivities(instance, {
       accountIds: accounts.map((a) => a.accountid),
-      contactId: attendee?.contactid ?? null,
+      contactIds: attendees.map((a) => a.contactid),
       activityTypes: [...(selectedTypes.size ? [...selectedTypes].filter((t) => allowedTypeIds.has(t)) : activeView.typeIds)],
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
@@ -404,7 +404,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [instance, accounts, attendee, selectedTypes, dateFrom, dateTo, activeViewId])
+  }, [instance, accounts, attendees, selectedTypes, dateFrom, dateTo, activeViewId])
 
   // Auto-search when navigated here after note creation, or re-run on refresh
   useEffect(() => {
@@ -515,24 +515,47 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               getKey={(c) => c.contactid}
               getLabel={(c) => c.fullname}
               getSublabel={(c) => c.emailaddress1}
-              value={attendee}
-              onChange={setAttendee}
+              value={null}
+              onChange={(item) => {
+                if (item && !attendees.some((a) => a.contactid === item.contactid)) {
+                  setAttendees((prev) => [...prev, item])
+                }
+              }}
               onEnter={runSearch}
               placeholder="Search contact…"
               minChars={2}
+              clearOnPick
               autoSelectSingle
             />
           </div>
         </div>
 
-        {accounts.length > 0 && (
+        {(accounts.length > 0 || attendees.length > 0) && (
           <div className="filter-chips">
             {accounts.map((a) => (
               <span key={a.accountid} className="filter-chip">
                 {a.name}
-<button type="button" className="chip-remove" aria-label={`Remove ${a.name}`} onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}>
-  <span className="icon icon-xs" aria-hidden="true">close</span>
-</button>
+                <button
+                  type="button"
+                  className="chip-remove"
+                  aria-label={`Remove ${a.name}`}
+                  onClick={() => setAccounts((prev) => prev.filter((x) => x.accountid !== a.accountid))}
+                >
+                  <span className="icon icon-xs" aria-hidden="true">close</span>
+                </button>
+              </span>
+            ))}
+            {attendees.map((attendee) => (
+              <span key={attendee.contactid} className="filter-chip">
+                Attendee: {attendee.fullname}
+                <button
+                  type="button"
+                  className="chip-remove"
+                  aria-label={`Remove attendee ${attendee.fullname}`}
+                  onClick={() => setAttendees((prev) => prev.filter((x) => x.contactid !== attendee.contactid))}
+                >
+                  <span className="icon icon-xs" aria-hidden="true">close</span>
+                </button>
               </span>
             ))}
           </div>

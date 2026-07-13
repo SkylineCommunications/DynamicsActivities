@@ -12,6 +12,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - Link activities to Dynamics 365 accounts and contacts
 - Prefill attendees from your **Microsoft 365 calendar** (meeting rooms filtered out)
 - Browse and filter the full organisation's activity history with lazy server-side OData queries
+- Multi-select attendee filtering in Browse, with visible attendee chips and **OR** semantics (an activity matches when it includes any selected attendee)
 - **AI timeline highlights** in Browse — assistant-generated summary rendered as formatted HTML sections above loaded activities
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
 - **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights rendered in the same HTML summary format as Browse
@@ -149,6 +150,7 @@ Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesP
 
 - **`$expand` + `$top` on the same query → HTTP 400 (`0x80060888`)** — use `Prefer: odata.maxpagesize=N` instead of `$top` when expanding activity parties
 - On localhost, auth uses popup flows — `ssoSilent` only works when a DataMiner Entra session already exists
+- Browse attendee filter uses **OR** semantics across selected attendees (`any` activity-party match). This is intentional: attendees are optional and variable per activity, so **AND** would hide valid timelines unless all selected contacts happened to be on the same record.
 
 ---
 
