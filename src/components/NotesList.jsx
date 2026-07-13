@@ -245,6 +245,7 @@ function noteAccountId(note) {
   if (note._parentaccountid_value) return note._parentaccountid_value
   const lookupType = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
   if (lookupType === 'account') return note._regardingobjectid_value ?? null
+  if (note._resolvedAccountId) return note._resolvedAccountId
   return null
 }
 
@@ -252,10 +253,15 @@ function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
   const attendees = extractAttendees(note)
+  const regardingType = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+  const regardingName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
   const accountName = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
-    || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+    || (regardingType === 'account' ? regardingName : '')
+    || note._resolvedAccountName
     || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
     || ''
+  // Person (e.g. contact) the activity is filed against, shown alongside the account.
+  const personName = regardingType === 'contact' ? (note._regardingPersonName || regardingName) : ''
   const accountId = noteAccountId(note)
   const rawPreview = note.notetext || note.description || ''
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
@@ -287,11 +293,22 @@ function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
       </div>
 
       {note.subject && note.subject !== label && <div className="note-subject">{note.subject}</div>}
-      {accountName && (
+      {(accountName || personName) && (
         <div className="note-account">
-          {accountId
-            ? <AccountAvatar name={accountName} image={accountImages[accountId]} size="md" />
-            : <span className="icon icon-sm">business_center</span>} {accountName}</div>)}
+          {accountName && (
+            <span className="note-account-name">
+              {accountId
+                ? <AccountAvatar name={accountName} image={accountImages[accountId]} size="md" />
+                : <span className="icon icon-sm">business_center</span>} {accountName}
+            </span>
+          )}
+          {personName && (
+            <span className="note-account-contact">
+              <span className="icon icon-sm">person</span> {personName}
+            </span>
+          )}
+        </div>
+      )}
       {note._linkedToEscalation && (
         <div className="note-escalation-link">
           <span className="icon icon-sm">link</span> Linked to escalation
