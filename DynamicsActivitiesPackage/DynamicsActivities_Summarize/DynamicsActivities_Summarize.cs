@@ -24,6 +24,7 @@ namespace DynamicsActivitiesSummarize
 		private const string ParagraphStyle = "margin:0 0 8px;";
 		private const string ListStyle = "margin:0 0 8px;padding-left:18px;";
 		private const string ListItemStyle = "margin:0 0 6px;";
+		private const int MaxTimelinePoints = 3;
 
 		public void Run(IEngine engine)
 		{
@@ -406,7 +407,7 @@ namespace DynamicsActivitiesSummarize
 		private static string BuildSummaryHtml(string summary, SummaryRequest request)
 		{
 			var safeSummary = String.IsNullOrWhiteSpace(summary) ? "-" : summary.Trim();
-			var topActivities = (request?.Activities ?? new List<ActivityInput>()).Take(3).ToList();
+			var topActivities = (request?.Activities ?? new List<ActivityInput>()).Take(MaxTimelinePoints).ToList();
 
 			var sb = new StringBuilder();
 			sb.Append("<div style='");

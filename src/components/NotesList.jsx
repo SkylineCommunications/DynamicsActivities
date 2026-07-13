@@ -110,7 +110,7 @@ function fmtIsoDate(d) {
 function stripHtmlTags(value) {
   const raw = String(value ?? '')
   if (!raw.trim()) return ''
-  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+  if (typeof DOMParser === 'undefined') {
     return raw.replace(/<[^>]+>/g, ' ')
   }
 
