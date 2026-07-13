@@ -12,8 +12,9 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - Link activities to Dynamics 365 accounts and contacts
 - Prefill attendees from your **Microsoft 365 calendar** (meeting rooms filtered out)
 - Browse and filter the full organisation's activity history with lazy server-side OData queries
+- **AI timeline highlights** in Browse — assistant-generated summary rendered as formatted HTML sections above loaded activities
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
-- **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types
+- **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights rendered in the same HTML summary format as Browse
 - **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled license request email to IT
 - **Report a bug** entry point in the app header opens a prefilled GitHub issue with auto-captured context
 - Open any activity directly in Dynamics 365 with a single click
@@ -33,6 +34,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 | Calendar | Microsoft Graph API v1.0 |
 | TAM | Skyline Collaboration API (`api.skyline.be`) |
 | Notifications | DataMiner DOM + Automation scripts (`ManageSubscriptions`, `NotifySubscribers`) |
+| AI summarization | DataMiner Assistant DxM Agent Integration (`DynamicsActivities_Summarize`; reused by browse and digest flows) |
 | Styling | CSS custom properties, Inter font (DataMiner design system) |
 
 ---
@@ -129,7 +131,11 @@ Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesP
 ## Notification Subscriptions (DataMiner-native)
 
 - Subscriptions are stored in **DataMiner DOM** and managed via `DynamicsActivities_ManageSubscriptions`.
-- Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually).
+- Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually), which invokes `DynamicsActivities_Summarize` to generate timeline highlights.
+- Digest emails now include a top-level Assistant-generated timeline summary (with deterministic fallback if Assistant integration is unavailable), rendered as formatted HTML instead of escaped plain text.
+- Browse view (`NotesList`) can request timeline highlights through `DynamicsActivities_Summarize`.
+- Timeline highlights now show whether Assistant or deterministic fallback generated the text, and surface fallback warning details from script output.
+- Assistant agent usage requires DataMiner Assistant Agent Integration to be enabled on the DMA (see manual configuration notes in implementation handoff).
 - Notify script parameters:
   - `Frequency` (string): `instant`, `daily`, `weekly`, `monthly` — used to select which subscriptions to process.
   - `ClientSecret` (string): Dataverse app secret used for token acquisition.
@@ -156,10 +162,11 @@ src/
     graph.js           # Graph calendar fetch for attendee prefill
     skyline.js         # Skyline Collaboration API (TAM accounts)
     subscriptions.js   # Subscription CRUD via DataMiner Automation scripts (DOM-backed)
+    activitySummary.js # Browse timeline summary via DataMiner automation
   components/
     AuthGuard.jsx      # Triple-auth gate (DMA → MSAL → WhoAmI)
     ActivityForm.jsx   # Activity creation (4 types, pickers, calendar)
-    NotesList.jsx      # Browse view with lazy server-side OData filters
+    NotesList.jsx      # Browse view with lazy server-side OData filters + AI highlights
     SubscriptionsPanel.jsx  # Notification subscription management
     AutocompletePicker.jsx
     CalendarPicker.jsx
@@ -175,5 +182,6 @@ src/
 public/
   web.config           # IIS SPA rewrite rule
 DynamicsActivitiesPackage/  # .NET project for .dmapp packaging
+  DynamicsActivities_Summarize/ # Assistant summary script reused by browse timeline and digest flow
 .github/workflows/     # CI/CD workflows
 ```

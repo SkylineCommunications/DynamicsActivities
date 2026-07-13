@@ -12,7 +12,6 @@
 	</PropertyGroup>
 	<ItemGroup>
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-		<PackageReference Include="System.Net.Http" Version="4.3.4" />
 		<PackageReference Include="Skyline.DataMiner.CICD.CSharpAnalysis.Analyzer" Version="2.1.2">
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
@@ -26,7 +25,5 @@
 			<HintPath>..\Dependencies\Assistant\Skyline.DataMiner.Assistant.Integration.dll</HintPath>
 			<Private>true</Private>
 		</Reference>
-	</ItemGroup>
-	<ItemGroup>
 	</ItemGroup>
 </Project>
