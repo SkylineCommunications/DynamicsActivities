@@ -201,7 +201,7 @@ export async function getUserCanManageLeads(msalInstance, userId) {
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
   const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
-  const select = 'accountid,name,address1_country,address1_stateorprovince'
+  const select = 'accountid,name,address1_country,address1_stateorprovince,entityimage'
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
     dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
@@ -218,7 +218,16 @@ export async function searchAccounts(msalInstance, query) {
   return results
 }
 
-
+/**
+ * Fetch the account's image (logo) as base64 for display in the UI.
+ * Returns the raw base64 string (drop into `data:image/jpeg;base64,...`),
+ * or null when the account has no image set or the request fails.
+ */
+export async function getAccountImage(msalInstance, accountId) {
+  if (!accountId) return null
+  const account = await dvFetch(msalInstance, `/accounts(${accountId})?$select=entityimage`).catch(() => null)
+  return account?.entityimage ?? null
+}
 
 /**
  * Resolve an array of Skyline customers to Dataverse accounts.
