@@ -1039,7 +1039,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   color: var(--color12);
 }
 
-.note-account { font-size: 14px; font-weight: 500; color: var(--color11); display: flex; align-items: center; gap: 6px; padding: 6px 0; }
+.note-account { font-size: 14px; font-weight: 500; color: var(--color11); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 0; }
+.note-account-name { display: inline-flex; align-items: center; gap: 6px; }
+.note-account-contact { display: inline-flex; align-items: center; gap: 4px; font-weight: 400; color: var(--color10); }
 .note-escalation-link { font-size: 13px; font-weight: 500; color: var(--error); display: flex; align-items: center; gap: 4px; }
 .note-lead-link { font-size: 13px; font-weight: 500; color: var(--focus-color); display: flex; align-items: center; gap: 4px; }
 

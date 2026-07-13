@@ -867,6 +867,65 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   return { relatedIds, escalationIds, leadIds }
 }
 
+// Maps a "regarding" lookup type (contact/lead/opportunity) to the query needed
+// to find its parent account, so activities filed against a person can still show
+// the account avatar + name while keeping the person's name.
+const REGARDING_PARENT_LOOKUP = {
+  contact: { entity: 'contacts', idField: 'contactid', parentField: '_parentcustomerid_value' },
+  lead: { entity: 'leads', idField: 'leadid', parentField: '_parentaccountid_value' },
+  opportunity: { entity: 'opportunities', idField: 'opportunityid', parentField: '_parentaccountid_value' },
+}
+
+/**
+ * For activities whose "regarding" is a contact/lead/opportunity (not an account),
+ * resolve the parent account and attach `_resolvedAccountId` / `_resolvedAccountName`
+ * while preserving the original person name via `_regardingPersonName`.
+ * Mutates the given notes in place.
+ */
+async function resolveRegardingAccounts(msalInstance, notes) {
+  const idsByType = new Map() // lookup type -> Set of regarding ids
+  for (const note of notes) {
+    const type = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+    const id = note._regardingobjectid_value
+    if (!id || !REGARDING_PARENT_LOOKUP[type]) continue
+    if (!idsByType.has(type)) idsByType.set(type, new Set())
+    idsByType.get(type).add(id)
+  }
+  if (!idsByType.size) return
+
+  const parentById = new Map() // regarding id -> { accountId, accountName }
+  for (const [type, idSet] of idsByType) {
+    const cfg = REGARDING_PARENT_LOOKUP[type]
+    for (const chunk of chunkArray([...idSet], 20)) {
+      const filter = chunk.map((id) => `${cfg.idField} eq ${id}`).join(' or ')
+      const data = await dvFetch(
+        msalInstance,
+        `/${cfg.entity}?$filter=${encodeURIComponent(filter)}&$select=${cfg.idField},${cfg.parentField}`,
+      ).catch(() => null)
+      for (const row of data?.value ?? []) {
+        const parentId = row[cfg.parentField]
+        const parentType = row[`${cfg.parentField}@Microsoft.Dynamics.CRM.lookuplogicalname`]
+        if (!parentId || parentType !== 'account') continue
+        parentById.set(row[cfg.idField], {
+          accountId: parentId,
+          accountName: row[`${cfg.parentField}@OData.Community.Display.V1.FormattedValue`] || '',
+        })
+      }
+    }
+  }
+
+  for (const note of notes) {
+    const type = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+    const id = note._regardingobjectid_value
+    if (!id || !REGARDING_PARENT_LOOKUP[type]) continue
+    note._regardingPersonName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
+    const parent = parentById.get(id)
+    if (!parent) continue
+    note._resolvedAccountId = parent.accountId
+    note._resolvedAccountName = parent.accountName
+  }
+}
+
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
 const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', emails: 'email', slc_escalations: 'slc_escalation', annotations: 'annotation', leads: 'lead', opportunities: 'opportunity', support: 'opportunity' }
 
@@ -1125,6 +1184,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     if (id) seen.add(id)
     deduped.push(r)
   }
+  await resolveRegardingAccounts(msalInstance, deduped)
   deduped.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
   return deduped
 }
