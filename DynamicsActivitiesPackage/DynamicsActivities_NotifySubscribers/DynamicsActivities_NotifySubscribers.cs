@@ -7,6 +7,7 @@ namespace DynamicsActivitiesNotifySubscribers
 	using System.Net;
 	using System.Net.Http;
 	using System.Net.Http.Headers;
+	using System.Reflection;
 	using System.Text;
 	using System.Text.RegularExpressions;
 	using System.Threading;
@@ -25,6 +26,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
+		private static readonly Guid AssistantAgentId = new Guid("7a7ee855-cb26-4067-bc8e-122a961ac4cf");
 
 		private static readonly Guid FieldUserEmail = new Guid("c3a4b5c6-7d8e-9f0a-1b2c-3d4e5f607182");
 		private static readonly Guid FieldUserName = new Guid("d4b5c6d7-8e9f-0a1b-2c3d-4e5f60718293");
@@ -131,7 +133,8 @@ namespace DynamicsActivitiesNotifySubscribers
 					}
 
 					var subject = $"[DynamicsActivities] Activity digest for {scopeLabel ?? scopeValue}";
-					var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, since, now, activities);
+					var summary = GenerateDigestSummary(scopeLabel ?? scopeValue, since, now, activities);
+					var body = BuildEmailBody(userName, scopeType, scopeValue, scopeLabel, activityTypesJson, since, now, summary, activities);
 
 					try
 					{
@@ -812,7 +815,166 @@ namespace DynamicsActivitiesNotifySubscribers
 			return JObject.Parse(payload);
 		}
 
-		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, List<ActivityItem> activities)
+		private string GenerateDigestSummary(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
+		{
+			var prompt = BuildDigestSummaryPrompt(scopeLabel, since, until, activities);
+			var summary = TryGenerateAssistantSummary(prompt, out var warning);
+			if (!String.IsNullOrWhiteSpace(summary))
+			{
+				return summary;
+			}
+
+			if (!String.IsNullOrWhiteSpace(warning))
+			{
+				engine?.GenerateInformation($"[NotifySubscribers] Assistant digest generation unavailable: {warning}");
+			}
+
+			return BuildFallbackDigestSummary(scopeLabel, activities);
+		}
+
+		private static string BuildDigestSummaryPrompt(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
+		{
+			var lines = new List<string>();
+			lines.Add("You are preparing a customer activity digest for a TAM.");
+			lines.Add("Create a concise summary with these sections in plain text:");
+			lines.Add("1) What changed recently");
+			lines.Add("2) Why it matters");
+			lines.Add("3) Follow-up actions");
+			lines.Add("Keep the response under 280 words and avoid repeating metadata.");
+			lines.Add(String.Empty);
+			lines.Add("Scope: " + (String.IsNullOrWhiteSpace(scopeLabel) ? "Selected scope" : scopeLabel.Trim()));
+			lines.Add("Period UTC: " + since.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " to " + until.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture));
+			lines.Add("Activities (newest first):");
+
+			foreach (var activity in activities.Take(60))
+			{
+				var typeLabel = GetTypeBadgeLabel(activity);
+				var createdOn = activity.CreatedOn == DateTime.MinValue
+					? "-"
+					: activity.CreatedOn.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
+				var subject = String.IsNullOrWhiteSpace(activity.Subject) ? "(No subject)" : activity.Subject.Trim();
+				var regarding = String.IsNullOrWhiteSpace(activity.Regarding) ? "-" : activity.Regarding.Trim();
+				var description = TrimForEmail(FormatDescriptionForEmail(activity.Description), 260);
+				lines.Add($"- [{createdOn}] {typeLabel} | Regarding: {regarding} | Subject: {subject} | Note: {description}");
+			}
+
+			return String.Join(Environment.NewLine, lines);
+		}
+
+		private string TryGenerateAssistantSummary(string prompt, out string warning)
+		{
+			warning = null;
+			try
+			{
+				var getUserConnection = engine.GetType().GetMethod("GetUserConnection", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+				if (getUserConnection == null)
+				{
+					warning = "IEngine.GetUserConnection() is unavailable.";
+					return null;
+				}
+
+				var userConnection = getUserConnection.Invoke(engine, null);
+				if (userConnection == null)
+				{
+					warning = "No user connection available.";
+					return null;
+				}
+
+				var helperType = ResolveAgentHelperType();
+				if (helperType == null)
+				{
+					warning = "Skyline.DataMiner.Assistant.Integration is not available.";
+					return null;
+				}
+
+				var helper = Activator.CreateInstance(helperType, userConnection, AssistantAgentId);
+				if (helper == null)
+				{
+					warning = "Failed to create AgentHelper.";
+					return null;
+				}
+
+				try
+				{
+					var sendMessage = helperType.GetMethod("SendMessage", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(string) }, null);
+					if (sendMessage == null)
+					{
+						warning = "AgentHelper.SendMessage(string) not found.";
+						return null;
+					}
+
+					var responseObject = sendMessage.Invoke(helper, new object[] { prompt });
+					var responseText = responseObject?.GetType().GetProperty("Response", BindingFlags.Public | BindingFlags.Instance)?.GetValue(responseObject) as string;
+					if (String.IsNullOrWhiteSpace(responseText))
+					{
+						responseText = responseObject?.ToString();
+					}
+
+					return String.IsNullOrWhiteSpace(responseText) ? null : responseText.Trim();
+				}
+				finally
+				{
+					(helper as IDisposable)?.Dispose();
+				}
+			}
+			catch (Exception ex)
+			{
+				warning = ex.Message;
+				return null;
+			}
+		}
+
+		private static Type ResolveAgentHelperType()
+		{
+			var direct = Type.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper, Skyline.DataMiner.Assistant.Integration", false);
+			if (direct != null)
+			{
+				return direct;
+			}
+
+			foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+			{
+				var candidate = assembly.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
+				if (candidate != null)
+				{
+					return candidate;
+				}
+			}
+
+			return null;
+		}
+
+		private static string BuildFallbackDigestSummary(string scopeLabel, List<ActivityItem> activities)
+		{
+			var groupedByType = activities
+				.GroupBy(activity => GetTypeBadgeLabel(activity))
+				.OrderByDescending(group => group.Count())
+				.ToList();
+
+			var latestItems = activities
+				.Take(3)
+				.Select(activity => $"{activity.CreatedOn:yyyy-MM-dd HH:mm} UTC — {GetTypeBadgeLabel(activity)} — {activity.Subject ?? "(No subject)"}")
+				.ToList();
+
+			var summary = new StringBuilder();
+			summary.Append("Recent changes for ");
+			summary.Append(String.IsNullOrWhiteSpace(scopeLabel) ? "the selected scope" : scopeLabel.Trim());
+			summary.Append(": ");
+			summary.Append(String.Join(", ", groupedByType.Take(3).Select(group => group.Key + " (" + group.Count().ToString(CultureInfo.InvariantCulture) + ")")));
+			summary.Append(". ");
+
+			if (latestItems.Count > 0)
+			{
+				summary.Append("Latest activity points: ");
+				summary.Append(String.Join("; ", latestItems));
+				summary.Append(". ");
+			}
+
+			summary.Append("Follow-up: verify escalation progress, confirm ownership of open actions, and align customer communication before the next meeting.");
+			return summary.ToString();
+		}
+
+		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, string summary, List<ActivityItem> activities)
 		{
 			var activityTypes = ParseActivityTypes(activityTypesJson);
 			var sb = new StringBuilder();
@@ -826,13 +988,21 @@ namespace DynamicsActivitiesNotifySubscribers
 			sb.AppendLine("</div>");
 			sb.AppendLine("<div style='padding:24px 28px;'>");
 			sb.AppendLine("<div style='background:#eff0f0;border-left:3px solid #2563eb;padding:14px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;color:#44484e;font-size:14px;line-height:1.5;'>");
-			sb.AppendLine($"<div><strong>Scope:</strong> {HtmlEncode(scopeType)} — {HtmlEncode(scopeLabel ?? scopeValue)}</div>");
-			sb.AppendLine($"<div><strong>Period:</strong> {since:yyyy-MM-dd HH:mm} UTC → {until:yyyy-MM-dd HH:mm} UTC</div>");
-			sb.AppendLine($"<div><strong>New activities:</strong> {activities.Count}</div>");
+			sb.AppendLine($"<div><strong>Scope:</strong> {HtmlEncode(scopeLabel ?? scopeValue)}</div>");
+			sb.AppendLine($"<div><strong>New activities:</strong> {activities.Count} since {since:yyyy-MM-dd HH:mm} UTC</div>");
 			sb.AppendLine(activityTypes != null && activityTypes.Count > 0
 				? $"<div><strong>Activity types:</strong> {HtmlEncode(string.Join(", ", activityTypes))}</div>"
 				: "<div><strong>Activity types:</strong> All</div>");
 			sb.AppendLine("</div>");
+
+			if (!String.IsNullOrWhiteSpace(summary))
+			{
+				sb.AppendLine("<div style='background:#f7f9ff;border:1px solid #dbe7ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;'>");
+				sb.AppendLine("<div style='font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:8px;'>Timeline highlights</div>");
+				sb.AppendLine($"<div style='color:#1f2937;font-size:13px;line-height:1.6;white-space:pre-wrap;'>{HtmlEncode(summary)}</div>");
+				sb.AppendLine("</div>");
+			}
+
 			sb.AppendLine($"<div style='margin-bottom:16px;'><a href='{HtmlEncode(ActivitiesAppUrl)}' style='display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;'>Open Dynamics Activities</a></div>");
 
 			foreach (var item in activities)

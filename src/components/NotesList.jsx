@@ -11,6 +11,7 @@ import {
   ACTIVITY_TYPES,
   ESCALATION_STATUSES,
 } from '../api/dataverse'
+import { summarizeActivities } from '../api/activitySummary'
 import AutocompletePicker from './AutocompletePicker'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
@@ -100,9 +101,31 @@ function fmtDate(d) {
   })
 }
 
+function fmtIsoDate(d) {
+  if (!d) return ''
+  const parsed = new Date(d)
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString()
+}
+
 function noteRecordId(note) {
   if (note?._entityType === 'slc_escalations') return note.slc_escalationid
   return note.activityid || note.annotationid
+}
+
+function toSummaryActivity(note) {
+  const description = (note.notetext || note.description || '').replace(/\s+/g, ' ').trim()
+  const regarding = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
+    || ''
+
+  return {
+    createdOnUtc: fmtIsoDate(noteDate(note)),
+    type: noteTypeLabel(note),
+    subject: note.subject || '',
+    regarding,
+    description: description.slice(0, 260),
+  }
 }
 
 function escapeHtml(value) {
@@ -307,9 +330,12 @@ function NoteCard({ note, expanded, onToggle }) {
 
 export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false }) {
   const { instance } = useMsal()
+  const summaryRequestRef = useRef(0)
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [timelineSummary, setTimelineSummary] = useState(null)
+  const [timelineSummaryLoading, setTimelineSummaryLoading] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [tamAutoApplied, setTamAutoApplied] = useState(false)
   const [activeViewId, setActiveViewId] = useState('activities')
@@ -350,6 +376,8 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const runSearch = useCallback(() => {
     setLoading(true)
     setError(null)
+    setTimelineSummary(null)
+    setTimelineSummaryLoading(false)
     searchActivities(instance, {
       accountIds: accounts.map((a) => a.accountid),
       contactId: attendee?.contactid ?? null,
@@ -357,7 +385,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
     })
-      .then(async (results) => {
+      .then((results) => {
         setNotes(results)
       })
       .catch((e) => setError(e.message))
@@ -373,6 +401,53 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   useEffect(() => {
     if (tamAutoApplied && accounts.length && notes === null) runSearch()
   }, [tamAutoApplied]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (activeViewId !== 'activities') {
+      setTimelineSummary(null)
+      setTimelineSummaryLoading(false)
+      return
+    }
+
+    if (!Array.isArray(notes) || notes.length === 0) {
+      setTimelineSummary(null)
+      setTimelineSummaryLoading(false)
+      return
+    }
+
+    const payload = {
+      scopeLabel: accounts.length ? accounts.map((account) => account.name).join(', ') : 'All accounts',
+      fromUtc: dateFrom ? new Date(dateFrom).toISOString() : null,
+      untilUtc: dateTo ? new Date(dateTo).toISOString() : null,
+      activities: notes.slice(0, 50).map(toSummaryActivity),
+    }
+
+    const requestId = summaryRequestRef.current + 1
+    summaryRequestRef.current = requestId
+    setTimelineSummaryLoading(true)
+    setTimelineSummary(null)
+
+    summarizeActivities(payload)
+      .then((result) => {
+        if (summaryRequestRef.current !== requestId) return
+        if (!result?.summary) {
+          setTimelineSummary(null)
+          return
+        }
+
+        setTimelineSummary({
+          text: result.summary,
+          generatedBy: result.generatedBy || 'assistant',
+          warning: result.warning || null,
+        })
+      })
+      .catch(() => {
+        if (summaryRequestRef.current === requestId) setTimelineSummary(null)
+      })
+      .finally(() => {
+        if (summaryRequestRef.current === requestId) setTimelineSummaryLoading(false)
+      })
+  }, [notes, activeViewId, dateFrom, dateTo, accounts])
 
   return (
     <div className="notes-container">
@@ -529,20 +604,42 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
       {loading && <div className="loading-text">Searching…</div>}
 
       {notes !== null && notes.length > 0 && (
-        <div className="notes-list">
-          {notes.map((n) => {
-            const recordId = noteRecordId(n)
+        <>
+          {(timelineSummaryLoading || timelineSummary) && (
+            <div className="timeline-summary-card">
+              <div className="timeline-summary-title">
+                <span className="icon icon-sm" aria-hidden="true">auto_awesome</span>
+                Timeline highlights
+              </div>
+              {timelineSummaryLoading ? (
+                <div className="timeline-summary-text">Generating summary…</div>
+              ) : (
+                <>
+                  <div className="timeline-summary-text">{timelineSummary?.text}</div>
+                  <div className="timeline-summary-meta">
+                    Generated by {timelineSummary?.generatedBy === 'assistant' ? 'Assistant DxM' : 'fallback summary'}
+                    {timelineSummary?.warning ? ` (${timelineSummary.warning})` : ''}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
-            return (
-              <NoteCard
-                key={recordId}
-                note={n}
-                expanded={expandedId === recordId}
-                onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
-              />
-            )
-          })}
-        </div>
+          <div className="notes-list">
+            {notes.map((n) => {
+              const recordId = noteRecordId(n)
+
+              return (
+                <NoteCard
+                  key={recordId}
+                  note={n}
+                  expanded={expandedId === recordId}
+                  onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
+                />
+              )
+            })}
+          </div>
+        </>
       )}
     </div>
   )

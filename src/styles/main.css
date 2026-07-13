@@ -826,6 +826,37 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 .notes-list { display: flex; flex-direction: column; gap: 8px; }
 
+.timeline-summary-card {
+  background: var(--color1);
+  border: 1px solid color-mix(in srgb, var(--focus-color) 35%, var(--color5));
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline-summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--focus-color);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.timeline-summary-text {
+  color: var(--color12);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: pre-wrap;
+}
+
+.timeline-summary-meta {
+  color: var(--color10);
+  font-size: 11px;
+}
+
 .note-card {
   background: var(--color1);
   border: 1px solid var(--color5);
