@@ -340,11 +340,12 @@ namespace DynamicsActivitiesNotifySubscribers
 			var accountFilter = BuildOrFilter("_parentaccountid_value", capped);
 			var parentCustomerFilter = BuildOrFilter("_parentcustomerid_value", capped);
 			var regardingFilter = BuildOrFilter("_regardingobjectid_value", capped);
+			var escalationAccountFilter = BuildOrFilter(EscalationAccountLookupField, capped);
 
 			AddIdsFromQuery(ids, $"/opportunities?$select=opportunityid&$filter={accountFilter}&$top=200", "opportunityid");
 			AddIdsFromQuery(ids, $"/contacts?$select=contactid&$filter={parentCustomerFilter}&$top=200", "contactid");
 			AddIdsFromQuery(ids, $"/leads?$select=leadid&$filter={accountFilter}&$top=200", "leadid");
-			AddIdsFromQuery(ids, $"/slc_escalations?$select=slc_escalationid&$filter={regardingFilter}&$top=200", "slc_escalationid");
+			AddIdsFromQuery(ids, $"/slc_escalations?$select=slc_escalationid&$filter={escalationAccountFilter}&$top=200", "slc_escalationid");
 
 			// Include direct activities so notes linked to those activity records can also be matched in-scope.
 			AddIdsFromQuery(ids, $"/phonecalls?$select=activityid&$filter={regardingFilter}&$top=200", "activityid");
