@@ -64,13 +64,16 @@ export async function summarizeActivities(payload) {
   if (!payload || !Array.isArray(payload.activities) || payload.activities.length === 0) return null
 
   let connection = await resolveConnection()
-  if (!connection) return null
+  if (!connection) {
+    connection = await bootstrapSession({ redirectOnFailure: true, maxAttempts: 2, retryDelayMs: 250 })
+    if (!connection) return null
+  }
 
   let result = await executeScript(connection, payload, false)
   if (!result || !result.ScriptOutput) {
-    connection = await bootstrapSession({ redirectOnFailure: false, maxAttempts: 2, retryDelayMs: 250 })
+    connection = await bootstrapSession({ redirectOnFailure: true, maxAttempts: 2, retryDelayMs: 250 })
     if (!connection) return null
-    result = await executeScript(connection, payload, false)
+    result = await executeScript(connection, payload, true)
   }
 
   if (!result || !result.ScriptOutput) return null

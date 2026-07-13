@@ -932,6 +932,23 @@ namespace DynamicsActivitiesNotifySubscribers
 				return direct;
 			}
 
+			foreach (var assemblyName in new[] { "Skyline.DataMiner.Assistant.Integration", "Skyline.DataMiner.Core.Assistant", "Skyline.DataMiner.Core.Assistant.Integration" })
+			{
+				try
+				{
+					var loadedAssembly = Assembly.Load(assemblyName);
+					var loadedType = loadedAssembly?.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
+					if (loadedType != null)
+					{
+						return loadedType;
+					}
+				}
+				catch
+				{
+					// Ignore load failures and continue searching.
+				}
+			}
+
 			foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
 			{
 				var candidate = assembly.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
