@@ -20,6 +20,7 @@ export default function AutocompletePicker({
   getKey,
   getLabel,
   getSublabel,
+  renderIcon,
   value,
   onChange,
   onEnter,
@@ -155,14 +156,17 @@ export default function AutocompletePicker({
           {results.map((item, i) => (
             <li
               key={getKey(item)}
-              className={i === activeIndex ? 'active' : ''}
+              className={`${i === activeIndex ? 'active' : ''}${renderIcon ? ' has-icon' : ''}`}
               onMouseDown={() => pick(item)}
               onMouseEnter={() => setActiveIndex(i)}
             >
-              <span>{getLabel(item)}</span>
-              {getSublabel && getSublabel(item) && (
-                <span className="dropdown-sub">{getSublabel(item)}</span>
-              )}
+              {renderIcon && renderIcon(item)}
+              <span className="dropdown-text">
+                <span>{getLabel(item)}</span>
+                {getSublabel && getSublabel(item) && (
+                  <span className="dropdown-sub">{getSublabel(item)}</span>
+                )}
+              </span>
             </li>
           ))}
         </ul>
