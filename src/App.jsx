@@ -27,8 +27,43 @@ function resolveTheme(pref) {
   return pref
 }
 
+function buildBugReportUrl({ activeTab, reporter }) {
+  const tabLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? activeTab
+  const timestamp = new Date().toISOString()
+  const issueBody = [
+    '## Problem',
+    '<Describe what happened and why it is a bug.>',
+    '',
+    '## Steps to reproduce',
+    '1. <Step 1>',
+    '2. <Step 2>',
+    '',
+    '## Expected behavior',
+    '<What should happen?>',
+    '',
+    '## Additional context',
+    '<Any logs, screenshots, or details>',
+    '',
+    '---',
+    '### Auto-captured context',
+    `- Active tab: ${tabLabel}`,
+    `- App URL: ${window.location.href}`,
+    `- Browser: ${navigator.userAgent}`,
+    `- Reporter: ${reporter || 'Unknown user'}`,
+    `- Timestamp: ${timestamp}`,
+    `- App version: ${import.meta.env.VITE_APP_VERSION || 'unknown'}`,
+  ].join('\n')
+
+  const params = new URLSearchParams({
+    labels: 'bug',
+    body: issueBody,
+  })
+
+  return `https://github.com/SkylineCommunications/DynamicsActivities/issues/new?${params.toString()}`
+}
+
 export default function App() {
-  const { instance } = useMsal()
+  const { instance, accounts } = useMsal()
   const { managedAccounts, loading: tamLoading } = useTamContext()
   const [activeTab, setActiveTab] = useState('browse')
   const [themePref, setThemePref] = useState(getInitialTheme)
@@ -58,6 +93,12 @@ function cycleTheme() {
   const subscriptionsAvailable = Boolean(dmaConnection)
 
   const themeIcon = themePref === 'dark' ? 'dark_mode' : themePref === 'light' ? 'light_mode' : 'contrast'
+  const reporterName = dmaUser?.FullName || accounts?.[0]?.name || accounts?.[0]?.username || ''
+
+  function openBugReport() {
+    const url = buildBugReportUrl({ activeTab, reporter: reporterName })
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   return (
     <AuthGuard onDmaConnection={setDmaConnection}>
@@ -81,6 +122,15 @@ function cycleTheme() {
                 aria-label={`Theme: ${themePref}`}
               >
                 <span className="icon" aria-hidden="true">{themeIcon}</span>
+              </button>
+              <button
+                type="button"
+                className="bug-report-btn"
+                onClick={openBugReport}
+                title="Report a bug"
+                aria-label="Report a bug"
+              >
+                <span className="icon" aria-hidden="true">bug_report</span>
               </button>
               <button
                 type="button"

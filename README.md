@@ -15,6 +15,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
 - **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types
 - **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled license request email to IT
+- **Report a bug** entry point in the app header opens a prefilled GitHub issue with auto-captured context
 - Open any activity directly in Dynamics 365 with a single click
 - Delete activities with an inline confirm flow
 - DataMiner design system — Inter font, DataMinerIcons, CSS custom properties
@@ -106,6 +107,8 @@ Deployment is automated via the **"Build, Register and Deploy DMAPP"** GitHub Ac
 3. Packages into a `.dmapp` using the `DynamicsActivitiesPackage/` .NET project
 4. Uploads to the DataMiner Catalog
 5. Deploys to the target DMA agent
+
+Bug reports are auto-triaged by the **"Copilot bug triage"** workflow, which triggers on `bug`-labeled issues and asks `@copilot` to investigate and propose a limited-scope fix PR when appropriate.
 
 The build output (`dist-dataminer/`) is packaged as companion files and installed to:
 ```
