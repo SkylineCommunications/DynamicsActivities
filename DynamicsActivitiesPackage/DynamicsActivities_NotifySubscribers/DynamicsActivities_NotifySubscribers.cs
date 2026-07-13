@@ -900,11 +900,36 @@ namespace DynamicsActivitiesNotifySubscribers
 					return null;
 				}
 
-				var helper = Activator.CreateInstance(helperType, userConnection, TimeSpan.FromSeconds(45));
+				var createAsync = helperType.GetMethod("CreateAsync", BindingFlags.Public | BindingFlags.Static, null, null, null);
+				if (createAsync == null)
+				{
+					warning = "ChatHelper.CreateAsync(...) not found.";
+					diagnostics = "CreateAsync reflection lookup failed on '" + helperType.AssemblyQualifiedName + "'.";
+					return null;
+				}
+
+				var createTaskObject = createAsync.Invoke(null, new object[] { userConnection, AssistantAgentId, (TimeSpan?)TimeSpan.FromSeconds(45) });
+				if (createTaskObject == null)
+				{
+					warning = "Assistant returned no chat helper creation task.";
+					diagnostics = "CreateAsync returned null task object.";
+					return null;
+				}
+
+				var createTask = createTaskObject as Task;
+				if (createTask == null)
+				{
+					warning = "Assistant chat helper creation was not a Task instance.";
+					diagnostics = "CreateAsync returned unexpected type '" + createTaskObject.GetType().FullName + "'.";
+					return null;
+				}
+
+				var createAwaiter = createTaskObject.GetType().GetMethod("GetAwaiter", BindingFlags.Public | BindingFlags.Instance)?.Invoke(createTaskObject, null);
+				var helper = createAwaiter?.GetType().GetMethod("GetResult", BindingFlags.Public | BindingFlags.Instance)?.Invoke(createAwaiter, null);
 				if (helper == null)
 				{
 					warning = "Failed to create ChatHelper.";
-					diagnostics = "Activator.CreateInstance returned null for '" + helperType.AssemblyQualifiedName + "'.";
+					diagnostics = "CreateAsync completed with null chat helper for '" + helperType.AssemblyQualifiedName + "'.";
 					return null;
 				}
 
@@ -920,7 +945,7 @@ namespace DynamicsActivitiesNotifySubscribers
 						return null;
 					}
 
-					var responseTaskObject = sendMessage.Invoke(helper, new object[] { prompt, AssistantAgentId.ToString(), null });
+					var responseTaskObject = sendMessage.Invoke(helper, new object[] { prompt, null, null });
 					if (responseTaskObject == null)
 					{
 						warning = "Assistant returned no response task.";
