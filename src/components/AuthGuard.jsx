@@ -16,7 +16,8 @@ function buildLicenseRequestMailto() {
   const body = [
     'Hello IT team,',
     '',
-    `I would like to request an ${REQUESTED_LICENSE} license for access to ${APP_NAME}.`,
+    `I would like to request a ${REQUESTED_LICENSE} license for access to ${APP_NAME}.`,
+    'Please also grant access to the sandbox environment with the team-member-qa role.',
     '',
     'Thanks.',
   ].join('\n')
