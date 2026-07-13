@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.8.70</Version>
-		<VersionComment>Avoid runtime Newtonsoft JToken.ToString(Formatting) overload usage</VersionComment>
+		<Version>1.8.71</Version>
+		<VersionComment>Unify formatted HTML timeline summary for browse and digest email</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>

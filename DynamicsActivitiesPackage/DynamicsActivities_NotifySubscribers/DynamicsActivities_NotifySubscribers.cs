@@ -820,12 +820,12 @@ namespace DynamicsActivitiesNotifySubscribers
 			return JObject.Parse(payload);
 		}
 
-		private string GenerateDigestSummary(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
+		private SummaryResult GenerateDigestSummary(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
 		{
 			var payload = BuildSummarizePayload(scopeLabel, since, until, activities);
 			engine?.GenerateInformation($"[NotifySubscribers] Calling {SummarizeScriptName} for digest summary (scope='{(String.IsNullOrWhiteSpace(scopeLabel) ? "selected scope" : scopeLabel.Trim())}', activities={activities.Count}).");
 			var summary = TryGenerateSummaryViaSubScript(payload, out var warning, out var diagnostics);
-			if (!String.IsNullOrWhiteSpace(summary))
+			if (!String.IsNullOrWhiteSpace(summary?.Text))
 			{
 				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} returned digest summary.");
 				return summary;
@@ -841,7 +841,15 @@ namespace DynamicsActivitiesNotifySubscribers
 				engine?.GenerateInformation($"[NotifySubscribers] {SummarizeScriptName} diagnostics: {diagnostics}");
 			}
 
-			return BuildFallbackDigestSummary(scopeLabel, activities);
+			var fallbackText = BuildFallbackDigestSummary(scopeLabel, activities);
+			return new SummaryResult
+			{
+				Text = fallbackText,
+				Html = BuildSummaryHtmlFromText(fallbackText),
+				Warning = warning,
+				Diagnostics = diagnostics,
+				GeneratedBy = "fallback",
+			};
 		}
 
 		private static string BuildSummarizePayload(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
@@ -865,7 +873,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			return JsonConvert.SerializeObject(payload);
 		}
 
-		private string TryGenerateSummaryViaSubScript(string payload, out string warning, out string diagnostics)
+		private SummaryResult TryGenerateSummaryViaSubScript(string payload, out string warning, out string diagnostics)
 		{
 			warning = null;
 			diagnostics = null;
@@ -930,11 +938,25 @@ namespace DynamicsActivitiesNotifySubscribers
 					var parsed = JObject.Parse(rawResult);
 					warning = parsed["warning"]?.Value<string>();
 					diagnostics = parsed["diagnostics"]?.Value<string>();
-					return parsed["summary"]?.Value<string>();
+					return new SummaryResult
+					{
+						Text = parsed["summary"]?.Value<string>(),
+						Html = parsed["summaryHtml"]?.Value<string>(),
+						Warning = warning,
+						Diagnostics = diagnostics,
+						GeneratedBy = parsed["generatedBy"]?.Value<string>(),
+					};
 				}
 				catch
 				{
-					return rawResult.Trim();
+					return new SummaryResult
+					{
+						Text = rawResult.Trim(),
+						Html = BuildSummaryHtmlFromText(rawResult.Trim()),
+						Warning = warning,
+						Diagnostics = diagnostics,
+						GeneratedBy = "fallback",
+					};
 				}
 			}
 			catch (Exception ex)
@@ -1087,9 +1109,15 @@ namespace DynamicsActivitiesNotifySubscribers
 			return summary.ToString();
 		}
 
-		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, string summary, List<ActivityItem> activities)
+		private static string BuildEmailBody(string userName, string scopeType, string scopeValue, string scopeLabel, string activityTypesJson, DateTime since, DateTime until, SummaryResult summary, List<ActivityItem> activities)
 		{
 			var activityTypes = ParseActivityTypes(activityTypesJson);
+			var summaryHtml = summary?.Html;
+			if (String.IsNullOrWhiteSpace(summaryHtml) && !String.IsNullOrWhiteSpace(summary?.Text))
+			{
+				summaryHtml = BuildSummaryHtmlFromText(summary.Text);
+			}
+
 			var sb = new StringBuilder();
 			sb.AppendLine("<!DOCTYPE html><html><head><meta charset='utf-8' />");
 			sb.AppendLine("<meta name='viewport' content='width=device-width,initial-scale=1' />");
@@ -1108,11 +1136,11 @@ namespace DynamicsActivitiesNotifySubscribers
 				: "<div><strong>Activity types:</strong> All</div>");
 			sb.AppendLine("</div>");
 
-			if (!String.IsNullOrWhiteSpace(summary))
+			if (!String.IsNullOrWhiteSpace(summaryHtml))
 			{
 				sb.AppendLine("<div style='background:#f7f9ff;border:1px solid #dbe7ff;border-radius:10px;padding:14px 16px;margin-bottom:14px;'>");
 				sb.AppendLine("<div style='font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:8px;'>Timeline highlights</div>");
-				sb.AppendLine($"<div style='color:#1f2937;font-size:13px;line-height:1.6;white-space:pre-wrap;'>{HtmlEncode(summary)}</div>");
+				sb.AppendLine($"<div style='color:#1f2937;font-size:13px;line-height:1.6;'>{summaryHtml}</div>");
 				sb.AppendLine("</div>");
 			}
 
@@ -1295,6 +1323,34 @@ namespace DynamicsActivitiesNotifySubscribers
 			return normalized.Trim();
 		}
 
+		private static string BuildSummaryHtmlFromText(string summary)
+		{
+			if (String.IsNullOrWhiteSpace(summary))
+			{
+				return String.Empty;
+			}
+
+			var lines = summary
+				.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+				.Select(line => (line ?? String.Empty).Trim())
+				.Where(line => line.Length > 0)
+				.ToList();
+			if (lines.Count == 0)
+			{
+				return String.Empty;
+			}
+
+			var sb = new StringBuilder();
+			foreach (var line in lines)
+			{
+				sb.Append("<p style='margin:0 0 8px;'>");
+				sb.Append(HtmlEncode(line));
+				sb.Append("</p>");
+			}
+
+			return sb.ToString();
+		}
+
 		private static string GetTypeColor(string entityType)
 		{
 			switch ((entityType ?? string.Empty).ToLowerInvariant())
@@ -1390,6 +1446,19 @@ namespace DynamicsActivitiesNotifySubscribers
 			public string ScopeValue { get; set; } = String.Empty;
 			public List<string> AccountIds { get; set; } = new List<string>();
 			public List<string> ActivityLookupIds { get; set; } = new List<string>();
+		}
+
+		private sealed class SummaryResult
+		{
+			public string Text { get; set; }
+
+			public string Html { get; set; }
+
+			public string Warning { get; set; }
+
+			public string Diagnostics { get; set; }
+
+			public string GeneratedBy { get; set; }
 		}
 	}
 }

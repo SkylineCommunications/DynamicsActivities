@@ -12,9 +12,9 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - Link activities to Dynamics 365 accounts and contacts
 - Prefill attendees from your **Microsoft 365 calendar** (meeting rooms filtered out)
 - Browse and filter the full organisation's activity history with lazy server-side OData queries
-- **AI timeline highlights** in Browse — assistant-generated summary above loaded activities
+- **AI timeline highlights** in Browse — assistant-generated summary rendered as formatted HTML sections above loaded activities
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
-- **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights
+- **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights rendered in the same HTML summary format as Browse
 - **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled license request email to IT
 - Open any activity directly in Dynamics 365 with a single click
 - Delete activities with an inline confirm flow
@@ -129,7 +129,7 @@ Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesP
 
 - Subscriptions are stored in **DataMiner DOM** and managed via `DynamicsActivities_ManageSubscriptions`.
 - Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually), which invokes `DynamicsActivities_Summarize` to generate timeline highlights.
-- Digest emails now include a top-level Assistant-generated timeline summary (with deterministic fallback if Assistant integration is unavailable).
+- Digest emails now include a top-level Assistant-generated timeline summary (with deterministic fallback if Assistant integration is unavailable), rendered as formatted HTML instead of escaped plain text.
 - Browse view (`NotesList`) can request timeline highlights through `DynamicsActivities_Summarize`.
 - Timeline highlights now show whether Assistant or deterministic fallback generated the text, and surface fallback warning details from script output.
 - Assistant agent usage requires DataMiner Assistant Agent Integration to be enabled on the DMA (see manual configuration notes in implementation handoff).

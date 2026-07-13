@@ -69,9 +69,11 @@ namespace DynamicsActivitiesSummarize
 			if (request.Activities.Count == 0)
 			{
 				engine.GenerateInformation($"{InfoPrefix} No activities received. Returning deterministic empty summary.");
+				var emptySummary = "No activities loaded yet.";
 				engine.AddScriptOutput("result", JsonConvert.SerializeObject(new SummaryOutput
 				{
-					Summary = "No activities loaded yet.",
+					Summary = emptySummary,
+					SummaryHtml = BuildSummaryHtml(emptySummary, request),
 					GeneratedBy = "fallback",
 					Warning = null,
 					Diagnostics = "No activities were provided in the payload.",
@@ -103,10 +105,12 @@ namespace DynamicsActivitiesSummarize
 			}
 
 			engine.GenerateInformation($"{InfoPrefix} Completed. GeneratedBy={generatedBy}, SummaryLength={summary.Length}.");
+			var summaryHtml = BuildSummaryHtml(summary, request);
 
 			engine.AddScriptOutput("result", JsonConvert.SerializeObject(new SummaryOutput
 			{
 				Summary = summary,
+				SummaryHtml = summaryHtml,
 				GeneratedBy = generatedBy,
 				Warning = warning,
 				Diagnostics = diagnostics,
@@ -394,6 +398,133 @@ namespace DynamicsActivitiesSummarize
 			return sb.ToString();
 		}
 
+		private static string BuildSummaryHtml(string summary, SummaryRequest request)
+		{
+			var safeSummary = String.IsNullOrWhiteSpace(summary) ? "-" : summary.Trim();
+			var safeScope = String.IsNullOrWhiteSpace(request?.ScopeLabel) ? "Selected scope" : request.ScopeLabel.Trim();
+			var safeFrom = String.IsNullOrWhiteSpace(request?.FromUtc) ? "unknown" : request.FromUtc.Trim();
+			var safeUntil = String.IsNullOrWhiteSpace(request?.UntilUtc) ? "now" : request.UntilUtc.Trim();
+			var topActivities = (request?.Activities ?? new List<ActivityInput>()).Take(3).ToList();
+
+			var sb = new StringBuilder();
+			sb.Append("<section><h4>Key highlights</h4>");
+			AppendPlainTextAsHtml(sb, safeSummary);
+			sb.Append("</section>");
+
+			sb.Append("<section><h4>Context</h4><ul>");
+			sb.Append("<li><strong>Scope:</strong> ");
+			sb.Append(HtmlEncode(safeScope));
+			sb.Append("</li>");
+			sb.Append("<li><strong>Period (UTC):</strong> ");
+			sb.Append(HtmlEncode(safeFrom));
+			sb.Append(" to ");
+			sb.Append(HtmlEncode(safeUntil));
+			sb.Append("</li>");
+			sb.Append("</ul></section>");
+
+			sb.Append("<section><h4>Latest timeline points</h4>");
+			if (topActivities.Count == 0)
+			{
+				sb.Append("<p>No recent activity points available.</p>");
+			}
+			else
+			{
+				sb.Append("<ul>");
+				foreach (var activity in topActivities)
+				{
+					sb.Append("<li><strong>[");
+					sb.Append(HtmlEncode(SafeValue(activity.CreatedOnUtc)));
+					sb.Append("]</strong> ");
+					sb.Append(HtmlEncode(SafeValue(activity.Type)));
+					sb.Append(" — ");
+					sb.Append(HtmlEncode(SafeValue(activity.Subject)));
+					sb.Append("</li>");
+				}
+				sb.Append("</ul>");
+			}
+
+			sb.Append("</section>");
+			return sb.ToString();
+		}
+
+		private static void AppendPlainTextAsHtml(StringBuilder sb, string text)
+		{
+			var lines = (text ?? String.Empty)
+				.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+				.Select(line => (line ?? String.Empty).Trim())
+				.Where(line => line.Length > 0)
+				.ToList();
+			if (lines.Count == 0)
+			{
+				sb.Append("<p>-</p>");
+				return;
+			}
+
+			var bulletLines = lines
+				.Select(line => line.TrimStart('-', '*', '•', ' '))
+				.Where(line => line.Length > 0)
+				.ToList();
+			var allLinesAreBullets = lines.All(line => IsLikelyBulletLine(line));
+			if (allLinesAreBullets && bulletLines.Count > 0)
+			{
+				sb.Append("<ul>");
+				foreach (var line in bulletLines)
+				{
+					sb.Append("<li>");
+					sb.Append(HtmlEncode(line));
+					sb.Append("</li>");
+				}
+
+				sb.Append("</ul>");
+				return;
+			}
+
+			foreach (var line in lines)
+			{
+				sb.Append("<p>");
+				sb.Append(HtmlEncode(line));
+				sb.Append("</p>");
+			}
+		}
+
+		private static bool IsLikelyBulletLine(string line)
+		{
+			if (String.IsNullOrWhiteSpace(line))
+			{
+				return false;
+			}
+
+			var trimmed = line.TrimStart();
+			if (trimmed.StartsWith("-", StringComparison.Ordinal) || trimmed.StartsWith("*", StringComparison.Ordinal) || trimmed.StartsWith("•", StringComparison.Ordinal))
+			{
+				return true;
+			}
+
+			var closeParen = trimmed.IndexOf(')');
+			if (closeParen > 0 && closeParen <= 3)
+			{
+				var prefix = trimmed.Substring(0, closeParen);
+				return prefix.All(Char.IsDigit);
+			}
+
+			return false;
+		}
+
+		private static string HtmlEncode(string value)
+		{
+			if (String.IsNullOrEmpty(value))
+			{
+				return String.Empty;
+			}
+
+			return value
+				.Replace("&", "&amp;")
+				.Replace("<", "&lt;")
+				.Replace(">", "&gt;")
+				.Replace("\"", "&quot;")
+				.Replace("'", "&#39;");
+		}
+
 		private static string SafeValue(string value)
 		{
 			return String.IsNullOrWhiteSpace(value) ? "-" : value.Trim();
@@ -446,6 +577,9 @@ namespace DynamicsActivitiesSummarize
 		{
 			[JsonProperty("summary")]
 			public string Summary { get; set; }
+
+			[JsonProperty("summaryHtml")]
+			public string SummaryHtml { get; set; }
 
 			[JsonProperty("generatedBy")]
 			public string GeneratedBy { get; set; }
