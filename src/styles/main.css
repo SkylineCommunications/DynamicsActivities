@@ -187,6 +187,26 @@ body {
   border-color: var(--color6);
 }
 
+.bug-report-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color5);
+  border-radius: var(--radius-md);
+  background: var(--color2);
+  color: var(--color11);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.bug-report-btn:hover {
+  background: color-mix(in srgb, var(--major) 12%, transparent);
+  border-color: color-mix(in srgb, var(--major) 35%, transparent);
+  color: color-mix(in srgb, var(--major) 85%, var(--color12));
+}
+
 .sign-out-btn {
   display: inline-flex;
   align-items: center;
