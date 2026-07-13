@@ -27,6 +27,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private const string ActivitiesAppUrl = "https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivities/";
 		private const string TenantId = "5f175691-8d1c-4932-b7c8-ce990839ac40";
 		private const string ClientId = "f7274be0-4d28-4b1b-8691-6e2da803ba9e";
+		private const string EscalationAccountLookupField = "_slc_accountid_value";
 		private const string SummarizeScriptName = "DynamicsActivities_Summarize";
 		private const string SummarizePayloadParamName = "Payload";
 		private const int SummarizePayloadParamId = 10;
@@ -468,24 +469,24 @@ namespace DynamicsActivitiesNotifySubscribers
 
 		private List<ActivityItem> FetchEscalations(List<string> accountIds, string fromIso)
 		{
-			var filters = BuildLookupFilters("_regardingobjectid_value", accountIds);
+			var filters = BuildLookupFilters(EscalationAccountLookupField, accountIds);
 			if (!string.IsNullOrEmpty(fromIso))
 			{
 				filters.Add($"createdon gt {fromIso}");
 			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/slc_escalations?$select=slc_escalationid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
+			var json = DataverseGet($"/slc_escalations?$select=slc_escalationid,slc_name,createdon,{EscalationAccountLookupField},slc_startdate,statecode,statuscode{filter}&$orderby=createdon desc&$top=100");
 
 			return json["value"]?.Select(v => new ActivityItem
 			{
 				Id = NormalizeDataverseId(v["slc_escalationid"]?.Value<string>()),
 				EntityType = "slc_escalations",
 				TypeLabel = "Escalation",
-				Subject = v["subject"]?.Value<string>(),
-				Description = v["description"]?.Value<string>(),
+				Subject = v["slc_name"]?.Value<string>() ?? "Escalation",
+				Description = String.Empty,
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				RegardingId = NormalizeDataverseId(v["_regardingobjectid_value"]?.Value<string>()),
-				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
+				RegardingId = NormalizeDataverseId(v[EscalationAccountLookupField]?.Value<string>()),
+				Regarding = v[$"{EscalationAccountLookupField}@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
 		}
 
