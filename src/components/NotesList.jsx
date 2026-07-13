@@ -113,7 +113,10 @@ function noteRecordId(note) {
 }
 
 function toSummaryActivity(note) {
-  const description = (note.notetext || note.description || '').replace(/\s+/g, ' ').trim()
+  const description = (note.notetext || note.description || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
   const regarding = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
     || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
     || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']

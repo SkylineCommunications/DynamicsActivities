@@ -401,40 +401,24 @@ namespace DynamicsActivitiesSummarize
 		private static string BuildSummaryHtml(string summary, SummaryRequest request)
 		{
 			var safeSummary = String.IsNullOrWhiteSpace(summary) ? "-" : summary.Trim();
-			var safeScope = String.IsNullOrWhiteSpace(request?.ScopeLabel) ? "Selected scope" : request.ScopeLabel.Trim();
-			var safeFrom = String.IsNullOrWhiteSpace(request?.FromUtc) ? "unknown" : request.FromUtc.Trim();
-			var safeUntil = String.IsNullOrWhiteSpace(request?.UntilUtc) ? "now" : request.UntilUtc.Trim();
 			var topActivities = (request?.Activities ?? new List<ActivityInput>()).Take(3).ToList();
 
 			var sb = new StringBuilder();
-			sb.Append("<section><h4>Summary</h4>");
+			sb.Append("<div style='font-size:13px;font-weight:700;color:#1d4ed8;margin:0 0 8px;'>Summary</div>");
 			AppendPlainTextAsHtml(sb, safeSummary);
-			sb.Append("</section>");
-
-			sb.Append("<section><h4>Context</h4><ul>");
-			sb.Append("<li><strong>Scope:</strong> ");
-			sb.Append(HtmlEncode(safeScope));
-			sb.Append("</li>");
-			sb.Append("<li><strong>Period (UTC):</strong> ");
-			sb.Append(HtmlEncode(safeFrom));
-			sb.Append(" to ");
-			sb.Append(HtmlEncode(safeUntil));
-			sb.Append("</li>");
-			sb.Append("</ul></section>");
-
-			sb.Append("<section><h4>Latest timeline points</h4>");
+			sb.Append("<div style='font-size:13px;font-weight:700;color:#1d4ed8;margin:8px 0;'>Latest timeline points</div>");
 			if (topActivities.Count == 0)
 			{
-				sb.Append("<p>No recent activity points available.</p>");
+				sb.Append("<p style='margin:0 0 8px;'>No recent activity points available.</p>");
 			}
 			else
 			{
-				sb.Append("<ul>");
+				sb.Append("<ul style='margin:0 0 8px;padding-left:18px;'>");
 				foreach (var activity in topActivities)
 				{
 					var createdOn = SafeValue(activity.CreatedOnUtc);
 					var hasKnownTimestamp = !String.Equals(createdOn, "-", StringComparison.Ordinal);
-					sb.Append("<li>");
+					sb.Append("<li style='margin:0 0 6px;'>");
 					if (hasKnownTimestamp)
 					{
 						sb.Append("<strong>[");
@@ -448,8 +432,6 @@ namespace DynamicsActivitiesSummarize
 				}
 				sb.Append("</ul>");
 			}
-
-			sb.Append("</section>");
 			return sb.ToString();
 		}
 
