@@ -16,7 +16,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - **AI timeline highlights** in Browse — assistant-generated summary rendered as formatted HTML sections above loaded activities
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
 - **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights rendered in the same HTML summary format as Browse
-- **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled license request email to IT
+- **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled access request email to IT
 - **Report a bug** entry point in the app header opens a prefilled GitHub issue with auto-captured context
 - Open any activity directly in Dynamics 365 with a single click
 - Delete activities with an inline confirm flow
@@ -47,7 +47,7 @@ The app uses **triple authentication**:
 1. **DataMiner session** — User signs in via DataMiner's `/auth/` page (Entra SSO). Sets `DMAConnection` and `DMAUser` cookies. Verified with `IsConnectionAlive` on app load.
 2. **MSAL for Dynamics 365 / Graph** — After DMA session is verified, acquires tokens via `ssoSilent` (same Entra tenant) or popup fallback. Used for Dataverse and Graph API calls.
 3. **MSAL for Skyline API** — Separate scope for the Skyline Collaboration API. Token acquired silently or via popup.
-4. **Dynamics license validation** — After sign-in, the app first verifies the signed-in user's Entra assigned plans via Microsoft Graph (`/me?$select=assignedPlans`) and allows access when any Dynamics-related plan is enabled (for example Team Member, Enterprise, Sales, etc.). Licensed users then go through a Dataverse access pre-check before entering the app. Users without usable Dynamics access (including users that are not members of the Dataverse organization) are redirected to a dedicated access-request page with a prefilled "Request license for access" mailto action that explicitly asks for a **Dynamics 365 Sales Team Member** license.
+4. **Dynamics license validation** — After sign-in, the app first verifies the signed-in user's Entra assigned plans via Microsoft Graph (`/me?$select=assignedPlans`) and allows access when any Dynamics-related plan is enabled (for example Team Member, Enterprise, Sales, etc.). Licensed users then go through a Dataverse access pre-check before entering the app. Users without usable Dynamics access (including users that are not members of the Dataverse organization) are redirected to a dedicated access-request page with a prefilled "Request license for access" mailto action that asks for both a **Dynamics 365 Sales Team Member** license and sandbox access with the **team-member-qa** role.
 
 On localhost, the DataMiner session check is skipped and MSAL popup auth is used directly.
 
