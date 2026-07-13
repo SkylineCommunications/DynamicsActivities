@@ -2,7 +2,9 @@ name: Copilot bug triage
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -10,24 +12,73 @@ permissions:
 
 jobs:
   request-copilot-investigation:
-    if: contains(github.event.issue.labels.*.name, 'bug')
+    if: >
+      github.event.issue.pull_request == null &&
+      (
+        (github.event_name == 'issues' && github.event.action == 'opened') ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.actor != 'github-actions[bot]' &&
+          startsWith(github.event.comment.body, '/investigate')
+        )
+      )
     runs-on: ubuntu-latest
     steps:
-      - name: Ask Copilot to investigate and propose fix
+      - name: Request Copilot investigation
         uses: actions/github-script@v7
+        env:
+          COPILOT_MENTION_HANDLE: ${{ vars.COPILOT_MENTION_HANDLE }}
         with:
           script: |
+            const marker = '<!-- copilot-bug-triage -->';
+            const issue = context.payload.issue;
+            const commandBody = context.payload.comment?.body?.trim() ?? '';
+            const isCommandTrigger = context.eventName === 'issue_comment';
+            const mentionHandle = (process.env.COPILOT_MENTION_HANDLE || '@svc-IntDocPub').trim();
+
+            if (isCommandTrigger && !/^\/investigate\b/i.test(commandBody)) {
+              core.info('No supported command found. Skipping.');
+              return;
+            }
+
+            const trigger = isCommandTrigger
+              ? `command \`${commandBody.split(/\s+/)[0]}\` by @${context.actor}`
+              : 'automatic new-issue trigger';
+
             const body = [
-              '@copilot please investigate this bug report.',
+              marker,
+              `${mentionHandle} please investigate this issue report.`,
+              '',
+              `Copilot investigation requested via ${trigger}.`,
               '',
               'Only proceed if you can confirm the report is valid and the required fix is limited in scope.',
               'If valid, implement the fix and open a PR with a concise explanation and risk notes.',
               'If not valid or too broad, comment with findings and a narrowed next step.',
             ].join('\n');
 
-            await github.rest.issues.createComment({
+            const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body,
+              per_page: 100,
             });
+
+            const existingComment = comments.find((comment) =>
+              comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker)
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
