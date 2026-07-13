@@ -390,7 +390,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
   const [accountImages, setAccountImages] = useState({})
-  const [attendee, setAttendee] = useState(null) // { contactid, fullname }
+  const [attendees, setAttendees] = useState([]) // [{ contactid, fullname }]
   const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
