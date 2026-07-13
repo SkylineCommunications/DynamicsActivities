@@ -517,9 +517,8 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               getSublabel={(c) => c.emailaddress1}
               value={null}
               onChange={(item) => {
-                if (item && !attendees.some((a) => a.contactid === item.contactid)) {
-                  setAttendees((prev) => [...prev, item])
-                }
+                if (!item) return
+                setAttendees((prev) => (prev.some((a) => a.contactid === item.contactid) ? prev : [...prev, item]))
               }}
               onEnter={runSearch}
               placeholder="Search contact…"
