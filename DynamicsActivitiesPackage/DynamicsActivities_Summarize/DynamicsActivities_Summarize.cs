@@ -17,6 +17,7 @@ namespace DynamicsActivitiesSummarize
 	public class Script
 	{
 		private static readonly Guid AssistantAgentId = new Guid("7a7ee855-cb26-4067-bc8e-122a961ac4cf");
+		private const string InfoPrefix = "[Summarize]";
 
 		public void Run(IEngine engine)
 		{
@@ -63,31 +64,51 @@ namespace DynamicsActivitiesSummarize
 			}
 
 			request.Activities = request.Activities ?? new List<ActivityInput>();
+			engine.GenerateInformation($"{InfoPrefix} Started. Activities={request.Activities.Count}, Scope='{SafeValue(request.ScopeLabel)}', Period={SafeValue(request.FromUtc)} to {SafeValue(request.UntilUtc)}.");
 			if (request.Activities.Count == 0)
 			{
+				engine.GenerateInformation($"{InfoPrefix} No activities received. Returning deterministic empty summary.");
 				engine.AddScriptOutput("result", JsonConvert.SerializeObject(new SummaryOutput
 				{
 					Summary = "No activities loaded yet.",
 					GeneratedBy = "fallback",
 					Warning = null,
+					Diagnostics = "No activities were provided in the payload.",
 				}));
 				return;
 			}
 
 			var prompt = BuildPrompt(request);
-			var summary = TryGenerateAssistantSummary(engine, prompt, out var warning);
+			engine.GenerateInformation($"{InfoPrefix} Attempting Assistant timeline summary.");
+			var summary = TryGenerateAssistantSummary(engine, prompt, out var warning, out var diagnostics);
 			var generatedBy = "assistant";
 			if (String.IsNullOrWhiteSpace(summary))
 			{
 				summary = BuildFallbackSummary(request);
 				generatedBy = "fallback";
+				if (!String.IsNullOrWhiteSpace(warning))
+				{
+					engine.GenerateInformation($"{InfoPrefix} Assistant summary unavailable. Reason: {warning}");
+				}
+
+				if (!String.IsNullOrWhiteSpace(diagnostics))
+				{
+					engine.GenerateInformation($"{InfoPrefix} Assistant diagnostics: {diagnostics}");
+				}
 			}
+			else
+			{
+				engine.GenerateInformation($"{InfoPrefix} Assistant summary generated successfully.");
+			}
+
+			engine.GenerateInformation($"{InfoPrefix} Completed. GeneratedBy={generatedBy}, SummaryLength={summary.Length}.");
 
 			engine.AddScriptOutput("result", JsonConvert.SerializeObject(new SummaryOutput
 			{
 				Summary = summary,
 				GeneratedBy = generatedBy,
 				Warning = warning,
+				Diagnostics = diagnostics,
 			}));
 		}
 
@@ -123,15 +144,17 @@ namespace DynamicsActivitiesSummarize
 			return String.Join(Environment.NewLine, lines);
 		}
 
-		private static string TryGenerateAssistantSummary(IEngine engine, string prompt, out string warning)
+		private static string TryGenerateAssistantSummary(IEngine engine, string prompt, out string warning, out string diagnostics)
 		{
 			warning = null;
+			diagnostics = null;
 			try
 			{
 				var getUserConnection = engine.GetType().GetMethod("GetUserConnection", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
 				if (getUserConnection == null)
 				{
 					warning = "IEngine.GetUserConnection() is unavailable on this DMA version.";
+					diagnostics = "GetUserConnection reflection lookup returned null.";
 					return null;
 				}
 
@@ -139,13 +162,16 @@ namespace DynamicsActivitiesSummarize
 				if (userConnection == null)
 				{
 					warning = "Unable to resolve user connection for Assistant agent chat.";
+					diagnostics = "GetUserConnection() returned null.";
 					return null;
 				}
 
-				var helperType = ResolveAgentHelperType();
+				var helperResolution = ResolveAgentHelperType();
+				var helperType = helperResolution.HelperType;
 				if (helperType == null)
 				{
-					warning = "Skyline.DataMiner.Assistant.Integration is not available.";
+					warning = "Assistant integration assembly/type was not found on this DMA.";
+					diagnostics = helperResolution.Diagnostics;
 					return null;
 				}
 
@@ -153,6 +179,7 @@ namespace DynamicsActivitiesSummarize
 				if (helper == null)
 				{
 					warning = "Failed to instantiate Assistant AgentHelper.";
+					diagnostics = "Activator.CreateInstance returned null for '" + helperType.AssemblyQualifiedName + "'.";
 					return null;
 				}
 
@@ -162,6 +189,7 @@ namespace DynamicsActivitiesSummarize
 					if (sendMessage == null)
 					{
 						warning = "AgentHelper.SendMessage(string) method not found.";
+						diagnostics = "SendMessage(string) reflection lookup failed on '" + helperType.AssemblyQualifiedName + "'.";
 						return null;
 					}
 
@@ -169,6 +197,7 @@ namespace DynamicsActivitiesSummarize
 					if (responseObject == null)
 					{
 						warning = "Assistant agent returned no response object.";
+						diagnostics = "SendMessage returned null response object.";
 						return null;
 					}
 
@@ -190,6 +219,7 @@ namespace DynamicsActivitiesSummarize
 			catch (Exception ex)
 			{
 				warning = "Assistant call failed: " + ex.Message;
+				diagnostics = ex.ToString();
 				return null;
 			}
 		}
@@ -232,12 +262,13 @@ namespace DynamicsActivitiesSummarize
 			return request;
 		}
 
-		private static Type ResolveAgentHelperType()
+		private static AgentHelperResolution ResolveAgentHelperType()
 		{
+			var diagnostics = new List<string>();
 			var direct = Type.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper, Skyline.DataMiner.Assistant.Integration", false);
 			if (direct != null)
 			{
-				return direct;
+				return new AgentHelperResolution(direct, "Resolved through direct type lookup.");
 			}
 
 			foreach (var assemblyName in new[] { "Skyline.DataMiner.Assistant.Integration", "Skyline.DataMiner.Core.Assistant", "Skyline.DataMiner.Core.Assistant.Integration" })
@@ -248,12 +279,14 @@ namespace DynamicsActivitiesSummarize
 					var loadedType = loadedAssembly?.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
 					if (loadedType != null)
 					{
-						return loadedType;
+						return new AgentHelperResolution(loadedType, "Resolved after loading assembly '" + assemblyName + "'.");
 					}
+
+					diagnostics.Add("Loaded '" + assemblyName + "' but AgentHelper type not found.");
 				}
-				catch
+				catch (Exception ex)
 				{
-					// Ignore load failures and continue searching.
+					diagnostics.Add("Failed to load '" + assemblyName + "': " + ex.Message);
 				}
 			}
 
@@ -262,11 +295,18 @@ namespace DynamicsActivitiesSummarize
 				var candidate = assembly.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
 				if (candidate != null)
 				{
-					return candidate;
+					return new AgentHelperResolution(candidate, "Resolved from already loaded assembly '" + assembly.FullName + "'.");
 				}
 			}
 
-			return null;
+			var loadedAssistantAssemblies = AppDomain.CurrentDomain
+				.GetAssemblies()
+				.Select(assembly => assembly.GetName().Name)
+				.Where(name => !String.IsNullOrWhiteSpace(name) && name.IndexOf("Assistant", StringComparison.OrdinalIgnoreCase) >= 0)
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			diagnostics.Add("Loaded assemblies containing 'Assistant': " + (loadedAssistantAssemblies.Count == 0 ? "(none)" : String.Join(", ", loadedAssistantAssemblies)));
+			return new AgentHelperResolution(null, String.Join(" | ", diagnostics));
 		}
 
 		private static string BuildFallbackSummary(SummaryRequest request)
@@ -365,6 +405,22 @@ namespace DynamicsActivitiesSummarize
 
 			[JsonProperty("warning")]
 			public string Warning { get; set; }
+
+			[JsonProperty("diagnostics")]
+			public string Diagnostics { get; set; }
+		}
+
+		private sealed class AgentHelperResolution
+		{
+			public AgentHelperResolution(Type helperType, string diagnostics)
+			{
+				HelperType = helperType;
+				Diagnostics = diagnostics;
+			}
+
+			public Type HelperType { get; private set; }
+
+			public string Diagnostics { get; private set; }
 		}
 	}
 }

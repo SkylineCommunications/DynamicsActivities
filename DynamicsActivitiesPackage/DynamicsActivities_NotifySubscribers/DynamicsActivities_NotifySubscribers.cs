@@ -818,15 +818,22 @@ namespace DynamicsActivitiesNotifySubscribers
 		private string GenerateDigestSummary(string scopeLabel, DateTime since, DateTime until, List<ActivityItem> activities)
 		{
 			var prompt = BuildDigestSummaryPrompt(scopeLabel, since, until, activities);
-			var summary = TryGenerateAssistantSummary(prompt, out var warning);
+			engine?.GenerateInformation($"[NotifySubscribers] Attempting Assistant digest generation for scope '{(String.IsNullOrWhiteSpace(scopeLabel) ? "selected scope" : scopeLabel.Trim())}' with {activities.Count} activity item(s).");
+			var summary = TryGenerateAssistantSummary(prompt, out var warning, out var diagnostics);
 			if (!String.IsNullOrWhiteSpace(summary))
 			{
+				engine?.GenerateInformation("[NotifySubscribers] Assistant digest generation succeeded.");
 				return summary;
 			}
 
 			if (!String.IsNullOrWhiteSpace(warning))
 			{
 				engine?.GenerateInformation($"[NotifySubscribers] Assistant digest generation unavailable: {warning}");
+			}
+
+			if (!String.IsNullOrWhiteSpace(diagnostics))
+			{
+				engine?.GenerateInformation($"[NotifySubscribers] Assistant diagnostics: {diagnostics}");
 			}
 
 			return BuildFallbackDigestSummary(scopeLabel, activities);
@@ -861,15 +868,17 @@ namespace DynamicsActivitiesNotifySubscribers
 			return String.Join(Environment.NewLine, lines);
 		}
 
-		private string TryGenerateAssistantSummary(string prompt, out string warning)
+		private string TryGenerateAssistantSummary(string prompt, out string warning, out string diagnostics)
 		{
 			warning = null;
+			diagnostics = null;
 			try
 			{
 				var getUserConnection = engine.GetType().GetMethod("GetUserConnection", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
 				if (getUserConnection == null)
 				{
 					warning = "IEngine.GetUserConnection() is unavailable.";
+					diagnostics = "GetUserConnection reflection lookup returned null.";
 					return null;
 				}
 
@@ -877,13 +886,16 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (userConnection == null)
 				{
 					warning = "No user connection available.";
+					diagnostics = "GetUserConnection() returned null.";
 					return null;
 				}
 
-				var helperType = ResolveAgentHelperType();
+				var helperResolution = ResolveAgentHelperType();
+				var helperType = helperResolution.HelperType;
 				if (helperType == null)
 				{
-					warning = "Skyline.DataMiner.Assistant.Integration is not available.";
+					warning = "Assistant integration assembly/type was not found on this DMA.";
+					diagnostics = helperResolution.Diagnostics;
 					return null;
 				}
 
@@ -891,6 +903,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				if (helper == null)
 				{
 					warning = "Failed to create AgentHelper.";
+					diagnostics = "Activator.CreateInstance returned null for '" + helperType.AssemblyQualifiedName + "'.";
 					return null;
 				}
 
@@ -900,10 +913,18 @@ namespace DynamicsActivitiesNotifySubscribers
 					if (sendMessage == null)
 					{
 						warning = "AgentHelper.SendMessage(string) not found.";
+						diagnostics = "SendMessage(string) reflection lookup failed on '" + helperType.AssemblyQualifiedName + "'.";
 						return null;
 					}
 
 					var responseObject = sendMessage.Invoke(helper, new object[] { prompt });
+					if (responseObject == null)
+					{
+						warning = "Assistant returned no response object.";
+						diagnostics = "SendMessage returned null response object.";
+						return null;
+					}
+
 					var responseText = responseObject?.GetType().GetProperty("Response", BindingFlags.Public | BindingFlags.Instance)?.GetValue(responseObject) as string;
 					if (String.IsNullOrWhiteSpace(responseText))
 					{
@@ -919,17 +940,19 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 			catch (Exception ex)
 			{
-				warning = ex.Message;
+				warning = "Assistant call failed: " + ex.Message;
+				diagnostics = ex.ToString();
 				return null;
 			}
 		}
 
-		private static Type ResolveAgentHelperType()
+		private static AgentHelperResolution ResolveAgentHelperType()
 		{
+			var diagnostics = new List<string>();
 			var direct = Type.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper, Skyline.DataMiner.Assistant.Integration", false);
 			if (direct != null)
 			{
-				return direct;
+				return new AgentHelperResolution(direct, "Resolved through direct type lookup.");
 			}
 
 			foreach (var assemblyName in new[] { "Skyline.DataMiner.Assistant.Integration", "Skyline.DataMiner.Core.Assistant", "Skyline.DataMiner.Core.Assistant.Integration" })
@@ -940,12 +963,14 @@ namespace DynamicsActivitiesNotifySubscribers
 					var loadedType = loadedAssembly?.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
 					if (loadedType != null)
 					{
-						return loadedType;
+						return new AgentHelperResolution(loadedType, "Resolved after loading assembly '" + assemblyName + "'.");
 					}
+
+					diagnostics.Add("Loaded '" + assemblyName + "' but AgentHelper type not found.");
 				}
-				catch
+				catch (Exception ex)
 				{
-					// Ignore load failures and continue searching.
+					diagnostics.Add("Failed to load '" + assemblyName + "': " + ex.Message);
 				}
 			}
 
@@ -954,11 +979,31 @@ namespace DynamicsActivitiesNotifySubscribers
 				var candidate = assembly.GetType("Skyline.DataMiner.Core.Assistant.AgentHelper", false);
 				if (candidate != null)
 				{
-					return candidate;
+					return new AgentHelperResolution(candidate, "Resolved from already loaded assembly '" + assembly.FullName + "'.");
 				}
 			}
 
-			return null;
+			var loadedAssistantAssemblies = AppDomain.CurrentDomain
+				.GetAssemblies()
+				.Select(assembly => assembly.GetName().Name)
+				.Where(name => !String.IsNullOrWhiteSpace(name) && name.IndexOf("Assistant", StringComparison.OrdinalIgnoreCase) >= 0)
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+			diagnostics.Add("Loaded assemblies containing 'Assistant': " + (loadedAssistantAssemblies.Count == 0 ? "(none)" : String.Join(", ", loadedAssistantAssemblies)));
+			return new AgentHelperResolution(null, String.Join(" | ", diagnostics));
+		}
+
+		private sealed class AgentHelperResolution
+		{
+			public AgentHelperResolution(Type helperType, string diagnostics)
+			{
+				HelperType = helperType;
+				Diagnostics = diagnostics;
+			}
+
+			public Type HelperType { get; private set; }
+
+			public string Diagnostics { get; private set; }
 		}
 
 		private static string BuildFallbackDigestSummary(string scopeLabel, List<ActivityItem> activities)

@@ -1,4 +1,4 @@
-import { bootstrapSession, getConnection, isDataMinerHost, jsonPost } from './dataminer'
+import { bootstrapSession, getConnection, isDataMinerHost, jsonPost, validateConnection } from './dataminer'
 
 const SCRIPT_NAME = 'DynamicsActivities_Summarize'
 
@@ -37,7 +37,7 @@ async function executeScript(connectionId, payload, redirectOnAuthFailure) {
       WaitWhenLocked: true,
       IsInUse: false,
       AskForConfirmation: false,
-      GenerateStartedInfoEvent: false,
+      GenerateStartedInfoEvent: true,
       customSuccessMessage: null,
       hideSuccessPopup: true,
       skipPresetsIfComplete: true,
@@ -52,8 +52,8 @@ async function executeScript(connectionId, payload, redirectOnAuthFailure) {
 async function resolveConnection() {
   const existing = getConnection()
   if (existing) {
-    const alive = await jsonPost('IsConnectionAlive', { connection: existing }, { redirectOnAuthFailure: false })
-    if (alive !== null) return existing
+    const alive = await validateConnection(existing, { redirectOnFailure: false })
+    if (alive) return existing
   }
 
   return bootstrapSession({ redirectOnFailure: false, maxAttempts: 2, retryDelayMs: 250 })

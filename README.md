@@ -131,6 +131,7 @@ Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesP
 - Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually).
 - Digest emails now include a top-level Assistant-generated timeline summary (with deterministic fallback if Assistant integration is unavailable).
 - Browse view (`NotesList`) can request timeline highlights through `DynamicsActivities_Summarize`.
+- Timeline highlights now show whether Assistant or deterministic fallback generated the text, and surface fallback warning details from script output.
 - Assistant agent usage requires DataMiner Assistant Agent Integration to be enabled on the DMA (see manual configuration notes in implementation handoff).
 - Notify script parameters:
   - `Frequency` (string): `instant`, `daily`, `weekly`, `monthly` — used to select which subscriptions to process.
