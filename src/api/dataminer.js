@@ -66,6 +66,10 @@ export function signOut() {
   location.replace('/auth/logout?url=' + encodeURIComponent(target))
 }
 
+export function isConnectionAliveResult(result) {
+  return result === true || result === 'true' || result === 1 || result === '1'
+}
+
 export async function jsonPost(method, body, options = {}) {
   const { redirectOnAuthFailure = true } = options
   const r = await fetch(`${JSON_API}/${method}`, {
@@ -86,6 +90,20 @@ export async function jsonPost(method, body, options = {}) {
   return json.d
 }
 
+export async function validateConnection(connection, options = {}) {
+  const { redirectOnFailure = true } = options
+  if (!connection) return false
+
+  const alive = await jsonPost('IsConnectionAlive', { connection }, { redirectOnAuthFailure: redirectOnFailure })
+  if (!isConnectionAliveResult(alive)) {
+    clearPersistedConnection()
+    return false
+  }
+
+  persistConnection(connection)
+  return true
+}
+
 /**
  * Bootstrap the DataMiner session on app load.
  * Returns the connection GUID if valid, null otherwise (and redirects to /auth/).
@@ -96,13 +114,11 @@ export async function bootstrapSession(options = {}) {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const connection = getConnection()
     if (connection) {
-      const ok = await jsonPost('IsConnectionAlive', { connection }, { redirectOnAuthFailure: redirectOnFailure })
-      if (ok !== null) {
-        persistConnection(connection)
+      const ok = await validateConnection(connection, { redirectOnFailure })
+      if (ok) {
         sessionStorage.removeItem('dm_auth_attempted')
         return connection
       }
-      clearPersistedConnection()
     }
 
     const hasAttemptsLeft = attempt + 1 < maxAttempts

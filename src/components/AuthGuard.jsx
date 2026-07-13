@@ -55,16 +55,18 @@ export default function AuthGuard({ children, onDmaConnection }) {
       return
     }
 
-    bootstrapSession({ redirectOnFailure: false })
+    bootstrapSession({ redirectOnFailure: true })
       .then((conn) => {
         onDmaConnection?.(conn)
+        setDmaReady(true)
+        if (!conn) {
+          setAuthError('DataMiner session is required. Please sign in via the DataMiner authentication page.')
+        }
       })
       .catch(() => {
         onDmaConnection?.(null)
-      })
-      .finally(() => {
-        // Do not block Dynamics usage when DataMiner connection is unavailable.
         setDmaReady(true)
+        setAuthError('DataMiner session verification failed. Please sign in again.')
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
