@@ -1,0 +1,33 @@
+name: Copilot bug triage
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  request-copilot-investigation:
+    if: contains(github.event.issue.labels.*.name, 'bug')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Copilot to investigate and propose fix
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '@copilot please investigate this bug report.',
+              '',
+              'Only proceed if you can confirm the report is valid and the required fix is limited in scope.',
+              'If valid, implement the fix and open a PR with a concise explanation and risk notes.',
+              'If not valid or too broad, comment with findings and a narrowed next step.',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
