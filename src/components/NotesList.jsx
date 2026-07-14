@@ -132,6 +132,7 @@ function toSummaryActivity(note) {
   const regarding = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
     || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
     || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_objectid_value@OData.Community.Display.V1.FormattedValue']
     || ''
 
   return {

@@ -888,18 +888,26 @@ const REGARDING_PARENT_LOOKUP = {
  * For activities whose "regarding" is a contact/lead/opportunity (not an account),
  * resolve the parent account and attach `_resolvedAccountId` / `_resolvedAccountName`
  * while preserving the original person name via `_regardingPersonName`.
+ * Also resolves the display name for account-regarding notes (e.g. annotations)
+ * when Dataverse does not return a formatted name for the lookup.
  * Mutates the given notes in place.
  */
 async function resolveRegardingAccounts(msalInstance, notes) {
   const idsByType = new Map() // lookup type -> Set of regarding ids
+  const accountIdsNeedingName = new Set() // account-regarding notes lacking a display name
   for (const note of notes) {
     const type = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
     const id = note._regardingobjectid_value
-    if (!id || !REGARDING_PARENT_LOOKUP[type]) continue
+    if (!id) continue
+    if (type === 'account') {
+      if (!note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']) accountIdsNeedingName.add(id)
+      continue
+    }
+    if (!REGARDING_PARENT_LOOKUP[type]) continue
     if (!idsByType.has(type)) idsByType.set(type, new Set())
     idsByType.get(type).add(id)
   }
-  if (!idsByType.size) return
+  if (!idsByType.size && !accountIdsNeedingName.size) return
 
   const parentById = new Map() // regarding id -> { accountId, accountName }
   for (const [type, idSet] of idsByType) {
@@ -922,10 +930,29 @@ async function resolveRegardingAccounts(msalInstance, notes) {
     }
   }
 
+  // Resolve display names for account-regarding notes (annotations) directly.
+  const accountNameById = new Map()
+  for (const chunk of chunkArray([...accountIdsNeedingName], 20)) {
+    const filter = chunk.map((id) => `accountid eq ${id}`).join(' or ')
+    const data = await dvFetch(
+      msalInstance,
+      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,name`,
+    ).catch(() => null)
+    for (const row of data?.value ?? []) accountNameById.set(row.accountid, row.name || '')
+  }
+
   for (const note of notes) {
     const type = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
     const id = note._regardingobjectid_value
-    if (!id || !REGARDING_PARENT_LOOKUP[type]) continue
+    if (!id) continue
+    if (type === 'account') {
+      if (!note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] && accountNameById.has(id)) {
+        note._resolvedAccountId = id
+        note._resolvedAccountName = accountNameById.get(id)
+      }
+      continue
+    }
+    if (!REGARDING_PARENT_LOOKUP[type]) continue
     note._regardingPersonName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
     const parent = parentById.get(id)
     if (!parent) continue
@@ -1059,16 +1086,24 @@ async function fetchAnnotations(msalInstance, filterClauses) {
     `/annotations?$select=${ANNOTATION_SELECT}${filterStr}&$orderby=createdon desc`,
   ).catch(() => ({ value: [] }))
 
-  return (data?.value ?? []).map((r) => ({
-    ...r,
-    activityid: r.annotationid,
-    description: r.notetext,
-    _regardingobjectid_value: r._objectid_value,
-    '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': r['_objectid_value@OData.Community.Display.V1.FormattedValue'],
-    _linkedToEscalation: r.objecttypecode === 'slc_escalation',
-    _linkedToLead: r.objecttypecode === 'lead',
-    _entityType: 'annotations',
-  }))
+  return (data?.value ?? []).map((r) => {
+    // Normalise annotation's objectid lookup onto the same shape activities use so
+    // account avatar/name resolution works uniformly. Dataverse does not return a
+    // formatted display name for the polymorphic objectid lookup, so the name is
+    // resolved later in resolveRegardingAccounts.
+    const objectType = r['_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'] || r.objecttypecode || null
+    return {
+      ...r,
+      activityid: r.annotationid,
+      description: r.notetext,
+      _regardingobjectid_value: r._objectid_value,
+      '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': r['_objectid_value@OData.Community.Display.V1.FormattedValue'],
+      ...(objectType ? { '_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname': objectType } : {}),
+      _linkedToEscalation: r.objecttypecode === 'slc_escalation',
+      _linkedToLead: r.objecttypecode === 'lead',
+      _entityType: 'annotations',
+    }
+  })
 }
 
 /**
