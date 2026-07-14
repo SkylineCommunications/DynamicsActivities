@@ -80,7 +80,8 @@ export async function getUserHasDynamicsLicense(msalInstance) {
     if ((licenseDetails?.value ?? []).some((license) => isAllowedDynamicsSku(license?.skuPartNumber))) {
       return true
     }
-  } catch {
+  } catch (e) {
+    console.warn('[Graph] licenseDetails unavailable, falling back to assignedPlans:', e?.message ?? e)
     // Fall back to assignedPlans check when licenseDetails is unavailable.
   }
 
