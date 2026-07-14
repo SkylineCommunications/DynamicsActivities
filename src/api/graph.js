@@ -33,20 +33,61 @@ async function graphGet(msalInstance, path) {
   return res.json()
 }
 
-function isDynamicsServiceName(value) {
-  const service = String(value || '').toLowerCase()
-  return (
-    service.includes('crm')
-    || service.includes('dynamics')
-    || service.includes('dyn365')
-  )
+const ALLOWED_DYNAMICS_SERVICE_PATTERNS = [
+  /TEAM_MEMBERS/i,
+  /SALES/i,
+  /CRMPLAN[12]/i,
+  /CRMSTANDARD/i,
+  /CRMENTERPRISE/i,
+  /ENTERPRISE_P[12]/i,
+]
+
+const DISALLOWED_DYNAMICS_SERVICE_PATTERNS = [
+  /DYN365_CDS_/i,
+]
+
+function isAllowedDynamicsService(value) {
+  const service = String(value || '').trim()
+  if (!service) return false
+
+  const looksDynamicsLike = /(dynamics|dyn365|crm)/i.test(service)
+  if (!looksDynamicsLike) return false
+
+  if (DISALLOWED_DYNAMICS_SERVICE_PATTERNS.some((pattern) => pattern.test(service))) {
+    return false
+  }
+
+  return ALLOWED_DYNAMICS_SERVICE_PATTERNS.some((pattern) => pattern.test(service))
+}
+
+const ALLOWED_DYNAMICS_SKU_PATTERNS = [
+  /^DYN365_.*TEAM_MEMBERS$/i,
+  /^DYN365_.*SALES/i,
+  /^DYN365_ENTERPRISE_PLAN[12]$/i,
+  /^CRMPLAN[12]$/i,
+  /^DYNAMICS_365_SALES/i,
+]
+
+function isAllowedDynamicsSku(value) {
+  const sku = String(value || '').trim()
+  if (!sku) return false
+  return ALLOWED_DYNAMICS_SKU_PATTERNS.some((pattern) => pattern.test(sku))
 }
 
 export async function getUserHasDynamicsLicense(msalInstance) {
+  try {
+    const licenseDetails = await graphGet(msalInstance, '/me/licenseDetails?$select=skuPartNumber,servicePlans')
+    if ((licenseDetails?.value ?? []).some((license) => isAllowedDynamicsSku(license?.skuPartNumber))) {
+      return true
+    }
+  } catch {
+    // Fall back to assignedPlans check when licenseDetails is unavailable.
+  }
+
   const me = await graphGet(msalInstance, '/me?$select=assignedPlans')
   return (me?.assignedPlans ?? []).some((plan) =>
     String(plan?.capabilityStatus || '').toLowerCase() === 'enabled'
-    && isDynamicsServiceName(plan?.service),
+    && isAllowedDynamicsService(plan?.service),
   )
 }
 
