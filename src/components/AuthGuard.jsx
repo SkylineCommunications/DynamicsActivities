@@ -16,7 +16,8 @@ function buildLicenseRequestMailto() {
   const body = [
     'Hello IT team,',
     '',
-    `I would like to request an ${REQUESTED_LICENSE} license for access to ${APP_NAME}.`,
+    `I would like to request a ${REQUESTED_LICENSE} license for access to ${APP_NAME}.`,
+    'Please also grant access to the sandbox environment with the team-member-qa role.',
     '',
     'Thanks.',
   ].join('\n')
@@ -44,6 +45,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
   const [currentUserId, setCurrentUserId] = useState(null)
   const [licenseChecked, setLicenseChecked] = useState(false)
   const [hasLicense, setHasLicense] = useState(false)
+  const [dataverseAccessDenied, setDataverseAccessDenied] = useState(false)
   const [authError, setAuthError] = useState(null)
   const [needsManualLogin, setNeedsManualLogin] = useState(false)
   const [dmaReady, setDmaReady] = useState(!isDataMinerHost()) // skip DMA check on localhost
@@ -111,6 +113,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
       setCurrentUserId(null)
       setLicenseChecked(false)
       setHasLicense(false)
+      setDataverseAccessDenied(false)
     }
   }, [isAuthenticated])
 
@@ -122,6 +125,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
       .then((licensed) => {
         setHasLicense(licensed)
         setLicenseChecked(true)
+        setDataverseAccessDenied(false)
 
         // Only attempt Dataverse sign-in for users that have a Dynamics license.
         if (!licensed) return
@@ -134,7 +138,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
           .catch((e) => {
             if (looksLikeDynamicsAccessDenied(e)) {
               setCurrentUserId(null)
-              setHasLicense(false)
+              setDataverseAccessDenied(true)
               return
             }
             throw e
@@ -146,6 +150,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
   function handleLogin() {
     setAuthError(null)
     setNeedsManualLogin(false)
+    setDataverseAccessDenied(false)
     instance.loginPopup(loginRequest).catch((e) => {
       setAuthError(e.message)
       setNeedsManualLogin(true)
@@ -217,6 +222,24 @@ export default function AuthGuard({ children, onDmaConnection }) {
           </p>
           <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
             Request license for access
+          </a>
+        </div>
+      </div>
+    )
+  }
+
+  if (dataverseAccessDenied) {
+    const mailtoHref = buildLicenseRequestMailto()
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="auth-icon"><span className="icon icon-lg" aria-hidden="true">warning</span></div>
+          <h2>No Dataverse access found</h2>
+          <p>
+            You have a Dynamics license, but your account is not currently authorized for this Dataverse environment.
+          </p>
+          <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
+            Request access
           </a>
         </div>
       </div>
