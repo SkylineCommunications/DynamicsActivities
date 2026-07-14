@@ -444,7 +444,8 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
 
   // Fetch logos for accounts that only appear in results (not in the filter
   // selection, whose images are already seeded inline). Skips anything we
-  // already have, so it settles after one pass.
+  // already have. Runs once per search (keyed on notes), batching to keep
+  // concurrency gentle on Dataverse while filling avatars progressively.
   useEffect(() => {
     const missing = [...new Set(
       (notes ?? []).map(noteAccountId).filter((id) => id && !(id in accountImages))
@@ -452,14 +453,20 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     if (!missing.length) return
 
     let cancelled = false
-    Promise.all(
-      missing.map((id) => getAccountImage(instance, id).then((img) => [id, img]).catch(() => [id, null]))
-    ).then((entries) => {
-      if (!cancelled) setAccountImages((p) => ({ ...p, ...Object.fromEntries(entries) }))
-    })
+    const concurrency = 5
+
+    ;(async () => {
+      for (let i = 0; i < missing.length && !cancelled; i += concurrency) {
+        const slice = missing.slice(i, i + concurrency)
+        const entries = await Promise.all(
+          slice.map((id) => getAccountImage(instance, id).then((img) => [id, img]).catch(() => [id, null]))
+        )
+        if (!cancelled) setAccountImages((p) => ({ ...p, ...Object.fromEntries(entries) }))
+      }
+    })()
 
     return () => { cancelled = true }
-  }, [instance, notes, accountImages])
+  }, [instance, notes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const runSearch = useCallback(() => {
     setLoading(true)
