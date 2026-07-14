@@ -219,21 +219,29 @@ export async function searchAccounts(msalInstance, query) {
 }
 
 /**
- * Fetch the account's image (logo) as base64 for display in the UI.
- * Returns the raw base64 string (drop into `data:image/jpeg;base64,...`),
- * or null when the account has no image set or the request fails.
+ * Fetch images (logos) for multiple accounts in a single query.
+ * Batches account IDs into an OR filter to avoid one request per account.
+ * @param {string[]} accountIds
+ * @returns {Promise<Record<string, string|null>>} map of accountid → base64 image (or null)
  */
-export async function getAccountImage(msalInstance, accountId) {
-  if (!accountId) return null
-  const account = await dvFetch(msalInstance, `/accounts(${accountId})?$select=entityimage`).catch(() => null)
-  return account?.entityimage ?? null
+export async function getAccountImages(msalInstance, accountIds) {
+  const ids = [...new Set((accountIds ?? []).filter(Boolean))]
+  if (!ids.length) return {}
+  const filter = ids.map((id) => `accountid eq ${id}`).join(' or ')
+  const data = await dvFetch(
+    msalInstance,
+    `/accounts?$select=accountid,entityimage&$filter=${encodeURIComponent(filter)}`,
+  ).catch(() => null)
+  const images = {}
+  for (const row of data?.value ?? []) images[row.accountid] = row.entityimage ?? null
+  return images
 }
 
 /**
  * Resolve an array of Skyline customers to Dataverse accounts.
  * Strategy: batch exact name matches with acronym exact/starts-with matches.
  * @param {Array<{ name: string, acronym: string }>} customers
- * @returns {Promise<Array<{ accountid: string, name: string }>>}
+ * @returns {Promise<Array<{ accountid: string, name: string, entityimage: string|null }>>}
  */
 export async function resolveAccountsByNames(msalInstance, customers) {
   if (!customers?.length) return []
