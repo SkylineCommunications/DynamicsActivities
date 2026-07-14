@@ -402,7 +402,6 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [expandedId, setExpandedId] = useState(null)
   const [tamAutoApplied, setTamAutoApplied] = useState(false)
   const [activeViewId, setActiveViewId] = useState('activities')
-  const requestedRef = useRef(new Set())
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
@@ -435,29 +434,32 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     if (!managedAccounts.length) return
     if (initialAccount) return // don't override when navigated from Create
     setAccounts(managedAccounts)
+    // Seed avatars inline — managed accounts already carry entityimage.
+    setAccountImages((prev) => ({
+      ...prev,
+      ...Object.fromEntries(managedAccounts.filter((a) => a.accountid).map((a) => [a.accountid, a.entityimage || null])),
+    }))
     setTamAutoApplied(true)
   }, [tamLoading, managedAccounts, initialAccount])
 
+  // Fetch logos for accounts that only appear in results (not in the filter
+  // selection, whose images are already seeded inline). Skips anything we
+  // already have, so it settles after one pass.
   useEffect(() => {
-    const ids = new Set(accounts.map((a) => a.accountid).filter(Boolean))
-    for (const note of notes ?? []) {
-      const id = noteAccountId(note)
-      if (id) ids.add(id)
-    }
-    const missing = [...ids].filter((id) => !requestedRef.current.has(id))
+    const missing = [...new Set(
+      (notes ?? []).map(noteAccountId).filter((id) => id && !(id in accountImages))
+    )]
     if (!missing.length) return
-    missing.forEach((id) => requestedRef.current.add(id))
 
-    let active = true
+    let cancelled = false
     Promise.all(
-      missing.map((id) =>
-        getAccountImage(instance, id).then((image) => [id, image]).catch(() => [id, null])
-      )
+      missing.map((id) => getAccountImage(instance, id).then((img) => [id, img]).catch(() => [id, null]))
     ).then((entries) => {
-      if (active) setAccountImages((p) => ({ ...p, ...Object.fromEntries(entries) }))
+      if (!cancelled) setAccountImages((p) => ({ ...p, ...Object.fromEntries(entries) }))
     })
-    return () => { active = false }
-  }, [instance, accounts, notes])
+
+    return () => { cancelled = true }
+  }, [instance, notes, accountImages])
 
   const runSearch = useCallback(() => {
     setLoading(true)
