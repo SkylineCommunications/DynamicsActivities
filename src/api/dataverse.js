@@ -255,7 +255,7 @@ export async function resolveAccountsByNames(msalInstance, customers) {
   const filter = encodeURIComponent(clauses.join(' or '))
   const data = await dvFetch(
     msalInstance,
-    `/accounts?$filter=${filter}&$select=accountid,name&$orderby=name asc&$top=100`,
+    `/accounts?$filter=${filter}&$select=accountid,name,entityimage&$orderby=name asc&$top=100`,
   ).catch(() => null)
 
   const resolved = new Map()
