@@ -3,7 +3,7 @@ import { useMsal } from '@azure/msal-react'
 import {
   searchActivities,
   searchAccounts,
-  getAccountImage,
+  getAccountImages,
   searchContacts,
   extractAttendees,
   noteTypeLabel,
@@ -444,8 +444,9 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
 
   // Fetch logos for accounts that only appear in results (not in the filter
   // selection, whose images are already seeded inline). Skips anything we
-  // already have. Runs once per search (keyed on notes), batching to keep
-  // concurrency gentle on Dataverse while filling avatars progressively.
+  // already have. Runs once per search (keyed on notes), fetching images in
+  // batched queries to keep the request count low while filling avatars
+  // progressively.
   useEffect(() => {
     const missing = [...new Set(
       (notes ?? []).map(noteAccountId).filter((id) => id && !(id in accountImages))
@@ -453,15 +454,16 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     if (!missing.length) return
 
     let cancelled = false
-    const concurrency = 5
+    const chunkSize = 20
 
     ;(async () => {
-      for (let i = 0; i < missing.length && !cancelled; i += concurrency) {
-        const slice = missing.slice(i, i + concurrency)
-        const entries = await Promise.all(
-          slice.map((id) => getAccountImage(instance, id).then((img) => [id, img]).catch(() => [id, null]))
-        )
-        if (!cancelled) setAccountImages((p) => ({ ...p, ...Object.fromEntries(entries) }))
+      for (let i = 0; i < missing.length && !cancelled; i += chunkSize) {
+        const chunk = missing.slice(i, i + chunkSize)
+        const images = await getAccountImages(instance, chunk)
+        // Ensure every requested ID gets a key (null when absent) so failed or
+        // imageless accounts aren't refetched on the next search.
+        const merged = Object.fromEntries(chunk.map((id) => [id, images[id] ?? null]))
+        if (!cancelled) setAccountImages((p) => ({ ...p, ...merged }))
       }
     })()
 
