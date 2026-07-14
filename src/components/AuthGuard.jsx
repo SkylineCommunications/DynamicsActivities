@@ -5,6 +5,7 @@ import { appBasePath, loginRequest, redirectPathname } from '../authConfig'
 import { assertDataverseAppAccess, whoAmI } from '../api/dataverse'
 import { getUserHasDynamicsLicense } from '../api/graph'
 import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
+import { navigate } from '../hooks/useHashRoute'
 
 const LICENSE_REQUEST_TO = 'IT@skyline.be'
 const LICENSE_REQUEST_CC = 'squad.maximize-amplify@skyline.be'
@@ -220,9 +221,17 @@ export default function AuthGuard({ children, onDmaConnection }) {
           <p>
             You need Dynamics access for this environment to use this app.
           </p>
-          <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
-            Request license for access
-          </a>
+          <div className="auth-actions">
+            <a className="btn-primary" href={mailtoHref}>
+              Request license for access
+            </a>
+            <button type="button" className="btn btn-secondary" onClick={() => navigate('forms/lead')}>
+              <span className="icon icon-sm" aria-hidden="true">person_add</span> Add lead
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => navigate('forms/opportunity')}>
+              <span className="icon icon-sm" aria-hidden="true">lightbulb</span> Add opportunity
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -238,9 +247,17 @@ export default function AuthGuard({ children, onDmaConnection }) {
           <p>
             You have a Dynamics license, but your account is not currently authorized for this Dataverse environment.
           </p>
-          <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
-            Request access
-          </a>
+          <div className="auth-actions">
+            <a className="btn-primary" href={mailtoHref}>
+              Request access
+            </a>
+            <button type="button" className="btn btn-secondary" onClick={() => navigate('forms/lead')}>
+              <span className="icon icon-sm" aria-hidden="true">person_add</span> Add lead
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => navigate('forms/opportunity')}>
+              <span className="icon icon-sm" aria-hidden="true">lightbulb</span> Add opportunity
+            </button>
+          </div>
         </div>
       </div>
     )

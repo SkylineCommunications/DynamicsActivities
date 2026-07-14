@@ -4,6 +4,8 @@ import AuthGuard from './components/AuthGuard'
 import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
 import SubscriptionsPanel from './components/SubscriptionsPanel'
+import FormPage from './components/forms/FormPage'
+import useHashRoute, { navigate } from './hooks/useHashRoute'
 import { signOut as dmaSignOut, isDataMinerHost, getDmaUser, redirectToAuth } from './api/dataminer'
 
 const TABS = [
@@ -68,6 +70,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('browse')
   const [themePref, setThemePref] = useState(getInitialTheme)
   const [dmaConnection, setDmaConnection] = useState(null)
+  const route = useHashRoute()
 
   // Apply theme to document
   useEffect(() => {
@@ -98,6 +101,13 @@ function cycleTheme() {
   function openBugReport() {
     const url = buildBugReportUrl({ activeTab, reporter: reporterName })
     window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  // Standalone form pages (e.g. "Add lead") render outside the Dynamics/Dataverse
+  // auth gate so they stay reachable when the user has no Dynamics access.
+  if (route.startsWith('forms/')) {
+    const formId = route.slice('forms/'.length)
+    return <FormPage formId={formId} onBack={() => navigate('')} />
   }
 
   return (

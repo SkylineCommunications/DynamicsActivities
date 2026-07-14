@@ -305,6 +305,51 @@ body {
   animation: spin 0.7s linear infinite;
 }
 
+.spinner-inline {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ─── Standalone forms ───────────────────────────────────────────────────────── */
+.lead-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lead-form-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.lead-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.lead-success h2 { font-size: 16px; font-weight: 600; }
+.lead-success p { font-size: 14px; color: var(--color10); line-height: 20px; }
+
+@media (max-width: 560px) {
+  .lead-form-grid { grid-template-columns: 1fr; }
+}
+
 /* ─── Form card ──────────────────────────────────────────────────────────────── */
 .form-card {
   background: var(--color1);

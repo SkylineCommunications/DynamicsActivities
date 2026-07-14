@@ -17,6 +17,8 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
 - **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights rendered in the same HTML summary format as Browse
 - **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled access request email to IT
+- **Add lead** — users without Dynamics/Dataverse access can still submit a new lead through a standalone form; the lead is emailed to the configured recipient via the `DynamicsActivities_SubmitLead` automation script
+- **Add opportunity** — users without Dynamics/Dataverse access can also submit a new opportunity through a standalone form; the opportunity is emailed to the configured recipient via the `DynamicsActivities_SubmitOpportunity` automation script
 - **Report a bug** entry point in the app header opens a prefilled GitHub issue with auto-captured context
 - Open any activity directly in Dynamics 365 with a single click
 - Delete activities with an inline confirm flow
@@ -35,6 +37,8 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 | Calendar | Microsoft Graph API v1.0 |
 | TAM | Skyline Collaboration API (`api.skyline.be`) |
 | Notifications | DataMiner DOM + Automation scripts (`ManageSubscriptions`, `NotifySubscribers`) |
+| Lead submission | DataMiner Automation script (`DynamicsActivities_SubmitLead`) — emails submitted leads |
+| Opportunity submission | DataMiner Automation script (`DynamicsActivities_SubmitOpportunity`) — emails submitted opportunities |
 | AI summarization | DataMiner Assistant DxM Agent Integration (`DynamicsActivities_Summarize`; reused by browse and digest flows) |
 | Styling | CSS custom properties, Inter font (DataMiner design system) |
 
@@ -165,6 +169,8 @@ src/
     skyline.js         # Skyline Collaboration API (TAM accounts)
     subscriptions.js   # Subscription CRUD via DataMiner Automation scripts (DOM-backed)
     activitySummary.js # Browse timeline summary via DataMiner automation
+    leads.js           # Submit a lead via the SubmitLead automation script (emails the lead)
+    opportunities.js   # Submit an opportunity via the SubmitOpportunity automation script (emails the opportunity)
   components/
     AuthGuard.jsx      # Triple-auth gate (DMA → MSAL → WhoAmI)
     ActivityForm.jsx   # Activity creation (4 types, pickers, calendar)
@@ -174,8 +180,15 @@ src/
     CalendarPicker.jsx
     CalendarImportTab.jsx
     InboxTab.jsx
+    forms/
+      FormPage.jsx     # Generic shell for standalone forms (header + back button)
+      LeadForm.jsx     # "Add lead" form
+      OpportunityForm.jsx # "Add opportunity" form
+  forms/
+    registry.js        # Registry of standalone forms (add new forms here)
   hooks/
     useTamContext.js   # TAM account context from Skyline API
+    useHashRoute.js    # Minimal hash-based router for standalone form pages
   services/
     postCreateBrowseAccount.js # Centralized account resolution after create/import flows
   authConfig.js        # MSAL config, scopes
@@ -185,5 +198,7 @@ public/
   web.config           # IIS SPA rewrite rule
 DynamicsActivitiesPackage/  # .NET project for .dmapp packaging
   DynamicsActivities_Summarize/ # Assistant summary script reused by browse timeline and digest flow
+  DynamicsActivities_SubmitLead/ # Emails leads submitted via the "Add lead" form
+  DynamicsActivities_SubmitOpportunity/ # Emails opportunities submitted via the "Add opportunity" form
 .github/workflows/     # CI/CD workflows
 ```

@@ -153,11 +153,18 @@ App-specific behavior:
 | `src/api/graph.js` | Graph calendar fetch for attendee prefill |
 | `src/api/skyline.js` | Skyline Collaboration API — proxied via DMA automation script to avoid CORS |
 | `src/api/subscriptions.js` | Subscription CRUD via DataMiner Automation (DOM-backed) |
+| `src/api/leads.js` | Submit a lead via the `DynamicsActivities_SubmitLead` automation script (emails the lead) |
+| `src/api/opportunities.js` | Submit an opportunity via the `DynamicsActivities_SubmitOpportunity` automation script (emails the opportunity) |
 | `src/authConfig.js` | MSAL config, scopes for Dataverse/Graph/Skyline |
 | `src/components/AuthGuard.jsx` | Triple-auth gate: DMA session → MSAL ssoSilent/popup → WhoAmI |
 | `src/components/ActivityForm.jsx` | Activity creation (4 types, account/attendee pickers, calendar) |
 | `src/components/NotesList.jsx` | Browse view — lazy server-side OData filters |
 | `src/components/SubscriptionsPanel.jsx` | Email notification subscription management |
+| `src/components/forms/FormPage.jsx` | Generic shell for standalone forms (header + back button); renders forms from the registry |
+| `src/components/forms/LeadForm.jsx` | "Add lead" form shown to users without Dynamics/Dataverse access |
+| `src/components/forms/OpportunityForm.jsx` | "Add opportunity" form shown to users without Dynamics/Dataverse access |
+| `src/forms/registry.js` | Registry of standalone forms — add new forms here (future-proof) |
+| `src/hooks/useHashRoute.js` | Minimal hash-based router (`#/forms/<id>`) for standalone form pages |
 | `src/components/AutocompletePicker.jsx` | Debounced autocomplete with clearOnPick support |
 | `src/components/CalendarPicker.jsx` | Graph calendar modal (60d past + 30d future) |
 | `src/hooks/useTamContext.js` | TAM account context — loads managed accounts from Skyline API |
@@ -169,6 +176,8 @@ App-specific behavior:
 | `DynamicsActivitiesPackage/DynamicsActivities_ManageSubscriptions/` | CRUD automation script for subscriptions (list/create/update/delete) |
 | `DynamicsActivitiesPackage/DynamicsActivities_NotifySubscribers/` | Scheduled email digest sender |
 | `DynamicsActivitiesPackage/DynamicsActivities_SkylineApiProxy/` | Server-side proxy for Skyline API (avoids CORS) |
+| `DynamicsActivitiesPackage/DynamicsActivities_SubmitLead/` | Emails leads submitted via the "Add lead" form (recipient defaults to test address, overridable via `Recipient` param) |
+| `DynamicsActivitiesPackage/DynamicsActivities_SubmitOpportunity/` | Emails opportunities submitted via the "Add opportunity" form (recipient defaults to test address, overridable via `Recipient` param) |
 | `.github/workflows/deploy-dma-on-pr-merge.yml` | CI/CD — build, catalog upload, deploy to DMA |
 
 ---
