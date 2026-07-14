@@ -239,7 +239,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
             You have a Dynamics license, but your account is not currently authorized for this Dataverse environment.
           </p>
           <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
-            Request Dataverse access
+            Request access
           </a>
         </div>
       </div>
