@@ -442,26 +442,25 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     setTamAutoApplied(true)
   }, [tamLoading, managedAccounts, initialAccount])
 
-  // Fetch logos for accounts that only appear in results (not in the filter
-  // selection, whose images are already seeded inline). Skips anything we
-  // already have. Runs once per search (keyed on notes), fetching images in
-  // batched queries to keep the request count low while filling avatars
-  // progressively.
+  // Fetch logos for every account that appears in the results. Runs once per
+  // search (keyed on notes), refetching images in batched queries so updated
+  // logos in Dataverse are picked up. Existing avatars stay visible until the
+  // fresh value arrives (merge, not clear), so there's no flicker.
   useEffect(() => {
-    const missing = [...new Set(
-      (notes ?? []).map(noteAccountId).filter((id) => id && !(id in accountImages))
+    const wanted = [...new Set(
+      (notes ?? []).map(noteAccountId).filter(Boolean)
     )]
-    if (!missing.length) return
+    if (!wanted.length) return
 
     let cancelled = false
     const chunkSize = 20
 
     ;(async () => {
-      for (let i = 0; i < missing.length && !cancelled; i += chunkSize) {
-        const chunk = missing.slice(i, i + chunkSize)
+      for (let i = 0; i < wanted.length && !cancelled; i += chunkSize) {
+        const chunk = wanted.slice(i, i + chunkSize)
         const images = await getAccountImages(instance, chunk)
-        // Ensure every requested ID gets a key (null when absent) so failed or
-        // imageless accounts aren't refetched on the next search.
+        // Ensure every requested ID gets a key (null when absent) so avatars
+        // fall back to initials for imageless accounts.
         const merged = Object.fromEntries(chunk.map((id) => [id, images[id] ?? null]))
         if (!cancelled) setAccountImages((p) => ({ ...p, ...merged }))
       }
