@@ -60,6 +60,10 @@ function isAllowedDynamicsService(value) {
   return ALLOWED_DYNAMICS_SERVICE_PATTERNS.some((pattern) => pattern.test(service))
 }
 
+const DISALLOWED_DYNAMICS_SKU_PATTERNS = [
+  /^DYN365_CDS_/i,
+]
+
 const ALLOWED_DYNAMICS_SKU_PATTERNS = [
   /^DYN365_.*TEAM_MEMBERS$/i,
   /^DYN365_.*SALES/i,
@@ -71,6 +75,7 @@ const ALLOWED_DYNAMICS_SKU_PATTERNS = [
 function isAllowedDynamicsSku(value) {
   const sku = String(value || '').trim()
   if (!sku) return false
+  if (DISALLOWED_DYNAMICS_SKU_PATTERNS.some((pattern) => pattern.test(sku))) return false
   return ALLOWED_DYNAMICS_SKU_PATTERNS.some((pattern) => pattern.test(sku))
 }
 
