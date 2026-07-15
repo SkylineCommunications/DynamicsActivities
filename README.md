@@ -216,7 +216,7 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 | Workflow | Purpose |
 |---|---|
 | `.github/workflows/build.yml` | Builds the frontend and uploads a zipped `dataminer-dist` artifact |
-| `.github/workflows/deploy-dma-on-pr-merge.yml` | Caller workflow for production-on-merge and manual `dev` / `production` deploys |
+| `.github/workflows/deploy-dma-on-pr-merge.yml` | Caller workflow for production-on-merge, manual `production` from `main` only, and manual `dev` deploys |
 | `.github/workflows/deploy-dmapp-reusable.yml` | Reusable build/register/deploy workflow for DMAPP packaging and Catalog deployment |
 | `.github/workflows/copilot-bug-triage.yml` | Auto-comments on `bug`-labeled issues to ask `@copilot` for investigation |
 
