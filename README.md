@@ -14,6 +14,7 @@ Replaces a Power App. No custom Dynamics fields — all data lives in standard D
 - Browse and filter the full organisation's activity history with lazy server-side OData queries
 - Multi-select attendee filtering in Browse, with visible attendee chips and **OR** semantics (an activity matches when it includes any selected attendee)
 - **AI timeline highlights** in Browse — assistant-generated summary rendered as formatted HTML sections above loaded activities
+- Rich HTML activity previews stay readable in both light and dark themes by neutralizing conflicting inline/presentational color styling from imported email content
 - **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
 - **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights rendered in the same HTML summary format as Browse
 - **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled access request email to IT

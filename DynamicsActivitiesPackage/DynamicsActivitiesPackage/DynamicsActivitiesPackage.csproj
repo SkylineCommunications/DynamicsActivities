@@ -10,6 +10,8 @@
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
 		<Version>1.10.0</Version>
 		<VersionComment>Add "Add opportunity" form reachable from access-denied screens; emails opportunities via new SubmitOpportunity automation script</VersionComment>
+		<Version>1.8.79</Version>
+		<VersionComment>Improve dark/light theme readability for rendered HTML activity content</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
