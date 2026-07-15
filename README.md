@@ -116,6 +116,15 @@ Deployment is automated via the **"Build, Register and Deploy DMAPP"** GitHub Ac
 4. Uploads to the DataMiner Catalog
 5. Deploys to the target DMA agent
 
+Manual runs now support a `deployment_target` input:
+
+- `production` (default): deploys the regular app flow used for merged PRs
+- `dev`: deploys to the dedicated dev environment under `/public/DynamicsActivitiesDev/`
+
+To enable `dev` deploys, configure these repository variables:
+
+- `VITE_REDIRECT_URI_DEV`
+
 Bug reports are auto-triaged by the **"Copilot bug triage"** workflow, which triggers on `bug`-labeled issues and asks `@copilot` to investigate and propose a limited-scope fix PR when appropriate.
 
 The build output (`dist-dataminer/`) is packaged as companion files and installed to:
@@ -123,14 +132,24 @@ The build output (`dist-dataminer/`) is packaged as companion files and installe
 C:\Skyline DataMiner\Webpages\public\DynamicsActivities\
 ```
 
+For manual `dev` deploys, the package is installed to:
+```
+C:\Skyline DataMiner\Webpages\public\DynamicsActivitiesDev\
+```
+
 **Access URL:**
 ```
 https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivities%2Findex.html
 ```
 
+**Dev Access URL (manual `dev` deploy):**
+```
+https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivitiesDev%2Findex.html
+```
+
 ### Versioning
 
-Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj` to avoid Catalog conflicts.
+Every PR must bump both `<Version>` and `<VersionComment>` in `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj` to avoid Catalog conflicts and keep release metadata clear.
 
 ---
 

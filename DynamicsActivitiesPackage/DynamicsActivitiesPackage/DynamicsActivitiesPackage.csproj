@@ -10,8 +10,6 @@
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
 		<Version>1.10.0</Version>
 		<VersionComment>Add "Add opportunity" form reachable from access-denied screens; emails opportunities via new SubmitOpportunity automation script</VersionComment>
-		<Version>1.8.79</Version>
-		<VersionComment>Improve dark/light theme readability for rendered HTML activity content</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
@@ -31,13 +29,15 @@
 	  Deploy the DynamicsActivities web app (Vite build output) as companion files.
 	  Anything placed under "PackageContent\CompanionFiles\Skyline DataMiner" is installed on
 	  the agent relative to "C:\Skyline DataMiner", so the web app ends up in:
-		  C:\Skyline DataMiner\Webpages\public\DynamicsActivities
+		  C:\Skyline DataMiner\Webpages\public\<WebAppPublicFolder>
 	-->
 	<PropertyGroup>
 		<!-- Repository root (two levels up) where package.json and vite.config.js live. -->
 		<WebAppRoot>$(MSBuildProjectDirectory)\..\..</WebAppRoot>
 		<WebAppDistDir>$(WebAppRoot)\dist-dataminer</WebAppDistDir>
-		<WebAppCompanionDir>$(MSBuildProjectDirectory)\PackageContent\CompanionFiles\Skyline DataMiner\Webpages\public\DynamicsActivities</WebAppCompanionDir>
+		<!-- Default install folder for production; can be overridden via /p:WebAppPublicFolder=... -->
+		<WebAppPublicFolder Condition="'$(WebAppPublicFolder)' == ''">DynamicsActivities</WebAppPublicFolder>
+		<WebAppCompanionDir>$(MSBuildProjectDirectory)\PackageContent\CompanionFiles\Skyline DataMiner\Webpages\public\$(WebAppPublicFolder)</WebAppCompanionDir>
 	</PropertyGroup>
 
 	<!-- If the dist-dataminer build output is missing, generate it with npm (npm install + npm run build). -->

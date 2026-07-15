@@ -20,8 +20,8 @@
 #   VITE_CLIENT_ID      — Entra app registration client ID
 #   VITE_TENANT_ID      — Entra tenant ID
 #   VITE_DATAVERSE_URL  — Dataverse environment URL
-# Required vars:
-#   VITE_REDIRECT_URI   — OAuth redirect URI (not a secret)
+# Caller must pass:
+#   vite_redirect_uri   — OAuth redirect URI (not a secret)
 # ============================================================
 
 name: "[Reusable] Build, Register and Deploy UI App DMAPP"
@@ -92,6 +92,21 @@ on:
         type: string
         default: ""
 
+      webapp_public_folder:
+        description: >
+          Folder name under C:\Skyline DataMiner\Webpages\public where the
+          app should be installed (for example DynamicsActivitiesDev).
+        required: false
+        type: string
+        default: "DynamicsActivities"
+
+      vite_redirect_uri:
+        description: >
+          Redirect URI injected into VITE_REDIRECT_URI during frontend build.
+          Lets caller workflows target different deployment environments.
+        required: true
+        type: string
+
     secrets:
       DATAMINER_TOKEN:
         description: DataMiner system token for Catalog upload and deployment.
@@ -147,7 +162,7 @@ jobs:
           VITE_CLIENT_ID:             ${{ secrets.VITE_CLIENT_ID }}
           VITE_TENANT_ID:             ${{ secrets.VITE_TENANT_ID }}
           VITE_DATAVERSE_URL:         ${{ secrets.VITE_DATAVERSE_URL }}
-          VITE_REDIRECT_URI:          ${{ vars.VITE_REDIRECT_URI }}
+          VITE_REDIRECT_URI:          ${{ inputs.vite_redirect_uri }}
           VITE_FUNCTIONS_BASE_URL:    ${{ vars.VITE_FUNCTIONS_BASE_URL }}
 
       - name: Verify frontend dist
@@ -220,7 +235,7 @@ jobs:
       # 7. Build DataMiner package (.dmapp)
       # --------------------------------------------------------
       - name: Build DataMiner package
-        run: dotnet build "${{ steps.csproj.outputs.path }}" -c Release
+        run: dotnet build "${{ steps.csproj.outputs.path }}" -c Release -p:WebAppPublicFolder="${{ inputs.webapp_public_folder }}"
 
       # --------------------------------------------------------
       # 8. Locate generated .dmapp
