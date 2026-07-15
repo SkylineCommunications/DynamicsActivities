@@ -209,6 +209,7 @@ Manual `dev` deploys instead target:
 ```text
 C:\Skyline DataMiner\Webpages\public\DynamicsActivitiesDev\
 ```
+and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so static asset URLs resolve correctly.
 
 ### GitHub Actions workflows
 

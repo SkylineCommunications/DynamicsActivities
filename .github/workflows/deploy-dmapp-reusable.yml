@@ -107,6 +107,14 @@ on:
         required: true
         type: string
 
+      vite_app_base_path:
+        description: >
+          Base public path injected into VITE_APP_BASE_PATH for asset and router
+          URLs (for example /public/DynamicsActivitiesDev/).
+        required: false
+        type: string
+        default: "/public/DynamicsActivities/"
+
     secrets:
       DATAMINER_TOKEN:
         description: DataMiner system token for Catalog upload and deployment.
@@ -163,6 +171,7 @@ jobs:
           VITE_TENANT_ID:             ${{ secrets.VITE_TENANT_ID }}
           VITE_DATAVERSE_URL:         ${{ secrets.VITE_DATAVERSE_URL }}
           VITE_REDIRECT_URI:          ${{ inputs.vite_redirect_uri }}
+          VITE_APP_BASE_PATH:         ${{ inputs.vite_app_base_path }}
           VITE_FUNCTIONS_BASE_URL:    ${{ vars.VITE_FUNCTIONS_BASE_URL }}
 
       - name: Verify frontend dist
