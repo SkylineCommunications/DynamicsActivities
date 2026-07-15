@@ -194,7 +194,7 @@ function sanitizeHtml(value) {
           || lower.startsWith('https://')
           || lower.startsWith('mailto:')
           || lower.startsWith('tel:')
-          || lower.startsWith('/')
+          || (lower.startsWith('/') && !lower.startsWith('//'))
           || lower.startsWith('#')
         if (!allowed) el.removeAttribute(attr.name)
       }
