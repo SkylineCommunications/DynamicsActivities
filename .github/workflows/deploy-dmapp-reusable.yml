@@ -200,7 +200,6 @@ jobs:
           VITE_REDIRECT_URI:          ${{ inputs.vite_redirect_uri }}
           VITE_APP_BASE_PATH:         ${{ inputs.vite_app_base_path }}
           VITE_FUNCTIONS_BASE_URL:    ${{ vars.VITE_FUNCTIONS_BASE_URL }}
-          VITE_APP_BASE_PATH:         ${{ inputs.app_base_path }}
 
       - name: Verify frontend dist
         run: |
