@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.8.80</Version>
-		<VersionComment>Refresh README to match the current app shell, browse views, scripts, and workflows</VersionComment>
+		<Version>1.8.81</Version>
+		<VersionComment>Honor the deployment-specific web app public folder</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
@@ -35,7 +35,8 @@
 		<!-- Repository root (two levels up) where package.json and vite.config.js live. -->
 		<WebAppRoot>$(MSBuildProjectDirectory)\..\..</WebAppRoot>
 		<WebAppDistDir>$(WebAppRoot)\dist-dataminer</WebAppDistDir>
-		<WebAppCompanionDir>$(MSBuildProjectDirectory)\PackageContent\CompanionFiles\Skyline DataMiner\Webpages\public\DynamicsActivities</WebAppCompanionDir>
+		<WebAppPublicFolder Condition="'$(WebAppPublicFolder)' == ''">DynamicsActivities</WebAppPublicFolder>
+		<WebAppCompanionDir>$(MSBuildProjectDirectory)\PackageContent\CompanionFiles\Skyline DataMiner\Webpages\public\$(WebAppPublicFolder)</WebAppCompanionDir>
 	</PropertyGroup>
 
 	<!-- If the dist-dataminer build output is missing, generate it with npm (npm install + npm run build). -->
