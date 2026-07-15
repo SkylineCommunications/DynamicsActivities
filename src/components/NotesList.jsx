@@ -95,6 +95,7 @@ const BROWSE_VIEWS = [
     hint: 'Select an account under Regarding to browse sales opportunities.',
     typeIds: ['opportunity'],
     emptyTitle: 'No opportunities found',
+    requiresAccount: true,
   },
   {
     id: 'leads',
@@ -102,6 +103,7 @@ const BROWSE_VIEWS = [
     hint: 'Select an account under Regarding to browse lead records.',
     typeIds: ['lead'],
     emptyTitle: 'No leads found',
+    requiresAccount: true,
   },
   {
     id: 'support',
@@ -109,6 +111,7 @@ const BROWSE_VIEWS = [
     hint: 'Select an account under Regarding to browse support renewals.',
     typeIds: ['support'],
     emptyTitle: 'No support records found',
+    requiresAccount: true,
   },
 ]
 
@@ -390,6 +393,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState(todayInputDate)
   const activeView = BROWSE_VIEWS.find((v) => v.id === activeViewId) || BROWSE_VIEWS[0]
+  const searchDisabled = activeView.requiresAccount && accounts.length === 0
   const allowedTypeIds = new Set(activeView.typeIds)
   const allowedTypes = ACTIVITY_TYPES.filter((t) => allowedTypeIds.has(t.id))
 
@@ -417,6 +421,8 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   }, [tamLoading, managedAccounts, initialAccount])
 
   const runSearch = useCallback(() => {
+    // Opportunities/Leads/Support can only be queried per-account; skip when none selected.
+    if (activeView.requiresAccount && accounts.length === 0) return
     setLoading(true)
     setError(null)
     setTimelineSummary(null)
@@ -514,7 +520,14 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               </button>
             ))}
           </div>
-          <div className="filter-view-hint">{activeView.hint}</div>
+          {searchDisabled ? (
+            <div className="filter-view-hint filter-view-hint-required">
+              <span className="icon icon-sm" aria-hidden="true">info</span>
+              Select an account under <strong>Regarding</strong> to browse {activeView.label.toLowerCase()}.
+            </div>
+          ) : (
+            <div className="filter-view-hint">{activeView.hint}</div>
+          )}
         </div>
 
         <div className="filter-row">
@@ -535,6 +548,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               minChars={2}
               clearOnPick
               autoSelectSingle
+              invalid={searchDisabled}
             />
           </div>
           <div className="filter-field">
@@ -645,7 +659,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
             type="button"
             className="btn btn-primary filter-search-btn"
             onClick={runSearch}
-            disabled={loading}
+            disabled={loading || searchDisabled}
           >
             {loading ? 'Searching…' : 'Search'}
           </button>
