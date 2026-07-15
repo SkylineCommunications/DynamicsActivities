@@ -145,11 +145,11 @@ namespace DynamicsActivitiesSummarize
 			foreach (var activity in request.Activities.Take(50))
 			{
 				var type = SafeValue(activity.Type);
-				var createdOn = SafeValue(activity.CreatedOnUtc);
+				var changedOn = SafeValue(GetActivityTimelineTimestampUtc(activity));
 				var regarding = SafeValue(activity.Regarding);
 				var subject = SafeValue(activity.Subject);
 				var description = TrimValue(SafeValue(activity.Description), 260);
-				lines.Add("- [" + createdOn + "] " + type + " | Regarding: " + regarding + " | Subject: " + subject + " | Note: " + description);
+				lines.Add("- [" + changedOn + "] " + type + " | Regarding: " + regarding + " | Subject: " + subject + " | Note: " + description);
 			}
 
 			return String.Join(Environment.NewLine, lines);
@@ -309,12 +309,18 @@ namespace DynamicsActivitiesSummarize
 				request.Activities.Add(new ActivityInput
 				{
 					CreatedOnUtc = item["createdOnUtc"]?.Value<string>(),
+					ModifiedOnUtc = item["modifiedOnUtc"]?.Value<string>(),
+					ChangedOnUtc = item["changedOnUtc"]?.Value<string>(),
 					Type = item["type"]?.Value<string>(),
 					Subject = item["subject"]?.Value<string>(),
 					Regarding = item["regarding"]?.Value<string>(),
 					Description = item["description"]?.Value<string>(),
 				});
 			}
+
+			request.Activities = request.Activities
+				.OrderByDescending(GetActivityTimelineTimestampSortKey)
+				.ToList();
 
 			return request;
 		}
@@ -376,7 +382,7 @@ namespace DynamicsActivitiesSummarize
 
 			var topItems = activities
 				.Take(3)
-				.Select(a => "[" + SafeValue(a.CreatedOnUtc) + "] " + SafeValue(a.Type) + ": " + SafeValue(a.Subject))
+				.Select(a => "[" + SafeValue(GetActivityTimelineTimestampUtc(a)) + "] " + SafeValue(a.Type) + ": " + SafeValue(a.Subject))
 				.ToList();
 
 			var sb = new StringBuilder();
@@ -430,15 +436,15 @@ namespace DynamicsActivitiesSummarize
 				sb.Append("'>");
 				foreach (var activity in topActivities)
 				{
-					var createdOn = SafeValue(activity.CreatedOnUtc);
-					var hasKnownTimestamp = !String.Equals(createdOn, "-", StringComparison.Ordinal);
+					var changedOn = SafeValue(GetActivityTimelineTimestampUtc(activity));
+					var hasKnownTimestamp = !String.Equals(changedOn, "-", StringComparison.Ordinal);
 					sb.Append("<li style='");
 					sb.Append(ListItemStyle);
 					sb.Append("'>");
 					if (hasKnownTimestamp)
 					{
 						sb.Append("<strong>[");
-						sb.Append(HtmlEncode(createdOn));
+						sb.Append(HtmlEncode(changedOn));
 						sb.Append("]</strong> ");
 					}
 					sb.Append(HtmlEncode(SafeValue(activity.Type)));
@@ -568,6 +574,42 @@ namespace DynamicsActivitiesSummarize
 			return value.Substring(0, maxLength) + "...";
 		}
 
+		private static string GetActivityTimelineTimestampUtc(ActivityInput activity)
+		{
+			if (activity == null)
+			{
+				return null;
+			}
+
+			if (!String.IsNullOrWhiteSpace(activity.ChangedOnUtc))
+			{
+				return activity.ChangedOnUtc;
+			}
+
+			if (!String.IsNullOrWhiteSpace(activity.ModifiedOnUtc))
+			{
+				return activity.ModifiedOnUtc;
+			}
+
+			return activity.CreatedOnUtc;
+		}
+
+		private static DateTime GetActivityTimelineTimestampSortKey(ActivityInput activity)
+		{
+			var raw = GetActivityTimelineTimestampUtc(activity);
+			if (String.IsNullOrWhiteSpace(raw))
+			{
+				return DateTime.MinValue;
+			}
+
+			if (DateTime.TryParse(raw, null, DateTimeStyles.RoundtripKind, out var parsed))
+			{
+				return parsed;
+			}
+
+			return DateTime.MinValue;
+		}
+
 		private sealed class SummaryRequest
 		{
 			[JsonProperty("scopeLabel")]
@@ -587,6 +629,12 @@ namespace DynamicsActivitiesSummarize
 		{
 			[JsonProperty("createdOnUtc")]
 			public string CreatedOnUtc { get; set; }
+
+			[JsonProperty("modifiedOnUtc")]
+			public string ModifiedOnUtc { get; set; }
+
+			[JsonProperty("changedOnUtc")]
+			public string ChangedOnUtc { get; set; }
 
 			[JsonProperty("type")]
 			public string Type { get; set; }
