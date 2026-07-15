@@ -156,7 +156,7 @@ export default function AutocompletePicker({
           {results.map((item, i) => (
             <li
               key={getKey(item)}
-              className={`${i === activeIndex ? 'active' : ''}${renderIcon ? ' has-icon' : ''}`}
+              className={[i === activeIndex && 'active', renderIcon && 'has-icon'].filter(Boolean).join(' ')}
               onMouseDown={() => pick(item)}
               onMouseEnter={() => setActiveIndex(i)}
             >

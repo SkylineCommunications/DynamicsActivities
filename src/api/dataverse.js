@@ -227,7 +227,7 @@ export async function searchAccounts(msalInstance, query) {
 export async function getAccountImages(msalInstance, accountIds) {
   const ids = [...new Set((accountIds ?? []).filter(Boolean))]
   if (!ids.length) return {}
-  const filter = ids.map((id) => `accountid eq ${id}`).join(' or ')
+  const filter = buildLookupFilter('accountid', ids)
   const data = await dvFetch(
     msalInstance,
     `/accounts?$select=accountid,entityimage&$filter=${encodeURIComponent(filter)}`,
