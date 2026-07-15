@@ -671,6 +671,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   justify-content: center;
   z-index: 200;
   padding: 16px;
+  animation: modal-overlay-in 0.15s ease-out;
+}
+
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .modal {
@@ -1739,6 +1745,137 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   flex-wrap: wrap;
 }
 
+/* ─── Confirmation modal ─────────────────────────────────────────────────────── */
+.confirm-modal {
+  max-width: 460px;
+  animation: confirm-modal-in 0.16s ease-out;
+}
+
+@keyframes confirm-modal-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.confirm-title-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  font-size: 15px;
+  border-radius: var(--radius-md);
+  background: var(--clr-accent-dim);
+  color: var(--focus-color);
+}
+
+.confirm-modal .modal-body { gap: 12px; padding: 18px; }
+
+.confirm-intro {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color10);
+}
+
+.confirm-actions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.confirm-actions li {
+  position: relative;
+  padding-left: 26px;
+  color: var(--color12);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.confirm-actions li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--clr-accent-dim);
+  background-image: linear-gradient(transparent, transparent);
+}
+
+.confirm-actions li::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--focus-color);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.confirm-summary {
+  border: 1px solid var(--color5);
+  border-radius: var(--radius-md);
+  background: var(--color2);
+  overflow: hidden;
+}
+
+.confirm-summary-title {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color10);
+  background: var(--color4);
+  border-bottom: 1px solid var(--color5);
+}
+
+.confirm-summary-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color5);
+  font-size: 13px;
+}
+
+.confirm-summary-row:last-child { border-bottom: none; }
+
+.confirm-summary-label {
+  flex: 0 0 38%;
+  color: var(--color10);
+  font-weight: 600;
+}
+
+.confirm-summary-value {
+  flex: 1 1 auto;
+  color: var(--color12);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color5);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
 .inbox-message-summary {
   display: flex;
   flex-direction: column;
@@ -2128,6 +2265,9 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   .filter-field { min-width: auto; }
   .contact-create-modal { max-width: calc(100vw - 1.5rem); }
   .inbox-modal-actions { flex-direction: column; align-items: stretch; }
+  .modal-footer { flex-direction: column-reverse; align-items: stretch; }
+  .confirm-summary-row { flex-direction: column; gap: 0.15rem; }
+  .confirm-summary-label { flex-basis: auto; }
   .inbox-message-meta,
   .inbox-participant { align-items: flex-start; }
   /* At narrow widths collapse the split into a stacked layout */

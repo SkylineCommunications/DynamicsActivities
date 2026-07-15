@@ -18,6 +18,19 @@ const initialState = {
   description: '',
 }
 
+// Labels used in the confirmation summary, in display order.
+const CONFIRM_FIELDS = {
+  topic: 'Topic',
+  firstName: 'First name',
+  lastName: 'Last name',
+  company: 'Company / Account',
+  jobTitle: 'Job title',
+  email: 'Email',
+  phone: 'Phone',
+  country: 'Country',
+  description: 'Description',
+}
+
 /**
  * "Add lead" form. Collects lead details and submits them via the
  * DataMiner automation script, which emails the configured recipient.
@@ -29,6 +42,7 @@ export default function LeadForm({ onDone }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   function update(field) {
     return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value.slice(0, MAX_FIELD_LENGTH) }))
@@ -44,9 +58,15 @@ export default function LeadForm({ onDone }) {
     )
   }
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault()
     if (!isValid() || submitting) return
+    setError(null)
+    setShowConfirm(true)
+  }
+
+  async function confirmSubmit() {
+    setShowConfirm(false)
     setSubmitting(true)
     setError(null)
     try {
@@ -151,6 +171,54 @@ export default function LeadForm({ onDone }) {
           </button>
         </div>
       </form>
+
+      {showConfirm && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => e.target === e.currentTarget && setShowConfirm(false)}
+        >
+          <div className="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="lead-confirm-title">
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <span className="confirm-title-icon icon" aria-hidden="true">send</span>
+                <h3 className="modal-title" id="lead-confirm-title">Confirm lead submission</h3>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setShowConfirm(false)} aria-label="Close">
+                <span className="icon">close</span>
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <p className="confirm-intro">The following actions will be performed:</p>
+              <ul className="confirm-actions">
+                <li>Send the lead details below to the DataMiner automation script.</li>
+                <li>The script emails the lead to the sales/team recipient for follow-up.</li>
+              </ul>
+
+              <div className="confirm-summary">
+                <div className="confirm-summary-title">Lead summary</div>
+                {Object.entries(CONFIRM_FIELDS)
+                  .filter(([key]) => values[key].trim())
+                  .map(([key, label]) => (
+                    <div className="confirm-summary-row" key={key}>
+                      <span className="confirm-summary-label">{label}</span>
+                      <span className="confirm-summary-value">{values[key].trim()}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn-primary" onClick={confirmSubmit}>
+                <span className="icon icon-sm" aria-hidden="true">send</span> Confirm &amp; send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

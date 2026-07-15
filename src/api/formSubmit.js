@@ -6,7 +6,7 @@
  * session (same pattern as ./subscriptions.js).
  */
 
-import { bootstrapSession, getConnection, jsonPost, getDmaUser, validateConnection } from './dataminer'
+import { bootstrapSession, getConnection, jsonPost, getDmaUser, validateConnection, DataMinerServerError } from './dataminer'
 
 async function resolveConnection(redirectOnFailure) {
   const current = getConnection()
@@ -65,7 +65,7 @@ export async function submitForm(scriptName, payload, label) {
   const userEmail = dmaUser?.EmailAddress || ''
   const userName = dmaUser?.FullName || ''
 
-  async function execute(connectionId, redirectOnAuthFailure) {
+  async function execute(connectionId, redirectOnAuthFailure, surfaceServerError = false) {
     return jsonPost('ExecuteAutomationScriptWithOutput', {
       connection: connectionId,
       script: {
@@ -100,18 +100,27 @@ export async function submitForm(scriptName, payload, label) {
         popupType: 1,
         ClientTimeZone: { Type: 0, Info: null },
       },
-    }, { redirectOnAuthFailure })
+    }, { redirectOnAuthFailure, surfaceServerError })
   }
 
   let result = await execute(connection, false)
   if (!result || !result.ScriptOutput) {
     connection = await resolveConnection(true)
     if (!connection) throw new Error(`Could not submit the ${label}. The DataMiner connection is unavailable.`)
-    result = await execute(connection, true)
+    // Surface the real server-side error (e.g. script failure / email/SMTP issue)
+    // instead of masking every failure as a connection problem.
+    try {
+      result = await execute(connection, true, true)
+    } catch (err) {
+      if (err instanceof DataMinerServerError) {
+        throw new Error(`Could not submit the ${label}. ${err.message}`)
+      }
+      throw err
+    }
   }
 
   if (!result || !result.ScriptOutput) {
-    throw new Error(`Could not submit the ${label}. The DataMiner connection is unavailable.`)
+    throw new Error(`Could not submit the ${label}. The server did not return a result.`)
   }
 
   const output = result.ScriptOutput.find((o) => o.Key === 'result')
