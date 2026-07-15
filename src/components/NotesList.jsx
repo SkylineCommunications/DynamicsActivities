@@ -19,6 +19,7 @@ const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.icon
 const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cssClass]))
 const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i
 const UNSAFE_TAG_SELECTOR = 'script,style,iframe,object,embed,link,meta,base,form,input,button,textarea,select,option,svg,math'
+const PRESENTATIONAL_ATTRS_TO_REMOVE = new Set(['color', 'bgcolor', 'background', 'face'])
 const RICH_PREVIEW_SHADOW_CSS = `
   :host { display: block; }
   .content {
@@ -45,6 +46,24 @@ const RICH_PREVIEW_SHADOW_CSS = `
   }
   .content a {
     color: var(--hyperlink);
+  }
+  .content font[color],
+  .content [color],
+  .content [bgcolor],
+  .content [background] {
+    color: inherit !important;
+    background-color: transparent !important;
+  }
+  .content table,
+  .content tr,
+  .content td,
+  .content th {
+    background-color: transparent !important;
+    border-color: var(--color5) !important;
+  }
+  .content img {
+    max-width: 100%;
+    height: auto;
   }
   .content.clamped {
     display: -webkit-box;
@@ -162,6 +181,10 @@ function sanitizeHtml(value) {
       const name = attr.name.toLowerCase()
       const val = attr.value.trim()
       if (name.startsWith('on') || name === 'style') {
+        el.removeAttribute(attr.name)
+        continue
+      }
+      if (PRESENTATIONAL_ATTRS_TO_REMOVE.has(name)) {
         el.removeAttribute(attr.name)
         continue
       }
