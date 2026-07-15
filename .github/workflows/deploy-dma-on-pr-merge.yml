@@ -9,6 +9,8 @@
 #   DATAMINER_TOKEN, VITE_CLIENT_ID, VITE_TENANT_ID, VITE_DATAVERSE_URL
 # Required vars:
 #   VITE_REDIRECT_URI
+# Optional vars for manual dev deploy target:
+#   VITE_REDIRECT_URI_DEV
 
 name: Build, Register and Deploy DMAPP to DMA on PR Merge
 
@@ -17,12 +19,33 @@ on:
     types: [closed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deployment_target:
+        description: "Deployment target"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - dev
 
 jobs:
-  deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+  deploy_production:
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || (github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'production')
     uses: ./.github/workflows/deploy-dmapp-reusable.yml
     with:
       catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
       agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI }}
+      webapp_public_folder: "DynamicsActivities"
+    secrets: inherit
+
+  deploy_dev:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'dev'
+    uses: ./.github/workflows/deploy-dmapp-reusable.yml
+    with:
+      catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
+      agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI_DEV }}
+      webapp_public_folder: "DynamicsActivitiesDev"
     secrets: inherit
