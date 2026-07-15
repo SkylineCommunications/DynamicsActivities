@@ -17,6 +17,18 @@ on:
     types: [closed]
     branches: [main]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: >
+          Target environment for a manual deploy. 'dev' installs to the
+          /public/DynamicsActivitiesDev/ folder and leaves production
+          untouched. 'prod' installs to /public/DynamicsActivities/.
+          PR merges to main always deploy to production.
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
 
 jobs:
   deploy:
@@ -25,4 +37,9 @@ jobs:
     with:
       catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
       agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      # Manual 'dev' deploys target the DynamicsActivitiesDev folder; PR merges
+      # and manual 'prod' deploys target the production DynamicsActivities folder.
+      app_base_path:           ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev') && '/public/DynamicsActivitiesDev/' || '/public/DynamicsActivities/' }}
+      dotnet_build_properties: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev') && '-p:WebAppPublicFolder=DynamicsActivitiesDev' || '' }}
+      version_suffix:          ${{ (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev') && '-dev' || '' }}
     secrets: inherit

@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.10.4</Version>
-		<VersionComment>Polish the lead/opportunity confirmation pop-up.</VersionComment>
+		<Version>1.10.5</Version>
+		<VersionComment>Add dev/prod deploy switch: workflow_dispatch can target the DynamicsActivitiesDev folder.</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
@@ -32,10 +32,15 @@
 		  C:\Skyline DataMiner\Webpages\public\DynamicsActivities
 	-->
 	<PropertyGroup>
+		<!-- Public web folder the app is served from (…\Webpages\public\<folder>).
+		     Defaults to the production folder; override for a dev deploy with
+		     -p:WebAppPublicFolder=DynamicsActivitiesDev. -->
+		<WebAppPublicFolder Condition="'$(WebAppPublicFolder)' == ''">DynamicsActivities</WebAppPublicFolder>
 		<!-- Repository root (two levels up) where package.json and vite.config.js live. -->
 		<WebAppRoot>$(MSBuildProjectDirectory)\..\..</WebAppRoot>
 		<WebAppDistDir>$(WebAppRoot)\dist-dataminer</WebAppDistDir>
-		<WebAppCompanionDir>$(MSBuildProjectDirectory)\PackageContent\CompanionFiles\Skyline DataMiner\Webpages\public\DynamicsActivities</WebAppCompanionDir>
+		<WebAppCompanionRoot>$(MSBuildProjectDirectory)\PackageContent\CompanionFiles\Skyline DataMiner\Webpages\public</WebAppCompanionRoot>
+		<WebAppCompanionDir>$(WebAppCompanionRoot)\$(WebAppPublicFolder)</WebAppCompanionDir>
 	</PropertyGroup>
 
 	<!-- If the dist-dataminer build output is missing, generate it with npm (npm install + npm run build). -->
@@ -51,8 +56,9 @@
 			<DynamicsActivitiesWebAppFiles Include="$(WebAppDistDir)\**\*" />
 		</ItemGroup>
 		<Error Condition="'@(DynamicsActivitiesWebAppFiles)' == ''" Text="No files found in '$(WebAppDistDir)'. Run 'npm install' and 'npm run build' in '$(WebAppRoot)' to generate the dist-dataminer output." />
-		<!-- Clean the destination first so removed/renamed assets don't linger. -->
-		<RemoveDir Directories="$(WebAppCompanionDir)" />
+		<!-- Clean the whole public folder first so removed/renamed assets don't linger
+		     and only the selected public folder (prod OR dev) ends up in the package. -->
+		<RemoveDir Directories="$(WebAppCompanionRoot)" />
 		<MakeDir Directories="$(WebAppCompanionDir)" />
 		<Copy SourceFiles="@(DynamicsActivitiesWebAppFiles)" DestinationFiles="@(DynamicsActivitiesWebAppFiles->'$(WebAppCompanionDir)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="false" />
 		<Message Importance="high" Text="Copied web app files from '$(WebAppDistDir)' into companion folder '$(WebAppCompanionDir)'." />

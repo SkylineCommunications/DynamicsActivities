@@ -6,7 +6,9 @@ export default defineConfig(({ mode }) => ({
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.npm_package_version || 'unknown'),
   },
-  base: mode === 'dataminer' ? '/public/DynamicsActivities/' : './',
+  // A dev deploy passes VITE_APP_BASE_PATH (e.g. /public/DynamicsActivitiesDev/)
+  // so asset URLs resolve from the dev folder. Falls back to the production base.
+  base: process.env.VITE_APP_BASE_PATH || (mode === 'dataminer' ? '/public/DynamicsActivities/' : './'),
   build: {
     outDir: mode === 'dataminer' ? 'dist-dataminer' : 'dist',
     emptyOutDir: true,

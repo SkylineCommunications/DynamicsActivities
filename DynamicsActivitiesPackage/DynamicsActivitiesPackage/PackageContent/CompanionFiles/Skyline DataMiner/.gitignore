@@ -1,4 +1,5 @@
 # The DynamicsActivities web app is generated at build time from the repository
 # root 'dist-dataminer' output and copied here by the DynamicsActivitiesPackage
-# project. It is a build artifact and should not be committed.
-Webpages/public/DynamicsActivities/
+# project. It is a build artifact and should not be committed. Covers both the
+# production (DynamicsActivities) and dev (DynamicsActivitiesDev) folders.
+Webpages/public/
