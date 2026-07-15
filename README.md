@@ -136,6 +136,7 @@ For manual `dev` deploys, the package is installed to:
 ```
 C:\Skyline DataMiner\Webpages\public\DynamicsActivitiesDev\
 ```
+and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so static asset URLs resolve correctly.
 
 **Access URL:**
 ```
