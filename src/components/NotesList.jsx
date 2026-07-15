@@ -126,6 +126,12 @@ function fmtIsoDate(d) {
   return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString()
 }
 
+function todayInputDate() {
+  const now = new Date()
+  const offsetMs = now.getTimezoneOffset() * 60 * 1000
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10)
+}
+
 function stripHtmlTags(value) {
   const raw = String(value ?? '')
   if (!raw.trim()) return ''
@@ -382,7 +388,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [attendees, setAttendees] = useState([]) // [{ contactid, fullname }]
   const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [dateTo, setDateTo] = useState(todayInputDate)
   const activeView = BROWSE_VIEWS.find((v) => v.id === activeViewId) || BROWSE_VIEWS[0]
   const allowedTypeIds = new Set(activeView.typeIds)
   const allowedTypes = ACTIVITY_TYPES.filter((t) => allowedTypeIds.has(t.id))

@@ -1116,7 +1116,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     if (id) seen.add(id)
     deduped.push(r)
   }
-  deduped.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
+  deduped.sort((a, b) => new Date(noteDate(b)) - new Date(noteDate(a)))
   return deduped
 }
 
