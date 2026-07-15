@@ -3,6 +3,9 @@ import { submitOpportunity } from '../../api/opportunities'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Guard against oversized submissions producing oversized emails.
+const MAX_FIELD_LENGTH = 2000
+
 const initialState = {
   topic: '',
   company: '',
@@ -29,7 +32,7 @@ export default function OpportunityForm({ onDone }) {
   const [submitted, setSubmitted] = useState(false)
 
   function update(field) {
-    return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value }))
+    return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value.slice(0, MAX_FIELD_LENGTH) }))
   }
 
   function isValid() {
@@ -137,7 +140,7 @@ export default function OpportunityForm({ onDone }) {
           <textarea id="opp-description" className="textarea" value={values.description} onChange={update('description')} placeholder="Add any context that helps the team follow up…" />
         </div>
 
-        {error && <p className="auth-error">{error}</p>}
+        {error && <p className="auth-error" role="alert">{error}</p>}
 
         <div className="lead-form-actions">
           {onDone && (

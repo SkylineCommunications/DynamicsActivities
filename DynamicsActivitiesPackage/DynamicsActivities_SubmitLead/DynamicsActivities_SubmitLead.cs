@@ -72,6 +72,13 @@ namespace DynamicsActivitiesSubmitLead
 				return;
 			}
 
+			var validationError = Validate(lead);
+			if (validationError != null)
+			{
+				engine.AddScriptOutput("result", BuildErrorResult(validationError));
+				return;
+			}
+
 			var subject = BuildSubject(lead);
 			var body = BuildEmailBody(lead, userName, userEmail);
 
@@ -79,6 +86,57 @@ namespace DynamicsActivitiesSubmitLead
 			engine.GenerateInformation($"[SubmitLead] Lead email sent to {recipient} (submitted by {userName} <{userEmail}>).");
 
 			engine.AddScriptOutput("result", "{\"success\":true}");
+		}
+
+		private static string Validate(JObject lead)
+		{
+			if (string.IsNullOrWhiteSpace(Field(lead, "topic")))
+			{
+				return "Topic is required.";
+			}
+
+			if (string.IsNullOrWhiteSpace(Field(lead, "firstName")) || string.IsNullOrWhiteSpace(Field(lead, "lastName")))
+			{
+				return "First and last name are required.";
+			}
+
+			if (string.IsNullOrWhiteSpace(Field(lead, "company")))
+			{
+				return "Company is required.";
+			}
+
+			if (!IsValidEmail(Field(lead, "email")))
+			{
+				return "A valid email address is required.";
+			}
+
+			return null;
+		}
+
+		private static bool IsValidEmail(string value)
+		{
+			if (string.IsNullOrWhiteSpace(value))
+			{
+				return false;
+			}
+
+			var at = value.IndexOf('@');
+			if (at <= 0 || at != value.LastIndexOf('@') || at >= value.Length - 1)
+			{
+				return false;
+			}
+
+			var dot = value.IndexOf('.', at);
+			return dot > at + 1 && dot < value.Length - 1;
+		}
+
+		private static string BuildErrorResult(string message)
+		{
+			return new JObject
+			{
+				["success"] = false,
+				["error"] = message,
+			}.ToString(Newtonsoft.Json.Formatting.None);
 		}
 
 		private static string BuildSubject(JObject lead)
@@ -120,7 +178,7 @@ namespace DynamicsActivitiesSubmitLead
 
 			sb.AppendLine("</table>");
 
-			var submitter = string.IsNullOrWhiteSpace(submitterName) ? submitterEmail : submitterName;
+			var submitter = HtmlEncode(string.IsNullOrWhiteSpace(submitterName) ? submitterEmail : submitterName);
 			if (!string.IsNullOrWhiteSpace(submitter))
 			{
 				var contact = string.IsNullOrWhiteSpace(submitterEmail) ? submitter : $"{submitter} &lt;{HtmlEncode(submitterEmail)}&gt;";
