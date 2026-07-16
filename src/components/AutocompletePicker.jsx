@@ -87,6 +87,11 @@ export default function AutocompletePicker({
       setHasMore(more)
       setActiveIndex(-1)
       setOpen(true)
+    } catch (err) {
+      if (requestId !== requestRef.current) return
+      setResults([])
+      setHasMore(false)
+      setOpen(false)
     } finally {
       if (requestId === requestRef.current) setLoading(false)
     }

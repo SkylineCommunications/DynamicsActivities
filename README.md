@@ -4,7 +4,7 @@ React + Vite SPA packaged as a **DataMiner Custom App** for working with Dynamic
 
 The mounted app shell is a three-tab experience with **New Activity** selected by default:
 
-- **New Activity** tab for manual activity creation plus inbox and calendar imports
+- **New Activity** tab for manual activity creation plus inbox and shared calendar-assisted phone-call/appointment creation
 - **Activities** tab for searching Dynamics records across activity, opportunity, lead, and support views
 - **Subscriptions** tab for DataMiner-native email digests
 - **Access-gate fallback forms** for submitting leads and opportunities when a user does not have Dynamics/Dataverse access
@@ -19,7 +19,7 @@ After a successful manual creation or import, the app hands off to the Activitie
 |---|---|
 | App shell | Header with DataMiner user display, theme toggle (`light` / `dark` / `system`), bug-report button, and sign-out |
 | New Activity tab | Manual creation of phone calls, appointments, emails, and notes, with account, attendee, escalation, and lead linking where applicable |
-| Activity imports | Inbox email-thread imports and Microsoft Graph calendar-event imports from the New Activity tab |
+| Activity imports | Inbox email-thread imports and shared Microsoft Graph calendar-event creation for phone calls and appointments |
 | Activities tab | Search and browse Dynamics data with filters, rich previews, direct Dynamics links, and Assistant-generated timeline highlights |
 | Browse views | `Activities`, `Opportunities`, `Leads`, and `Support` |
 | Subscriptions tab | Create, edit, pause, resume, and delete DataMiner DOM-backed notification subscriptions |
@@ -43,7 +43,7 @@ After a successful manual creation or import, the app hands off to the Activitie
 
 - Manual creation of phone calls, appointments, emails, and notes
 - Inbox import of email threads through Microsoft Graph
-- Calendar import of events through Microsoft Graph
+- Calendar-assisted phone-call and appointment creation through Microsoft Graph, with stable type-specific fields: editable subject for every activity type, appointment-only end/location, and calendar prefill limited to fields supported by the selected type
 - Optional linking to active escalations and eligible leads
 - Successful creates and imports switch to the Activities tab and preselect the related account
 
@@ -124,7 +124,7 @@ Behavior to be aware of:
 
 ## Activity creation, imports, and standalone forms
 
-The mounted app shell exposes activity creation and imports from the **New Activity** tab. Manual creation supports phone calls, appointments, emails, and notes. The inbox and calendar import flows preserve the selected account when possible and hand off to the browse view after creation.
+The mounted app shell exposes activity creation and imports from the **New Activity** tab. Manual creation supports phone calls, appointments, emails, and notes. Phone-call and appointment calendar assistance now use the shared `ActivityForm`, preserving event discovery, preview, editable event fields, exact times, participant roles, contact matching/creation, unresolved address-only attendees, account/opportunity/lead regarding links, escalation/lead linking, and browse handoff. Account-linked leads and opportunities are selected directly below the account, while calendar attendees are shown as compact editable pills. Inbox email import remains unchanged.
 
 Description input follows the native Dataverse field limits: phone calls (2,000), appointments (1,048,576), emails (1,073,741,823), and notes (100,000) characters. There is no general 500-character Dataverse limit; see the [phone call](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/phonecall), [appointment](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/appointment), [email](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/email), and [annotation](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/annotation) metadata references.
 
@@ -246,7 +246,7 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivitiesRC%2Findex.html
 ```
 
-Open write-capable PRs with `release-candidate` selected as their base branch. When the candidate is approved, open a promotion PR from `release-candidate` into `main`; production remains deployed only when that PR merges.
+Choose the PR base according to the intended release path. Features that can go directly to production may target `main`; features that need RC validation or are started from `release-candidate` must target `release-candidate`. A branch based on `origin/release-candidate` should not be rebased onto `main` merely to change the PR base, because that can introduce unrelated history. Approved RC work can later be promoted to `main`.
 
 The release-candidate deployment uses the repository variable `VITE_REDIRECT_URI_RC`, which must match the redirect URI registered on the deployed Entra application:
 
@@ -323,7 +323,6 @@ src/
       OpportunityForm.jsx       # Standalone opportunity form
     ActivityForm.jsx            # New Activity tab: manual creation and import mode orchestration
     InboxTab.jsx                # Microsoft Graph inbox email-thread import UI
-    CalendarImportTab.jsx       # Microsoft Graph calendar-event import UI
     RichHtmlPreview.jsx         # Sanitized rich HTML preview rendering
   forms/
     registry.js                 # Standalone form registry

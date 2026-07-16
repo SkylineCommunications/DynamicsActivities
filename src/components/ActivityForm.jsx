@@ -1,20 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMsal } from '@azure/msal-react'
 import {
+  createContact,
   searchAccounts,
   searchContacts,
+  findContactByEmail,
   resolveAttendees,
   createActivity,
   getActiveEscalation,
   getAccountLeads,
-  getUserCanManageLeads,
+  getAccountOpportunities,
   ACTIVITY_TYPES,
   ACTIVITY_DESCRIPTION_LIMITS,
 } from '../api/dataverse'
+import { getRecentCalendarEvents } from '../api/graph'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
-import CalendarImportTab from './CalendarImportTab'
 import InboxTab from './InboxTab'
+import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
 const ESCALATION_DESCRIPTION_PREFIX = '[Linked to escalation]\n'
 const INTERNAL_EMAIL_DOMAINS = ['@skyline.be', '@dataminer.services']
@@ -22,6 +25,62 @@ const INTERNAL_EMAIL_DOMAINS = ['@skyline.be', '@dataminer.services']
 function isInternalEmail(email) {
   const normalized = String(email || '').trim().toLowerCase()
   return INTERNAL_EMAIL_DOMAINS.some((domain) => normalized.endsWith(domain))
+}
+
+function calendarBodyText(event) {
+  if (event.bodyHtml) {
+    const container = document.createElement('div')
+    container.innerHTML = event.bodyHtml
+    container.querySelectorAll('style, script, head, meta, title').forEach((node) => node.remove())
+    const comments = document.createTreeWalker(container, NodeFilter.SHOW_COMMENT)
+    const commentNodes = []
+    while (comments.nextNode()) commentNodes.push(comments.currentNode)
+    commentNodes.forEach((node) => node.remove())
+    container.querySelectorAll('br').forEach((breakNode) => breakNode.replaceWith('\n'))
+    return (container.textContent || '').replace(/\u00a0/g, ' ').trim()
+  }
+  return String(event.bodyPreview || '').trim()
+}
+
+function toLocalInputValue(date) {
+  if (!date) return ''
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function getDefaultDate() {
+  const d = new Date()
+  d.setSeconds(0, 0)
+  return toLocalInputValue(d)
+}
+
+function splitCalendarParticipants(event) {
+  const participants = []
+  if (event.organizer?.email) {
+    participants.push({
+      role: 'organizer',
+      roleLabel: 'Organizer',
+      name: event.organizer.name || event.organizer.email,
+      email: event.organizer.email,
+    })
+  }
+  for (const attendee of event.attendees ?? []) {
+    if (!attendee.email) continue
+    const role = attendee.type === 'optional' ? 'optional' : 'required'
+    participants.push({
+      role,
+      roleLabel: role === 'optional' ? 'Optional' : 'Required',
+      name: attendee.name || attendee.email,
+      email: attendee.email,
+    })
+  }
+  const seen = new Set()
+  return participants.filter((p) => {
+    const key = p.email.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function getBestAccountFromAttendees(attendees) {
@@ -44,27 +103,17 @@ function getBestAccountFromAttendees(attendees) {
   return best ? { accountid: best.accountid, name: best.name } : null
 }
 
-function calendarBodyText(event) {
-  if (event.bodyHtml) {
-    const container = document.createElement('div')
-    container.innerHTML = event.bodyHtml
-    container.querySelectorAll('style, script, head, meta, title').forEach((node) => node.remove())
-    const comments = document.createTreeWalker(container, NodeFilter.SHOW_COMMENT)
-    const commentNodes = []
-    while (comments.nextNode()) commentNodes.push(comments.currentNode)
-    commentNodes.forEach((node) => node.remove())
-    container.querySelectorAll('br').forEach((breakNode) => breakNode.replaceWith('\n'))
-    return (container.textContent || '').replace(/\u00a0/g, ' ').trim()
-  }
-  return String(event.bodyPreview || '').trim()
-}
-
-function AttendeeChip({ attendee, onRemove }) {
+function AttendeeChip({ attendee, onRemove, onCreateContact }) {
   const isLinked = !!attendee.contactId
   return (
     <span className={`chip ${isLinked ? 'chip-linked' : 'chip-unlinked'}`}>
       <span className="icon icon-sm">{isLinked ? 'check_circle' : 'radio_button_unchecked'}</span>
       <span>{attendee.name || attendee.email}</span>
+      {!isLinked && onCreateContact && (
+        <button type="button" className="chip-action" onClick={onCreateContact} aria-label="Create contact">
+          <span className="icon icon-sm" aria-hidden="true">person_add</span>
+        </button>
+      )}
       <button type="button" className="chip-remove" onClick={onRemove} aria-label="Remove attendee">
         <span className="icon icon-sm" aria-hidden="true">close</span>
       </button>
@@ -77,14 +126,12 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
 
   const [type, setType] = useState('phonecall')
   const [emailMode, setEmailMode] = useState('create')
-  const [appointmentMode, setAppointmentMode] = useState('create')
   const [account, setAccount] = useState(null)
   const [accountMode, setAccountMode] = useState('managed')
-  const [date, setDate] = useState(() => {
-    const d = new Date()
-    d.setSeconds(0, 0)
-    return d.toISOString().slice(0, 16)
-  })
+  const [date, setDate] = useState(getDefaultDate)
+  const [endDate, setEndDate] = useState('')
+  const [subject, setSubject] = useState('')
+  const [location, setLocation] = useState('')
   const [note, setNote] = useState('')
   const [attendees, setAttendees] = useState([])
   const [showCalendar, setShowCalendar] = useState(false)
@@ -96,24 +143,38 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const [accountIsEscalated, setAccountIsEscalated] = useState(false)
   const [accountLeads, setAccountLeads] = useState([])
   const [linkToLeadId, setLinkToLeadId] = useState('')
-  const [canManageLeads, setCanManageLeads] = useState(false)
+  const [accountOpportunities, setAccountOpportunities] = useState([])
+  const [linkToOpportunityId, setLinkToOpportunityId] = useState('')
+  const [calendarContactsByEmail, setCalendarContactsByEmail] = useState({})
+  const [calendarContactsLoading, setCalendarContactsLoading] = useState(false)
+  const [calendarContactError, setCalendarContactError] = useState(null)
+  const [calendarEvent, setCalendarEvent] = useState(null)
+  const calendarSelectionRef = useRef(0)
 
-  // Check if user has a sales license (can manage leads in Dynamics)
-  useEffect(() => {
-    if (!currentUserId) return
-    getUserCanManageLeads(instance, currentUserId)
-      .then(setCanManageLeads)
-      .catch(() => setCanManageLeads(false))
-  }, [instance, currentUserId]) // eslint-disable-line react-hooks/exhaustive-deps
+  function handleTypeChange(nextType) {
+    setType(nextType)
+    if (!['phonecall', 'appointment'].includes(nextType) && calendarEvent) {
+      calendarSelectionRef.current += 1
+      setCalendarEvent(null)
+      setCalendarContactsByEmail({})
+      setCalendarContactError(null)
+      setCalendarContactsLoading(false)
+      setDate(getDefaultDate())
+      setSubject('')
+      setNote('')
+      setAttendees([])
+    }
+    if (nextType !== 'appointment') {
+      setEndDate('')
+      setLocation('')
+    } else if (calendarEvent) {
+      setEndDate(calendarEvent.end ? toLocalInputValue(calendarEvent.end) : '')
+      setLocation(calendarEvent.location || '')
+    }
+  }
 
   useEffect(() => {
     if (type !== 'email') setEmailMode('create')
-  }, [type])
-
-  useEffect(() => {
-    if (type !== 'appointment') {
-      setAppointmentMode('create')
-    }
   }, [type])
 
   // When account changes, check for active escalation and fetch leads
@@ -123,7 +184,9 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
       setLinkToEscalation(false)
       setAccountIsEscalated(false)
       setAccountLeads([])
+      setAccountOpportunities([])
       setLinkToLeadId('')
+      setLinkToOpportunityId('')
       return
     }
     // Reset lead/escalation state immediately so stale values from
@@ -134,6 +197,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     setActiveEscalation(null)
     setAccountIsEscalated(false)
     setAccountLeads([])
+    setAccountOpportunities([])
+    setLinkToOpportunityId('')
 
     getActiveEscalation(instance, account.accountid)
       .then((esc) => {
@@ -150,6 +215,9 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     getAccountLeads(instance, account.accountid)
       .then((leads) => { if (active) setAccountLeads(leads) })
       .catch(() => { if (active) setAccountLeads([]) })
+    getAccountOpportunities(instance, account.accountid)
+      .then((opportunities) => { if (active) setAccountOpportunities(opportunities) })
+      .catch(() => { if (active) setAccountOpportunities([]) })
 
     return () => { active = false }
   }, [instance, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -158,7 +226,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const isEmail = type === 'email'
   const isAppointment = type === 'appointment'
   const isInboxImportMode = isEmail && emailMode === 'import'
-  const isCalendarImportMode = isAppointment && appointmentMode === 'import'
+  const isCalendarAssisted = !!calendarEvent
   const descriptionLimit = ACTIVITY_DESCRIPTION_LIMITS[type] ?? ACTIVITY_DESCRIPTION_LIMITS.note
   const noteLimit = Math.max(
     0,
@@ -167,7 +235,12 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
       : 0),
   )
   const charsLeft = noteLimit - note.length
-  const canSubmit = !isInboxImportMode && !isCalendarImportMode && account && note.trim().length > 0 && !submitting
+  const regardingType = linkToOpportunityId ? 'opportunity' : linkToLeadId ? 'lead' : 'account'
+  const regardingId = linkToOpportunityId || linkToLeadId || account?.accountid
+  const showDescriptionCounter = noteLimit <= 5000
+  const canSubmit = isCalendarAssisted
+    ? !!account && !submitting
+    : !isInboxImportMode && !!account && note.trim().length > 0 && !submitting
   const hasManagedAccounts = managedAccounts.length > 0
   const useManagedAccounts = accountMode === 'managed' && hasManagedAccounts
 
@@ -201,9 +274,72 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     return searchContacts(instance, q, { ...paging, accountIds: account?.accountid ? [account.accountid] : [] })
   }
 
+  async function handleCreateCalendarContact(participant) {
+    setCalendarContactError(null)
+    try {
+      const nameParts = String(participant.name || '').trim().split(/\s+/)
+      const contact = await createContact(instance, {
+        firstname: nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : null,
+        lastname: nameParts.length > 1 ? nameParts[nameParts.length - 1] : (nameParts[0] || participant.email),
+        emailaddress1: participant.email,
+        accountId: account?.accountid || null,
+      })
+      setCalendarContactsByEmail((current) => ({
+        ...current,
+        [participant.email.toLowerCase()]: contact,
+      }))
+      setAttendees((current) => current.map((attendee) => (
+        attendee.email?.toLowerCase() === participant.email.toLowerCase()
+          ? {
+              ...attendee,
+              contactId: contact.contactid,
+              name: contact.fullname || attendee.name,
+              accountId: account?.accountid || null,
+              accountName: account?.name || null,
+            }
+          : attendee
+      )))
+    } catch (e) {
+      setCalendarContactError(e.message)
+    }
+  }
+
   useEffect(() => {
     setNote((current) => current.slice(0, noteLimit))
   }, [noteLimit])
+
+  useEffect(() => {
+    if (!calendarEvent) return
+    setSubject(calendarEvent.subject || '')
+    setDate(calendarEvent.start ? toLocalInputValue(calendarEvent.start) : date)
+    setEndDate(isAppointment && calendarEvent.end ? toLocalInputValue(calendarEvent.end) : '')
+    setLocation(isAppointment ? calendarEvent.location || '' : '')
+    setNote(calendarBodyText(calendarEvent).slice(0, noteLimit))
+  }, [calendarEvent?.id, isAppointment]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const calendarParticipants = calendarEvent ? splitCalendarParticipants(calendarEvent) : []
+
+  useEffect(() => {
+    if (!calendarEvent || !calendarParticipants.length) {
+      setCalendarContactsByEmail({})
+      return
+    }
+    let active = true
+    setCalendarContactsLoading(true)
+    setCalendarContactError(null)
+    Promise.all(calendarParticipants.map(async (participant) => [
+      participant.email.toLowerCase(),
+      await findContactByEmail(instance, participant.email, account?.accountid || null),
+    ]))
+      .then((entries) => {
+        if (active) {
+          setCalendarContactsByEmail(Object.fromEntries(entries.filter(([, contact]) => contact)))
+        }
+      })
+      .catch((e) => { if (active) setCalendarContactError(e.message) })
+      .finally(() => { if (active) setCalendarContactsLoading(false) })
+    return () => { active = false }
+  }, [instance, calendarEvent?.id, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleAttendeeSelected(contact) {
     if (!contact) return
@@ -215,16 +351,51 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   }
 
   async function handleCalendarSelect(event) {
+    const selectionId = ++calendarSelectionRef.current
     setShowCalendar(false)
-    setDate(event.start ? event.start.toISOString().slice(0, 16) : date)
+    setCalendarEvent(event)
+    setSubject(event.subject || '')
+    setDate(event.start ? toLocalInputValue(event.start) : date)
+    setEndDate(isAppointment && event.end ? toLocalInputValue(event.end) : '')
+    setLocation(isAppointment ? event.location || '' : '')
     const body = calendarBodyText(event)
     if (body) setNote(body.slice(0, noteLimit))
     // Resolve attendees against Dynamics contacts
-    const raw = event.attendees.map((a) => ({ name: a.name, email: a.email }))
+    const raw = [
+      ...(event.organizer?.email ? [{ name: event.organizer.name, email: event.organizer.email, role: 'organizer' }] : []),
+      ...(event.attendees ?? []).map((a) => ({
+        name: a.name,
+        email: a.email,
+        role: a.type === 'optional' ? 'optional' : 'required',
+      })),
+    ]
     const resolved = await resolveAttendees(instance, raw)
+    if (selectionId !== calendarSelectionRef.current) return
     setAttendees(resolved)
     const suggestedAccount = getBestAccountFromAttendees(resolved)
-    if (suggestedAccount) setAccount(suggestedAccount)
+    if (suggestedAccount) {
+      setAccount(suggestedAccount)
+    }
+  }
+
+  function clearCalendarActivity() {
+    calendarSelectionRef.current += 1
+    setShowCalendar(false)
+    setCalendarEvent(null)
+    setAccount(null)
+    setSubject('')
+    setDate(getDefaultDate())
+    setEndDate('')
+    setLocation('')
+    setNote('')
+    setAttendees([])
+    setLinkToLeadId('')
+    setLinkToOpportunityId('')
+    setLinkToEscalation(false)
+    setCalendarContactsByEmail({})
+    setCalendarContactError(null)
+    setCalendarContactsLoading(false)
+    setError(null)
   }
 
   function removeAttendee(idx) {
@@ -241,26 +412,61 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     setSubmitting(true)
     setError(null)
     try {
+      const calendarAttendees = isCalendarAssisted
+        ? calendarParticipants.map((participant) => {
+          const contact = calendarContactsByEmail[participant.email.toLowerCase()]
+          return {
+            ...participant,
+            ...(contact ? {
+              contactId: contact.contactid,
+              accountId: contact._parentcustomerid_value || null,
+              accountName: contact['_parentcustomerid_value@OData.Community.Display.V1.FormattedValue'] || null,
+            } : {}),
+          }
+        })
+        : attendees
       await createActivity(instance, {
         type,
-        accountId: account.accountid,
+        accountId: account?.accountid,
         date,
+        end: isAppointment ? endDate : undefined,
         note: note.trim(),
-        attendees,
+        subject,
+        location: isAppointment ? location : undefined,
+        attendees: calendarAttendees,
         currentUserId,
-        linkToEscalationId: (!linkToLeadId && linkToEscalation && activeEscalation)
+        linkToEscalationId: !linkToOpportunityId && !linkToLeadId && linkToEscalation && activeEscalation
           ? activeEscalation.slc_escalationid
           : undefined,
         linkToLeadId: linkToLeadId || undefined,
+        regardingType: regardingType !== 'account' ? regardingType : undefined,
+        regardingId: regardingType !== 'account' ? regardingId : undefined,
+        regardingAccountId: account?.accountid,
       })
       setSuccess(true)
       setNote('')
       setAttendees([])
-      setDate(() => {
-        const d = new Date(); d.setSeconds(0, 0); return d.toISOString().slice(0, 16)
-      })
+      setSubject('')
+      setLocation('')
+      setCalendarEvent(null)
+      setLinkToLeadId('')
+      setLinkToOpportunityId('')
+      setLinkToEscalation(false)
+      setDate(getDefaultDate())
+      setEndDate('')
       setTimeout(() => setSuccess(false), 3000)
-      completePostCreateFlow(account)
+      const browseAccount = isCalendarAssisted
+        ? buildBrowseAccountFromRegarding({
+          regardingType,
+          regardingItem: regardingType === 'opportunity'
+            ? accountOpportunities.find((opportunity) => opportunity.opportunityid === regardingId)
+            : regardingType === 'lead'
+              ? accountLeads.find((lead) => lead.leadid === regardingId)
+              : account,
+          resolvedAccount: account,
+        })
+        : account
+      completePostCreateFlow(browseAccount)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -279,7 +485,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
               key={t.id}
               type="button"
               className={`type-btn ${type === t.id ? 'active' : ''}`}
-              onClick={() => setType(t.id)}
+              onClick={() => handleTypeChange(t.id)}
               title={t.tooltip}
             >
               <span className="icon icon-sm">{t.iconLigature}</span>
@@ -307,27 +513,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
           </div>
         )}
 
-        {isAppointment && (
-          <div className="mode-row">
-            <button
-              type="button"
-              className={`filter-type-btn ${appointmentMode === 'create' ? 'active' : ''}`}
-              onClick={() => setAppointmentMode('create')}
-            >
-              Create New
-            </button>
-            <button
-              type="button"
-              className={`filter-type-btn ${appointmentMode === 'import' ? 'active' : ''}`}
-              onClick={() => setAppointmentMode('import')}
-            >
-              Import from calendar
-            </button>
-          </div>
-        )}
-
         {/* Calendar link — not shown for notes */}
-        {(type === 'phonecall' || type === 'appointment') && !isInboxImportMode && !isCalendarImportMode && (
+        {(type === 'phonecall' || type === 'appointment') && !isInboxImportMode && (
         <div className="calendar-row">
           <button type="button" className="btn-ghost" onClick={() => setShowCalendar(true)}>
             <span className="icon icon-sm">calendar_today</span> Fill from calendar
@@ -336,7 +523,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         </div>
         )}
 
-        {!isInboxImportMode && !isCalendarImportMode && (
+        {!isInboxImportMode && (
         <>
         {/* Account (required) */}
         <div className="field">
@@ -382,6 +569,58 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
           )}
         </div>
 
+        {accountLeads.length > 0 && (
+          <div className="lead-link-banner">
+            <span className="icon icon-sm">trending_up</span>
+            <label className="lead-link-select">
+              <span>Link to lead</span>
+              <select
+                value={linkToLeadId}
+                onChange={(e) => {
+                  setLinkToLeadId(e.target.value)
+                  if (e.target.value) {
+                    setLinkToOpportunityId('')
+                    setLinkToEscalation(false)
+                  }
+                }}
+              >
+                <option value="">None</option>
+                {accountLeads.map((lead) => (
+                  <option key={lead.leadid} value={lead.leadid}>
+                    {lead.subject || '(Untitled)'} — {lead.statusLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {accountOpportunities.length > 0 && (
+          <div className="lead-link-banner">
+            <span className="icon icon-sm">trending_up</span>
+            <label className="lead-link-select">
+              <span>Link to opportunity</span>
+              <select
+                value={linkToOpportunityId}
+                onChange={(e) => {
+                  setLinkToOpportunityId(e.target.value)
+                  if (e.target.value) {
+                    setLinkToLeadId('')
+                    setLinkToEscalation(false)
+                  }
+                }}
+              >
+                <option value="">None</option>
+                {accountOpportunities.map((opportunity) => (
+                  <option key={opportunity.opportunityid} value={opportunity.opportunityid}>
+                    {opportunity.name || '(Untitled)'} — {opportunity.statusLabel}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
         {/* Active escalation link banner */}
         {accountIsEscalated && (
           <div className="escalation-link-banner">
@@ -391,7 +630,13 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
               <input
                 type="checkbox"
                 checked={linkToEscalation}
-                onChange={(e) => { setLinkToEscalation(e.target.checked); if (e.target.checked) setLinkToLeadId('') }}
+                onChange={(e) => {
+                  setLinkToEscalation(e.target.checked)
+                  if (e.target.checked) {
+                    setLinkToLeadId('')
+                    setLinkToOpportunityId('')
+                  }
+                }}
                 disabled={!activeEscalation}
               />
               {activeEscalation ? 'Link to escalation' : 'Loading escalation…'}
@@ -399,35 +644,17 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
           </div>
         )}
 
-        {/* BD Leads — show when account has open leads */}
-        {accountLeads.length > 0 && (
-          <div className="lead-link-banner">
-            <span className="icon icon-sm">trending_up</span>
-            <label className="lead-link-select">
-              <span>Link to BD lead</span>
-              <select
-                value={linkToLeadId}
-                onChange={(e) => { setLinkToLeadId(e.target.value); if (e.target.value) setLinkToEscalation(false) }}
-              >
-                <option value="">None</option>
-                {accountLeads.map((l) => (
-                  <option key={l.leadid} value={l.leadid}>
-                    {l.subject || '(Untitled)'} — {l.statusLabel}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {canManageLeads && (
-              <span className="lead-hint">
-                <a href={`${import.meta.env.VITE_DATAVERSE_URL}main.aspx?pagetype=entitylist&etn=lead`} target="_blank" rel="noreferrer">
-                  Manage leads <span className="icon icon-sm">open_in_new</span>
-                </a>
-              </span>
-            )}
-          </div>
-        )}
-
         {/* Date — not shown for notes */}
+        <div className="field">
+          <label className="field-label">Subject</label>
+          <input
+            className="input"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder={ACTIVITY_TYPES.find((t) => t.id === type)?.label || 'Subject'}
+          />
+        </div>
+
         {!isNote && (
         <div className="field">
           <label className="field-label">{dateLabel}</label>
@@ -440,14 +667,42 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         </div>
         )}
 
+        {isAppointment && (
+          <>
+            <div className="field">
+              <label className="field-label">End</label>
+              <input type="datetime-local" className="input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label">Location <span className="optional">(optional)</span></label>
+              <input className="input" value={location} onChange={(e) => setLocation(e.target.value)} />
+            </div>
+          </>
+        )}
+
         {/* Attendees — not shown for notes */}
         {!isNote && (
         <div className="field">
           <label className="field-label">{attendeesLabel} <span className="optional">(optional)</span></label>
           <div className="chip-list">
-            {attendees.map((a, i) => (
-              <AttendeeChip key={i} attendee={a} onRemove={() => removeAttendee(i)} />
-            ))}
+            {attendees.map((a, i) => {
+              const linkedContact = a.contactId
+                ? null
+                : calendarContactsByEmail[a.email?.toLowerCase()]
+              const displayAttendee = linkedContact
+                ? { ...a, contactId: linkedContact.contactid, name: linkedContact.fullname || a.name }
+                : a
+              return (
+              <AttendeeChip
+                key={i}
+                attendee={displayAttendee}
+                onRemove={() => removeAttendee(i)}
+                onCreateContact={isCalendarAssisted && !displayAttendee.contactId
+                  ? () => handleCreateCalendarContact(a)
+                  : undefined}
+              />
+              )
+            })}
           </div>
           <AutocompletePicker
             searchFn={searchContactsFn}
@@ -469,6 +724,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
               ○ Attendees from calendar without a Dynamics match are mentioned but not linked.
             </p>
           )}
+          {calendarContactError && <div className="alert alert-error">{calendarContactError}</div>}
+          {calendarContactsLoading && <p className="hint-text">Checking existing contacts…</p>}
         </div>
         )}
 
@@ -485,29 +742,28 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
             maxLength={noteLimit}
             rows={4}
           />
-          <div className="char-counter">
-            <span className="hint-text">Internal only · Short &amp; to the point · Not for project notes</span>
-            <span className={`char-count ${charsLeft < 50 ? 'near-limit' : ''}`}>{note.length}/{noteLimit}</span>
-          </div>
+          {showDescriptionCounter && (
+            <div className="char-counter">
+              <span className="hint-text">Internal only · Short &amp; to the point · Not for project notes</span>
+              <span className={`char-count ${charsLeft < 50 ? 'near-limit' : ''}`}>{note.length}/{noteLimit}</span>
+            </div>
+          )}
         </div>
 
         {/* Errors / success */}
         {error && <div className="alert alert-error">{error}</div>}
         {success && <div className="alert alert-success"><span className="icon icon-sm">check_circle</span> Activity saved</div>}
 
-        {/* Submit */}
-        <button type="submit" className="btn-primary" disabled={!canSubmit}>
-          {submitting ? 'Saving…' : 'Save'}
-        </button>
+        {/* Form actions */}
+        <div className="activity-form-actions">
+          <button type="button" className="btn-ghost" onClick={clearCalendarActivity} disabled={submitting}>
+            Clear activity
+          </button>
+          <button type="submit" className="btn-primary" disabled={!canSubmit}>
+            {submitting ? 'Saving…' : 'Save'}
+          </button>
+        </div>
         </>
-        )}
-
-        {isCalendarImportMode && (
-          <CalendarImportTab
-            compact
-            selectedAccount={account}
-            onImported={(result) => completePostCreateFlow(result?.browseAccount || null)}
-          />
         )}
 
         {isInboxImportMode && (
