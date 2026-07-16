@@ -9,6 +9,9 @@
 #   DATAMINER_TOKEN, VITE_CLIENT_ID, VITE_TENANT_ID, VITE_DATAVERSE_URL
 # Required vars:
 #   VITE_REDIRECT_URI
+# Optional vars:
+#   VITE_REDIRECT_URI_DEV — Manual development deploy target
+#   VITE_REDIRECT_URI_RC  — Release candidate deploy target
 
 name: Deploy DynamicsActivities DMAPP
 
@@ -19,6 +22,15 @@ on:
   push:
     branches: [release-candidate]
   workflow_dispatch:
+    inputs:
+      deployment_target:
+        description: "Deployment target"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - dev
 
 permissions:
   contents: read
@@ -31,6 +43,7 @@ jobs:
   deploy_production:
     if: >
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'production' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     uses: ./.github/workflows/deploy-dmapp-reusable.yml
     with:
@@ -50,4 +63,15 @@ jobs:
       vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI_RC }}
       vite_app_base_path:   "/public/DynamicsActivitiesRC/"
       webapp_public_folder: "DynamicsActivitiesRC"
+    secrets: inherit
+
+  deploy_dev:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'dev'
+    uses: ./.github/workflows/deploy-dmapp-reusable.yml
+    with:
+      catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
+      agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI_DEV }}
+      vite_app_base_path:   "/public/DynamicsActivitiesDev/"
+      webapp_public_folder: "DynamicsActivitiesDev"
     secrets: inherit

@@ -19,7 +19,7 @@ Users access it via DataMiner's `/auth/` page, which handles Entra sign-in and s
 - Field: `<VersionComment>...</VersionComment>` — update with a short description
 - **Patch (Z)** for bug fixes and features, **Minor (Y)** for significant changes
 
-The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge` runs automatically on PR merge to main, or can be triggered manually via `workflow_dispatch` from the `main` branch. It builds the frontend, packages a `.dmapp`, uploads to the DataMiner Catalog, and deploys to the target agent.
+The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge` runs automatically on PR merge to main. Manual `workflow_dispatch` supports `dev` deploys on any branch, while `production` deploys are allowed from `main` only. It builds the frontend, packages a `.dmapp`, uploads to the DataMiner Catalog, and deploys to the target agent.
 
 ---
 

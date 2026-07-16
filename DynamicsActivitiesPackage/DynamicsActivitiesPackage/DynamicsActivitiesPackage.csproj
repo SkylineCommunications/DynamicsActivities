@@ -35,6 +35,7 @@
 		<!-- Repository root (two levels up) where package.json and vite.config.js live. -->
 		<WebAppRoot>$(MSBuildProjectDirectory)\..\..</WebAppRoot>
 		<WebAppDistDir>$(WebAppRoot)\dist-dataminer</WebAppDistDir>
+		<!-- Default install folder for production; can be overridden via /p:WebAppPublicFolder=... -->
 		<WebAppPublicFolder Condition="'$(WebAppPublicFolder)' == ''">DynamicsActivities</WebAppPublicFolder>
 		<WebAppCompanionDir>$(MSBuildProjectDirectory)\PackageContent\CompanionFiles\Skyline DataMiner\Webpages\public\$(WebAppPublicFolder)</WebAppCompanionDir>
 	</PropertyGroup>
