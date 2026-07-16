@@ -171,7 +171,7 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
         <div className="field">
           <label className="field-label">Account <span className="required">*</span></label>
           <AutocompletePicker
-            searchFn={(q) => searchAccounts(instance, q)}
+            searchFn={(q, paging) => searchAccounts(instance, q, paging)}
             getKey={(a) => a.accountid}
             getLabel={(a) => a.name}
             getSublabel={(a) => [a.address1_country, a.address1_stateorprovince].filter(Boolean).join(' · ')}
@@ -179,6 +179,9 @@ export default function SubscriptionForm({ subscription, onSaved, onCancel }) {
             onChange={setAccount}
             placeholder="Search accounts…"
             autoSelectSingle
+            showSelectedIndicator
+            loadOnFocus
+            allowEmptySearch
           />
         </div>
       )}

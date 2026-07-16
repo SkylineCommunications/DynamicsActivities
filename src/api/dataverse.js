@@ -1,5 +1,6 @@
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 import { dataverseRequest } from '../authConfig'
+import { formatPreviewHtml } from '../components/RichHtmlPreview'
 
 const BASE_URL = (import.meta.env.VITE_DATAVERSE_URL || '').replace(/\/$/, '')
 const API = `${BASE_URL}/api/data/v9.2`
@@ -89,6 +90,50 @@ export const ACTIVITY_TYPES = [
     tooltip: 'Support renewal (managed in Dynamics)',
   },
 ]
+
+// Dataverse's native description/notetext limits. These are field limits, not
+// UI recommendations; keep the form aligned with the entity being created.
+export const ACTIVITY_DESCRIPTION_LIMITS = {
+  phonecall: 2000,
+  appointment: 1048576,
+  email: 1073741823,
+  note: 100000,
+}
+
+function compareNames(a, b) {
+  const nameA = String(a?.fullname || a?.emailaddress1 || a?.name || '')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '')
+  const nameB = String(b?.fullname || b?.emailaddress1 || b?.name || '')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '')
+  if (!nameA && nameB) return 1
+  if (nameA && !nameB) return -1
+  if (nameA < nameB) return -1
+  if (nameA > nameB) return 1
+  return 0
+}
+
+function isUnnamedContact(contact) {
+  const name = String(contact?.fullname || '').trim()
+  const email = String(contact?.emailaddress1 || '').trim()
+  return !name
+    || !/[\p{L}\p{N}]/u.test(name)
+    || (email && name.toLowerCase() === email.toLowerCase())
+    || /^[^@\s]+@[^@\s]+$/.test(name)
+}
+
+function contactSortRank(contact, preferredContactIds) {
+  if (preferredContactIds.has(String(contact?.contactid || '').toLowerCase())) return 0
+  return isUnnamedContact(contact) ? 2 : 1
+}
+
+function limitActivityDescription(type, value) {
+  const description = String(value || '')
+  return description.slice(0, ACTIVITY_DESCRIPTION_LIMITS[type])
+}
 
 // Escalation status labels (for display in browse only — escalations are managed in Dynamics)
 export const ESCALATION_STATUSES = [
@@ -198,14 +243,27 @@ export async function getUserCanManageLeads(msalInstance, userId) {
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
-export async function searchAccounts(msalInstance, query) {
-  if (!query || query.trim().length < 2) return []
-  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+export async function searchAccounts(msalInstance, query, paging = null) {
+  const isPaged = !!paging
+  const trimmed = query?.trim() ?? ''
+  if ((!trimmed && !isPaged) || (trimmed && trimmed.length < 2)) return isPaged ? { items: [], hasMore: false } : []
+  const skip = paging?.skip ?? 0
+  const top = paging?.top ?? 25
+  const fetchTop = Math.min(Math.max(skip + top + 1, top + 1), 101)
+  const q = encodeURIComponent(trimmed.replace(/'/g, "''"))
   const select = 'accountid,name,address1_country,address1_stateorprovince'
+  if (!trimmed) {
+    const data = await dvFetch(
+      msalInstance,
+      `/accounts?$select=${select}&$orderby=name asc&$top=${fetchTop}`,
+    )
+    const items = data?.value ?? []
+    return isPaged ? { items: items.slice(skip, skip + top), hasMore: items.length > skip + top } : items
+  }
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
-    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
-    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
   ])
   const seen = new Set()
   const results = []
@@ -215,7 +273,10 @@ export async function searchAccounts(msalInstance, query) {
       results.push(item)
     }
   }
-  return results
+  results.sort(compareNames)
+  return isPaged
+    ? { items: results.slice(skip, skip + top), hasMore: results.length > skip + top }
+    : results
 }
 
 
@@ -287,16 +348,58 @@ export async function searchRegions(msalInstance, query) {
 }
 
 // ─── Contacts ────────────────────────────────────────────────────────────────
-export async function searchContacts(msalInstance, query, accountId = null) {
-  if (!query || query.trim().length < 2) return []
-  const q = encodeURIComponent(query.trim())
-  let filter = `contains(fullname,'${q}')`
-  if (accountId) filter += ` and _parentaccountid_value eq ${accountId}`
-  const data = await dvFetch(
-    msalInstance,
-    `/contacts?$filter=${filter}&$select=contactid,fullname,emailaddress1,_parentcustomerid_value&$top=10`,
+export async function searchContacts(msalInstance, query, accountIdOrPaging = null, maybePaging = null) {
+  const paging = maybePaging || (accountIdOrPaging && typeof accountIdOrPaging === 'object' ? accountIdOrPaging : null)
+  const accountIds = paging?.accountIds
+    || (accountIdOrPaging ? [accountIdOrPaging] : [])
+  const legacyAccountId = !paging && typeof accountIdOrPaging === 'string' ? accountIdOrPaging : null
+  const trimmed = query?.trim() ?? ''
+  const isPaged = !!paging
+  if ((trimmed && trimmed.length < 2) || (!trimmed && !isPaged)) return isPaged ? { items: [], hasMore: false } : []
+
+  const skip = paging?.skip ?? 0
+  const top = paging?.top ?? 25
+  const fetchTop = Math.min(Math.max(skip + top + 1, top + 1), 101)
+  const nameFilter = trimmed ? `contains(fullname,'${trimmed.replace(/'/g, "''")}')` : ''
+  const select = 'contactid,fullname,emailaddress1,_parentcustomerid_value'
+  const accountFilter = legacyAccountId
+    ? `_parentcustomerid_value eq ${legacyAccountId}`
+    : ''
+  const preferredFilter = accountIds.length
+    ? `(${accountIds.map((id) => `_parentcustomerid_value eq ${id}`).join(' or ')})`
+    : ''
+  const queryContacts = async (extraFilters = []) => {
+    const filter = [nameFilter, accountFilter, ...extraFilters].filter(Boolean).join(' and ')
+    const data = await dvFetch(
+      msalInstance,
+      `/contacts${filter ? `?$filter=${encodeURIComponent(filter)}&` : '?'}$select=${select}&$orderby=fullname asc&$top=${fetchTop}`,
+    )
+    return data?.value ?? []
+  }
+
+  const [preferredContacts, namedOtherContacts, unnamedOtherContacts] = await Promise.all([
+    accountIds.length ? queryContacts([preferredFilter]) : Promise.resolve([]),
+    queryContacts(['fullname ne null', "not contains(fullname,'@')"]),
+    queryContacts(["contains(fullname,'@')"]),
+  ])
+  const otherContacts = [...namedOtherContacts, ...unnamedOtherContacts]
+  const preferredContactIds = new Set(
+    preferredContacts.map((contact) => String(contact.contactid || '').toLowerCase()),
   )
-  return data?.value ?? []
+  const seen = new Set()
+  const contacts = [...preferredContacts, ...otherContacts]
+    .filter((contact) => {
+      if (seen.has(contact.contactid)) return false
+      seen.add(contact.contactid)
+      return true
+    })
+    .sort((a, b) => {
+      const rankDifference = contactSortRank(a, preferredContactIds) - contactSortRank(b, preferredContactIds)
+      return rankDifference || compareNames(a, b)
+    })
+  return isPaged
+    ? { items: contacts.slice(skip, skip + top), hasMore: contacts.length > skip + top }
+    : contacts
 }
 
 export async function searchOpportunities(msalInstance, query) {
@@ -500,7 +603,7 @@ export async function createActivity(msalInstance, { type, accountId, date, note
         : { 'objectid_account@odata.bind': `/accounts(${accountId})` }
     const body = {
       subject: 'Note',
-      notetext: note,
+      notetext: limitActivityDescription(type, note),
       ...objectBind,
     }
     return dvFetch(msalInstance, '/annotations', {
@@ -524,6 +627,7 @@ export async function createActivity(msalInstance, { type, accountId, date, note
     regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
     desc = note
   }
+  desc = limitActivityDescription(type, desc)
 
   const base = {
     description: desc,
@@ -598,13 +702,14 @@ export async function createInboxEmailActivity(
   if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
   if (!resolvedRegardingId) throw new Error(`Missing Dynamics link id for type: ${regardingType}`)
 
-  const description = [message.bodyPreview, `Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}`]
-    .filter(Boolean)
-    .join('\n\n')
+  const description = [
+    formatPreviewHtml(message.bodyHtml || message.bodyPreview),
+    `<p>Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}</p>`,
+  ].filter(Boolean).join('')
 
   const body = {
     subject: message.subject || '(No subject)',
-    description: isEscalationLink ? `[Linked to escalation]\n${description}` : description,
+    description: limitActivityDescription('email', isEscalationLink ? `<p>[Linked to escalation]</p>${description}` : description),
     directioncode: true,
     actualend: message.receivedDateTime ? message.receivedDateTime.toISOString() : undefined,
     ...(message.internetMessageId ? { messageid: message.internetMessageId.toLowerCase() } : {}),
@@ -678,14 +783,14 @@ export async function createInboxAppointmentActivity(
     : new Date(new Date(start).getTime() + 30 * 60 * 1000).toISOString()
 
   const description = [
-    event.bodyPreview,
-    `Imported from calendar${event.start ? ` on ${new Date(event.start).toLocaleString()}` : ''}`,
-    event.location ? `Location: ${event.location}` : '',
-  ].filter(Boolean).join('\n\n')
+    formatPreviewHtml(event.bodyHtml || event.bodyPreview),
+    `<p>Imported from calendar${event.start ? ` on ${new Date(event.start).toLocaleString()}` : ''}</p>`,
+    event.location ? `<p>Location: ${formatPreviewHtml(event.location)}</p>` : '',
+  ].filter(Boolean).join('')
 
   const body = {
     subject: event.subject || '(No subject)',
-    description: isEscalationLink ? `[Linked to escalation]\n${description}` : description,
+    description: limitActivityDescription('appointment', isEscalationLink ? `<p>[Linked to escalation]</p>${description}` : description),
     scheduledstart: start,
     scheduledend: end,
     [bindName]: `/${entityPlural}(${resolvedRegardingId})`,
@@ -701,9 +806,9 @@ export async function createInboxAppointmentActivity(
 
 /**
  * Given an array of internetMessageId strings, returns a Set of those that
- * already exist as email activities in Dataverse.
+ * already exist as email activities in Dataverse and are therefore tracked.
  */
-export async function checkSyncedMessageIds(msalInstance, internetMessageIds) {
+export async function checkTrackedMessageIds(msalInstance, internetMessageIds) {
   const ids = internetMessageIds.filter(Boolean).map((id) => id.toLowerCase())
   if (ids.length === 0) return new Set()
   const rows = await getEmailsByInternetMessageIds(msalInstance, ids, 'messageid')

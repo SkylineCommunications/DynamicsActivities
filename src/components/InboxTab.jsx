@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { getConversationMessages, getRecentInboxMessages } from '../api/graph'
 import {
-  checkSyncedMessageIds,
+  checkTrackedMessageIds,
   createContact,
   createInboxEmailActivity,
   findContactByEmail,
+  getDynamicsUrl,
+  getEmailsByInternetMessageIds,
   getThreadSuggestion,
   resolveAccountForRegarding,
   relinkExistingEmails,
@@ -15,6 +17,7 @@ import {
   searchOpportunities,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
+import RichHtmlPreview from './RichHtmlPreview'
 import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
 const REGARDING_TYPES = [
@@ -83,7 +86,7 @@ function getImportRegardingPayload(regardingType, regardingItem) {
   }
 }
 
-function groupMessagesIntoThreads(messages, syncedSet) {
+function groupMessagesIntoThreads(messages, trackedSet) {
   const map = new Map()
   for (const message of messages) {
     const key = message.conversationId || message.internetMessageId || message.id
@@ -94,14 +97,14 @@ function groupMessagesIntoThreads(messages, syncedSet) {
   return [...map.entries()]
     .map(([key, threadMessages]) => {
       const sorted = normaliseThreadMessages(threadMessages)
-      const syncedCount = sorted.filter((m) => m.internetMessageId && syncedSet.has(m.internetMessageId)).length
+      const trackedCount = sorted.filter((m) => m.internetMessageId && trackedSet.has(m.internetMessageId)).length
       return {
         key,
         conversationId: sorted[0]?.conversationId || '',
         messages: sorted,
         latest: sorted[0],
         totalCount: sorted.length,
-        syncedCount,
+        trackedCount,
       }
     })
     .sort((a, b) => (b.latest?.receivedDateTime?.getTime?.() || 0) - (a.latest?.receivedDateTime?.getTime?.() || 0))
@@ -109,8 +112,8 @@ function groupMessagesIntoThreads(messages, syncedSet) {
 
 function threadStatus(thread) {
   if (!thread.totalCount) return 'unknown'
-  if (!thread.syncedCount) return 'none'
-  if (thread.syncedCount === thread.totalCount) return 'complete'
+  if (!thread.trackedCount) return 'none'
+  if (thread.trackedCount === thread.totalCount) return 'complete'
   return 'partial'
 }
 
@@ -246,6 +249,9 @@ function ContactCreatePrompt({
               onChange={(item) => onChange('account', item)}
               placeholder="Search account…"
               autoSelectSingle
+              showSelectedIndicator
+              loadOnFocus
+              allowEmptySearch
             />
             {!draft.account && domainSuggestedAccount && (
               <button
@@ -271,14 +277,58 @@ function ContactCreatePrompt({
   )
 }
 
+function existingActivityForMessage(existingByMessageId, message) {
+  const messageId = String(message.internetMessageId || '').toLowerCase()
+  return messageId ? existingByMessageId.get(messageId) : null
+}
+
+function ImportedMessageLink({ activity }) {
+  if (!activity?.activityid) return null
+  return (
+    <a
+      href={getDynamicsUrl('emails', activity.activityid)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mail-imported-link"
+    >
+      Open in Dynamics →
+    </a>
+  )
+}
+
 function ThreadDetailView({ thread, onAddToDynamics }) {
+  const { instance } = useMsal()
   const [expandedMessageIds, setExpandedMessageIds] = useState(() => new Set())
+  const [existingByMessageId, setExistingByMessageId] = useState(new Map())
+  const [importLookupError, setImportLookupError] = useState(null)
   useEffect(() => {
     setExpandedMessageIds(new Set())
+    setExistingByMessageId(new Map())
+    setImportLookupError(null)
   }, [thread.key])
+
+  useEffect(() => {
+    const ids = thread.messages.map((message) => message.internetMessageId).filter(Boolean)
+    if (!ids.length) return
+    let cancelled = false
+    getEmailsByInternetMessageIds(instance, ids, 'activityid,messageid')
+      .then((rows) => {
+        if (cancelled) return
+        setExistingByMessageId(new Map(
+          rows
+            .map((row) => [String(row.messageid || '').toLowerCase(), row])
+            .filter(([id]) => !!id),
+        ))
+      })
+      .catch((e) => {
+        if (!cancelled) setImportLookupError(e.message)
+      })
+    return () => { cancelled = true }
+  }, [instance, thread.key, thread.messages])
 
   const latestMessage = thread.latest
   const status = threadStatus(thread)
+  const latestExisting = existingActivityForMessage(existingByMessageId, latestMessage)
   const toLine = (latestMessage.toRecipients ?? []).map((r) => r.name || r.email).join(', ')
   const ccLine = (latestMessage.ccRecipients ?? []).map((r) => r.name || r.email).join(', ')
   const toggleMessage = (messageId) => {
@@ -297,8 +347,13 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
       <div className="mail-thread-meta">
         <span className="mail-thread-count">{thread.totalCount} message{thread.totalCount === 1 ? '' : 's'}</span>
         {thread.totalCount > 1 && <span className="mail-thread-count">Latest shown</span>}
-        {status === 'complete' && <span className="inbox-thread-badge inbox-thread-complete">Fully imported</span>}
-        {status === 'partial' && <span className="inbox-thread-badge inbox-thread-partial">Partial import ({thread.syncedCount}/{thread.totalCount})</span>}
+        {status === 'complete' && <span className="inbox-thread-badge inbox-thread-complete">All messages imported</span>}
+        {status === 'partial' && (
+          <span className="inbox-thread-badge inbox-thread-partial">
+            Partially tracked ({thread.trackedCount} of {thread.totalCount} messages)
+          </span>
+        )}
+        {latestExisting?.activityid && <ImportedMessageLink activity={latestExisting} />}
       </div>
 
       <div className="mail-detail-top-actions">
@@ -335,12 +390,17 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
         </div>
       </div>
 
-      <div className="mail-detail-body">{latestMessage.bodyPreview || <em>No preview available</em>}</div>
+      <div className="mail-detail-body">
+        <RichHtmlPreview html={latestMessage.bodyHtml} fallback={latestMessage.bodyPreview} />
+      </div>
+
+      {importLookupError && <div className="alert alert-error inbox-alert">{importLookupError}</div>}
 
       {thread.totalCount > 1 && (
         <div className="mail-thread-list">
           {thread.messages.map((message) => {
             const expanded = expandedMessageIds.has(message.id)
+            const existing = existingActivityForMessage(existingByMessageId, message)
             const itemToLine = (message.toRecipients ?? []).map((r) => r.name || r.email).join(', ')
             const itemCcLine = (message.ccRecipients ?? []).map((r) => r.name || r.email).join(', ')
             return (
@@ -356,6 +416,7 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
                     <div className="mail-thread-item-meta">
                       <span>{message.from?.name || message.from?.email || 'Unknown'}</span>
                       <span>{fmtDateShort(message.receivedDateTime)}</span>
+                      {existing?.activityid && <span className="inbox-thread-badge inbox-thread-complete">Imported</span>}
                     </div>
                   </div>
                 </button>
@@ -367,12 +428,15 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
                       {itemCcLine && <span><strong>CC:</strong> {itemCcLine}</span>}
                       <span><strong>Date:</strong> {fmtDate(message.receivedDateTime)}</span>
                     </div>
-                    <div className="mail-thread-item-expanded-body">{message.bodyPreview || <em>No preview available</em>}</div>
+                    <div className="mail-thread-item-expanded-body">
+                      <RichHtmlPreview html={message.bodyHtml} fallback={message.bodyPreview} />
+                    </div>
                     {message.webLink && (
                       <a href={message.webLink} target="_blank" rel="noopener noreferrer" className="mail-thread-item-expanded-link">
                         Open in Outlook →
                       </a>
                     )}
+                    <ImportedMessageLink activity={existing} />
                   </div>
                 )}
               </div>
@@ -500,7 +564,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
 
   const regardingConfig = {
     account: {
-      searchFn: (q) => searchAccounts(instance, q),
+      searchFn: (q, paging) => searchAccounts(instance, q, paging),
       getKey: (a) => a.accountid,
       getLabel: (a) => a.name,
       placeholder: 'Search account…',
@@ -691,14 +755,46 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
             {!!threadIds.length && (
               <div className="mail-thread-meta">
                 {missingCount === 0 ? (
-                  <span className="inbox-thread-badge inbox-thread-complete">Fully imported ({importedCount}/{threadIds.length})</span>
+                  <span className="inbox-thread-badge inbox-thread-complete">All messages imported ({importedCount} of {threadIds.length})</span>
                 ) : importedCount > 0 ? (
-                  <span className="inbox-thread-badge inbox-thread-partial">Partial import ({importedCount}/{threadIds.length})</span>
+                  <span className="inbox-thread-badge inbox-thread-partial">
+                    Partially imported ({importedCount} of {threadIds.length} messages)
+                  </span>
                 ) : (
                   <span className="inbox-thread-badge">Not imported yet</span>
                 )}
+                {(thread.latest.bodyHtml || thread.latest.bodyPreview) && (
+                  <div className="inbox-message-preview">
+                    <RichHtmlPreview html={thread.latest.bodyHtml} fallback={thread.latest.bodyPreview} />
+                  </div>
+                )}
               </div>
             )}
+          </div>
+
+          <div className="inbox-imported-messages">
+            <div className="inbox-section-label">Import status by message</div>
+            {threadMessages.map((message) => {
+              const existing = existingActivityForMessage(existingByMessageId, message)
+              return (
+                <div key={message.id} className="inbox-imported-message">
+                  <div>
+                    <div className="inbox-imported-message-subject">{message.subject || '(No subject)'}</div>
+                    <div className="inbox-imported-message-meta">
+                      {message.from?.name || message.from?.email || 'Unknown'} · {fmtDate(message.receivedDateTime)}
+                    </div>
+                  </div>
+                  {existing?.activityid ? (
+                    <div className="inbox-imported-message-status">
+                      <span className="inbox-thread-badge inbox-thread-complete">Imported</span>
+                      <ImportedMessageLink activity={existing} />
+                    </div>
+                  ) : (
+                    <span className="inbox-thread-badge">Not imported</span>
+                  )}
+                </div>
+              )
+            })}
           </div>
 
           <div className="inbox-modal-actions inbox-modal-actions-top">
@@ -737,6 +833,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
               onChange={setRegardingItem}
               placeholder={regardingConfig.placeholder}
               autoSelectSingle
+              showSelectedIndicator={regardingType === 'account'}
             />
 
             {!regardingItem && originalSuggestion && (
@@ -793,7 +890,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
         onPickDomainSuggestion={pickDomainSuggestion}
         onConfirm={handleCreateContact}
         creating={creatingContact}
-        searchAccountsFn={(q) => searchAccounts(instance, q)}
+        searchAccountsFn={(q, paging) => searchAccounts(instance, q, paging)}
       />
     </div>
   )
@@ -807,9 +904,9 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
-  const [hideSynced, setHideSynced] = useState(false)
+  const [hideTracked, setHideTracked] = useState(false)
   const [externalOnly, setExternalOnly] = useState(false)
-  const [syncedSet, setSyncedSet] = useState(new Set())
+  const [trackedSet, setTrackedSet] = useState(new Set())
   const [mailbox, setMailbox] = useState('')
   const [mailboxDraft, setMailboxDraft] = useState('')
   const [selectedThreadKey, setSelectedThreadKey] = useState(null)
@@ -818,7 +915,7 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
 
   function mergeChecked(ids) {
     if (!ids.size) return
-    setSyncedSet((prev) => {
+    setTrackedSet((prev) => {
       const next = new Set(prev)
       ids.forEach((id) => next.add(id))
       return next
@@ -836,7 +933,7 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
         setMessages(items)
         setNextLink(nl)
         const ids = items.map((m) => m.internetMessageId).filter(Boolean)
-        checkSyncedMessageIds(instance, ids).then(mergeChecked).catch(() => {})
+        checkTrackedMessageIds(instance, ids).then(mergeChecked).catch(() => {})
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
@@ -854,7 +951,7 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
               setMessages((prev) => [...prev, ...more])
               setNextLink(nl)
               const ids = more.map((m) => m.internetMessageId).filter(Boolean)
-              checkSyncedMessageIds(instance, ids).then(mergeChecked).catch(() => {})
+              checkTrackedMessageIds(instance, ids).then(mergeChecked).catch(() => {})
             })
             .catch((e) => setError(e.message))
             .finally(() => setLoadingMore(false))
@@ -866,16 +963,16 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
     return () => observer.disconnect()
   }, [instance, nextLink, loadingMore, loading, mailbox])
 
-  const allThreads = useMemo(() => groupMessagesIntoThreads(messages, syncedSet), [messages, syncedSet])
+  const allThreads = useMemo(() => groupMessagesIntoThreads(messages, trackedSet), [messages, trackedSet])
 
   const filteredThreads = useMemo(() => {
     const q = query.trim().toLowerCase()
     let base = allThreads
-    if (hideSynced) base = base.filter((thread) => threadStatus(thread) !== 'complete')
+    if (hideTracked) base = base.filter((thread) => threadStatus(thread) !== 'complete')
     if (externalOnly) base = base.filter(threadHasExternalContacts)
     if (!q) return base
     return base.filter((thread) => threadSearchHaystack(thread).includes(q))
-  }, [allThreads, query, hideSynced, externalOnly])
+  }, [allThreads, query, hideTracked, externalOnly])
 
   const selectedThread = useMemo(
     () => filteredThreads.find((thread) => thread.key === selectedThreadKey) || allThreads.find((thread) => thread.key === selectedThreadKey) || null,
@@ -934,10 +1031,10 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
             <div className="inbox-toggle-buttons">
               <button
                 type="button"
-                className={`filter-type-btn ${hideSynced ? 'active' : ''}`}
-                onClick={() => setHideSynced((v) => !v)}
+                className={`filter-type-btn ${hideTracked ? 'active' : ''}`}
+                onClick={() => setHideTracked((v) => !v)}
               >
-                {hideSynced ? '✓ Hide synced threads' : 'Hide synced threads'}
+                {hideTracked ? '✓ Hide tracked threads' : 'Hide tracked threads'}
               </button>
               <button
                 type="button"
@@ -972,7 +1069,7 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
               <button
                 key={thread.key}
                 type="button"
-                className={`inbox-card inbox-thread-card ${active ? 'active' : ''} ${status === 'complete' ? 'inbox-card-synced' : ''}`}
+                className={`inbox-card inbox-thread-card ${active ? 'active' : ''} ${status === 'complete' ? 'inbox-card-tracked' : ''}`}
                 onClick={() => setSelectedThreadKey(thread.key)}
               >
                 <div className="inbox-card-head">
@@ -983,15 +1080,19 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
                     </span>
                   </div>
                   <div className="inbox-card-head-right">
-                    {status === 'complete' && <span className="inbox-synced-badge">✓</span>}
-                    {status === 'partial' && <span className="inbox-thread-badge inbox-thread-partial-sm">Partial</span>}
+                    {status === 'complete' && <span className="inbox-tracked-badge">✓</span>}
+                    {status === 'partial' && (
+                      <span className="inbox-thread-badge inbox-thread-partial-sm">
+                        {thread.trackedCount}/{thread.totalCount} tracked
+                      </span>
+                    )}
                     <span className="inbox-card-date">{fmtDateShort(thread.latest.receivedDateTime)}</span>
                   </div>
                 </div>
                 <div className="inbox-card-subject">{thread.latest.subject}</div>
                 <div className="inbox-thread-subline">
                   <span>{thread.totalCount} message{thread.totalCount === 1 ? '' : 's'}</span>
-                  {status === 'partial' && <span>{thread.syncedCount} imported</span>}
+                  {status === 'partial' && <span>{thread.trackedCount} of {thread.totalCount} messages tracked</span>}
                 </div>
               </button>
             )
@@ -1026,7 +1127,7 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
           onImported={({ importedIds, allThreadIds, browseAccount }) => {
             const knownIds = [...importedIds, ...allThreadIds].filter(Boolean)
             if (knownIds.length) {
-              setSyncedSet((prev) => new Set([...prev, ...knownIds]))
+              setTrackedSet((prev) => new Set([...prev, ...knownIds]))
             }
             onImported?.({ importedIds, allThreadIds, browseAccount })
             setAddingThread(null)

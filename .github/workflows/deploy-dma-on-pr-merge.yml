@@ -10,19 +10,44 @@
 # Required vars:
 #   VITE_REDIRECT_URI
 
-name: Build, Register and Deploy DMAPP to DMA on PR Merge
+name: Deploy DynamicsActivities DMAPP
 
 on:
   pull_request:
     types: [closed]
     branches: [main]
+  push:
+    branches: [release-candidate]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dynamicsactivities-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+  deploy_production:
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     uses: ./.github/workflows/deploy-dmapp-reusable.yml
     with:
       catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
       agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI }}
+      vite_app_base_path:   "/public/DynamicsActivities/"
+      webapp_public_folder: "DynamicsActivities"
+    secrets: inherit
+
+  deploy_release_candidate:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release-candidate'
+    uses: ./.github/workflows/deploy-dmapp-reusable.yml
+    with:
+      catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
+      agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI_RC }}
+      vite_app_base_path:   "/public/DynamicsActivitiesRC/"
+      webapp_public_folder: "DynamicsActivitiesRC"
     secrets: inherit

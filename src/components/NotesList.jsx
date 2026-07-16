@@ -14,65 +14,11 @@ import {
 } from '../api/dataverse'
 import { summarizeActivities } from '../api/activitySummary'
 import AutocompletePicker from './AutocompletePicker'
+import RichHtmlPreview, { formatPreviewHtml, previewVisibleLength } from './RichHtmlPreview'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
 const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.iconLigature || t.icon]))
 const TYPE_CLASSES = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.cssClass]))
-const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i
-const UNSAFE_TAG_SELECTOR = 'script,style,iframe,object,embed,link,meta,base,form,input,button,textarea,select,option,svg,math'
-const PRESENTATIONAL_ATTRS_TO_REMOVE = new Set(['color', 'bgcolor', 'background', 'face'])
-const RICH_PREVIEW_SHADOW_CSS = `
-  :host { display: block; }
-  .content {
-    font-size: 14px;
-    color: var(--color10);
-    line-height: 24px;
-    white-space: normal;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
-  .content p,
-  .content ul,
-  .content ol {
-    margin: 0 0 8px;
-  }
-  .content p:last-child,
-  .content ul:last-child,
-  .content ol:last-child {
-    margin-bottom: 0;
-  }
-  .content ul,
-  .content ol {
-    padding-left: 18px;
-  }
-  .content a {
-    color: var(--hyperlink);
-  }
-  .content font[color],
-  .content [color],
-  .content [bgcolor],
-  .content [background] {
-    color: inherit !important;
-    background-color: transparent !important;
-  }
-  .content table,
-  .content tr,
-  .content td,
-  .content th {
-    background-color: transparent !important;
-    border-color: var(--color5) !important;
-  }
-  .content img {
-    max-width: 100%;
-    height: auto;
-  }
-  .content.clamped {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-`
 
 // Fallbacks for activities not created by this app
 TYPE_ICONS['Call'] ??= 'contact_phone'
@@ -162,90 +108,6 @@ function toSummaryActivity(note) {
   }
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function sanitizeHtml(value) {
-  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') return escapeHtml(value)
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(value, 'text/html')
-
-  doc.querySelectorAll(UNSAFE_TAG_SELECTOR).forEach((node) => node.remove())
-  doc.querySelectorAll('*').forEach((el) => {
-    for (const attr of [...el.attributes]) {
-      const name = attr.name.toLowerCase()
-      const val = attr.value.trim()
-      if (name.startsWith('on') || name === 'style') {
-        el.removeAttribute(attr.name)
-        continue
-      }
-      if (PRESENTATIONAL_ATTRS_TO_REMOVE.has(name)) {
-        el.removeAttribute(attr.name)
-        continue
-      }
-      if (name === 'href' || name === 'src' || name === 'xlink:href') {
-        const lower = val.toLowerCase()
-        const allowed = lower.startsWith('http://')
-          || lower.startsWith('https://')
-          || lower.startsWith('mailto:')
-          || lower.startsWith('tel:')
-          || (lower.startsWith('/') && !lower.startsWith('//'))
-          || lower.startsWith('#')
-        if (!allowed) el.removeAttribute(attr.name)
-      }
-    }
-  })
-
-  return doc.body.innerHTML
-}
-
-function formatPreviewHtml(value) {
-  const raw = String(value ?? '')
-  if (!raw.trim()) return ''
-  if (!HTML_TAG_REGEX.test(raw)) return escapeHtml(raw).replace(/\r?\n/g, '<br />')
-  return sanitizeHtml(raw)
-}
-
-function previewVisibleLength(value) {
-  const raw = String(value ?? '')
-  if (!raw.trim()) return 0
-  if (!HTML_TAG_REGEX.test(raw)) return raw.length
-  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
-    return raw.replace(/<[^>]+>/g, '').length
-  }
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(raw, 'text/html')
-  return (doc.body.textContent || '').trim().length
-}
-
-function RichPreview({ html, clamped }) {
-  const hostRef = useRef(null)
-
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
-
-    const shadowRoot = host.shadowRoot || host.attachShadow({ mode: 'open' })
-    const styleEl = document.createElement('style')
-    styleEl.textContent = RICH_PREVIEW_SHADOW_CSS
-
-    const contentEl = document.createElement('div')
-    contentEl.className = clamped ? 'content clamped' : 'content'
-    contentEl.innerHTML = html
-
-    shadowRoot.replaceChildren(styleEl, contentEl)
-  }, [html, clamped])
-
-  return <div className="note-text-shadow-host" ref={hostRef} />
-}
-
-function NoteCard({ note, expanded, onToggle }) {
 function NoteCard({ note, expanded, onToggle, onDelete }) {
   const { instance } = useMsal()
   const label = noteTypeLabel(note)
@@ -405,7 +267,7 @@ function NoteCard({ note, expanded, onToggle, onDelete }) {
 
       {preview ? (
         <div className="note-text">
-          <RichPreview html={previewHtml} clamped={!expanded} />
+          <RichHtmlPreview html={previewHtml} clamped={!expanded} />
         </div>
       ) : (
         <div className={`note-text ${expanded ? '' : 'clamped'}`}>
@@ -570,7 +432,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
           <div className="filter-field">
             <label className="filter-label">Regarding</label>
             <AutocompletePicker
-              searchFn={(q) => searchAccounts(instance, q)}
+              searchFn={(q, paging) => searchAccounts(instance, q, paging)}
               getKey={(a) => a.accountid}
               getLabel={(a) => a.name}
               value={null}
@@ -581,15 +443,20 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               }}
               onEnter={runSearch}
               placeholder="Search accounts…"
-              minChars={2}
               clearOnPick
               autoSelectSingle
+              showSelectedIndicator
+              loadOnFocus
+              allowEmptySearch
             />
           </div>
           <div className="filter-field">
             <label className="filter-label">Attendee</label>
             <AutocompletePicker
-              searchFn={(q) => searchContacts(instance, q)}
+              searchFn={(q, paging) => searchContacts(instance, q, {
+                ...paging,
+                accountIds: accounts.map((account) => account.accountid),
+              })}
               getKey={(c) => c.contactid}
               getLabel={(c) => c.fullname}
               getSublabel={(c) => c.emailaddress1}
@@ -600,9 +467,12 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               }}
               onEnter={runSearch}
               placeholder="Search contact…"
-              minChars={2}
               clearOnPick
               autoSelectSingle
+              minChars={0}
+              loadOnFocus
+              allowEmptySearch
+              preferredIds={accounts.map((account) => account.accountid)}
             />
           </div>
         </div>
@@ -758,7 +628,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
                   note={n}
                   expanded={expandedId === recordId}
                   onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
-                  onDelete={(id) => setNotes((prev) => prev.filter((x) => (x.activityid || x.annotationid) !== id))}
+                  onDelete={(id) => setNotes((prev) => prev.filter((x) => noteRecordId(x) !== id))}
                 />
               )
             })}

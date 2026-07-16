@@ -411,10 +411,12 @@ body {
 
 .input:focus { border-color: var(--focus-color); }
 .input::placeholder { color: var(--color9); }
+.search-wrap.has-selection .input { padding-right: 34px; }
 
 input[type="datetime-local"].input,
 input[type="date"].input {
   padding: 0 8px;
+  color-scheme: light;
 }
 
 input[type="datetime-local"].input::-webkit-calendar-picker-indicator,
@@ -425,7 +427,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 [data-theme="dark"] input[type="datetime-local"].input::-webkit-calendar-picker-indicator,
 [data-theme="dark"] input[type="date"].input::-webkit-calendar-picker-indicator {
-  filter: invert(1);
+  filter: none;
+}
+
+[data-theme="dark"] input[type="datetime-local"].input,
+[data-theme="dark"] input[type="date"].input {
+  color-scheme: dark;
 }
 
 .textarea {
@@ -467,6 +474,15 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   transform: translateY(-50%);
   color: var(--color9);
   font-size: 12px;
+}
+
+.search-selected {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--success);
+  pointer-events: none;
 }
 
 .dropdown {
@@ -1362,8 +1378,8 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   text-align: center;
 }
 
-/* Synced badge */
-.inbox-synced-badge {
+/* Tracked badge */
+.inbox-tracked-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1379,12 +1395,12 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.inbox-synced-badge-lg {
+.inbox-tracked-badge-lg {
   font-size: var(--fs-sm);
   padding: 0.3rem 0.75rem;
   border-radius: 6px;
 }
-.inbox-card-synced .inbox-card-subject {
+.inbox-card-tracked .inbox-card-subject {
   color: var(--clr-text-muted);
 }
 
@@ -1507,7 +1523,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   font-size: var(--fs-sm);
   color: var(--clr-text-muted);
   line-height: 1.65;
-  white-space: pre-wrap;
   word-break: break-word;
   margin-bottom: 1.35rem;
 }
@@ -1630,7 +1645,6 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   font-size: var(--fs-sm);
   color: var(--clr-text-muted);
   line-height: 1.55;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -1706,7 +1720,54 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
 
 .inbox-message-subject { font-size: var(--fs-lg); font-weight: 600; }
 .inbox-message-meta { display: flex; justify-content: space-between; gap: 0.75rem; font-size: var(--fs-xs); color: var(--clr-text-muted); flex-wrap: wrap; }
-.inbox-message-preview { font-size: var(--fs-sm); color: var(--clr-text-muted); line-height: 1.5; white-space: pre-wrap; }
+.inbox-message-preview { font-size: var(--fs-sm); color: var(--clr-text-muted); line-height: 1.5; }
+
+.inbox-imported-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.inbox-imported-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  background: var(--clr-surface-2);
+}
+
+.inbox-imported-message-subject {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.inbox-imported-message-meta {
+  margin-top: 0.2rem;
+  font-size: var(--fs-xs);
+  color: var(--clr-text-muted);
+}
+
+.inbox-imported-message-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.mail-imported-link {
+  font-size: var(--fs-xs);
+  color: var(--clr-accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mail-imported-link:hover {
+  text-decoration: underline;
+}
 
 .inbox-section {
   display: flex;
