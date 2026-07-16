@@ -709,7 +709,7 @@ export async function createInboxEmailActivity(
 
   const body = {
     subject: message.subject || '(No subject)',
-    description: limitActivityDescription('email', isEscalationLink ? `<p>[Linked to escalation]</p>${description}` : description),
+    description: limitActivityDescription('email', isEscalationLink ? `[Linked to escalation]\n${description}` : description),
     directioncode: true,
     actualend: message.receivedDateTime ? message.receivedDateTime.toISOString() : undefined,
     ...(message.internetMessageId ? { messageid: message.internetMessageId.toLowerCase() } : {}),
