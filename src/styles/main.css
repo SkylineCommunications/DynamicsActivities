@@ -900,6 +900,22 @@ input[type="date"].input::-webkit-calendar-picker-indicator {
   overflow-wrap: anywhere;
 }
 
+.timeline-summary-html font[color],
+.timeline-summary-html [color],
+.timeline-summary-html [bgcolor],
+.timeline-summary-html [background] {
+  color: inherit !important;
+  background-color: transparent !important;
+}
+
+.timeline-summary-html table,
+.timeline-summary-html tr,
+.timeline-summary-html td,
+.timeline-summary-html th {
+  background-color: transparent !important;
+  border-color: var(--color5) !important;
+}
+
 .timeline-summary-html h4 {
   margin: 0 0 6px;
   color: var(--color11);

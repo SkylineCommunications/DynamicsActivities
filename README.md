@@ -1,189 +1,319 @@
 # DynamicsActivities
 
-A React + Vite SPA deployed as a **DataMiner Custom App** for logging customer interactions as native **Dynamics 365 Activities**.
+React + Vite SPA packaged as a **DataMiner Custom App** for working with Dynamics 365 customer activity data.
 
-Replaces a Power App. No custom Dynamics fields — all data lives in standard Dynamics 365 activity entities (plus one custom `slc_escalation` entity).
+Today, the mounted app shell is primarily a **browse + subscriptions** experience:
 
----
+- **Activities** tab for searching Dynamics records across activity, opportunity, lead, and support views
+- **Subscriptions** tab for DataMiner-native email digests
+- **Access-gate fallback forms** for submitting leads and opportunities when a user does not have Dynamics/Dataverse access
 
-## Features
-
-- Log **Phone Calls**, **Appointments**, **Emails**, and **Escalations** from a lightweight web UI
-- Link activities to Dynamics 365 accounts and contacts
-- Prefill attendees from your **Microsoft 365 calendar** (meeting rooms filtered out)
-- Browse and filter the full organisation's activity history with lazy server-side OData queries
-- Multi-select attendee filtering in Browse, with visible attendee chips and **OR** semantics (an activity matches when it includes any selected attendee)
-- **AI timeline highlights** in Browse — assistant-generated summary rendered as formatted HTML sections above loaded activities
-- **TAM account filtering** — auto-selects your managed accounts via the Skyline Collaboration API
-- **Notification subscriptions** — subscribe to email digests for account/country/region/escalation scopes and selected activity types, with assistant-generated digest highlights rendered in the same HTML summary format as Browse
-- **License gate** — users without a Dynamics license see a dedicated access page with a one-click prefilled access request email to IT
-- **Report a bug** entry point in the app header opens a prefilled GitHub issue with auto-captured context
-- Open any activity directly in Dynamics 365 with a single click
-- Delete activities with an inline confirm flow
-- DataMiner design system — Inter font, DataMinerIcons, CSS custom properties
+The repository also contains creation/import components (`ActivityForm`, `InboxTab`, `CalendarImportTab`) and related Dataverse helpers, but those flows are **not currently mounted by `src/App.jsx`**.
 
 ---
 
-## Stack
+## Current user-facing surface
 
-| Layer | Technology |
+| Area | What the current app exposes |
 |---|---|
-| Framework | React 18 + Vite 5 |
-| Hosting | **DataMiner Custom App** (`.dmapp` package deployed via Catalog) |
-| Auth | DataMiner session (Entra SSO) + MSAL for Dynamics/Graph/Skyline API tokens |
-| Data | Dataverse Web API v9.2 |
-| Calendar | Microsoft Graph API v1.0 |
-| TAM | Skyline Collaboration API (`api.skyline.be`) |
-| Notifications | DataMiner DOM + Automation scripts (`ManageSubscriptions`, `NotifySubscribers`) |
-| AI summarization | DataMiner Assistant DxM Agent Integration (`DynamicsActivities_Summarize`; reused by browse and digest flows) |
-| Styling | CSS custom properties, Inter font (DataMiner design system) |
+| App shell | Header with DataMiner user display, theme toggle (`light` / `dark` / `system`), bug-report button, and sign-out |
+| Activities tab | Search and browse Dynamics data with filters, rich previews, direct Dynamics links, and Assistant-generated timeline highlights |
+| Browse views | `Activities`, `Opportunities`, `Leads`, and `Support` |
+| Subscriptions tab | Create, edit, pause, resume, and delete DataMiner DOM-backed notification subscriptions |
+| Access gate | Request-license / request-access screen plus standalone **Add lead** and **Add opportunity** entry points |
+| Standalone forms | `#/forms/lead` and `#/forms/opportunity` render outside the Dynamics auth gate |
+
+### Activities tab details
+
+- Multi-account **Regarding** filtering
+- Multi-attendee filtering with visible chips and **OR semantics**
+- Type filters per view
+- Date range filters
+- **AI timeline highlights** for the `Activities` view, backed by the `DynamicsActivities_Summarize` automation script
+- Rich HTML preview sanitization for imported email/body content
+- Direct **Open in Dynamics** links for browsed records
+- TAM auto-filtering based on Skyline Collaboration API account ownership
+
+### Record types shown in browse
+
+| View | Backing record types |
+|---|---|
+| Activities | Phone calls, appointments, emails, escalations, notes |
+| Opportunities | Opportunities |
+| Leads | Leads |
+| Support | Support renewal records |
 
 ---
 
-## Authentication
+## Architecture
 
-The app uses **triple authentication**:
-
-1. **DataMiner session** — User signs in via DataMiner's `/auth/` page (Entra SSO). Sets `DMAConnection` and `DMAUser` cookies. Verified with `IsConnectionAlive` on app load.
-2. **MSAL for Dynamics 365 / Graph** — After DMA session is verified, acquires tokens via `ssoSilent` (same Entra tenant) or popup fallback. Used for Dataverse and Graph API calls.
-3. **MSAL for Skyline API** — Separate scope for the Skyline Collaboration API. Token acquired silently or via popup.
-4. **Dynamics license validation** — After sign-in, the app validates Dynamics access from Microsoft Graph license data, using SKU-based checks (`/me/licenseDetails`) with fallback to assigned plans (`/me?$select=assignedPlans`). Access is allowed for **Sales/Team Member-capable Dynamics licenses** (including Sales Premium variants such as viral trial SKUs, plus legacy equivalent plan IDs). Generic Dataverse/CDS-only plans are not sufficient. Licensed users then go through a Dataverse access pre-check before entering the app. Users without usable Dynamics access are redirected to a dedicated access-request page with a prefilled mailto action that asks for both a **Dynamics 365 Sales Team Member** license and sandbox access with the **team-member-qa** role.
-
-On localhost, the DataMiner session check is skipped and MSAL popup auth is used directly.
-
-MSAL uses a **fixed callback path** to avoid redirect drift:
-
-- DataMiner: `https://<dma-host>/public/DynamicsActivities/auth-callback`
-- Local dev: `http://localhost:5173/auth-callback`
-
-`VITE_REDIRECT_URI` should point to that callback endpoint (not a deep app route).
+| Layer | Technology / implementation |
+|---|---|
+| Frontend | React 18 + Vite 5 |
+| Hosting | DataMiner Custom App packaged as `.dmapp` |
+| Primary auth gate | DataMiner `/auth/` session (`DMAConnection`, `DMAUser`) |
+| Microsoft auth | `@azure/msal-browser` + `@azure/msal-react` |
+| Business data | Dataverse Web API v9.2 |
+| Calendar + inbox | Microsoft Graph v1.0 |
+| TAM context | Skyline Collaboration API (`api.skyline.be`) |
+| Server-side integration | DataMiner Automation scripts |
+| Notifications | DataMiner DOM + `DynamicsActivities_ManageSubscriptions` + `DynamicsActivities_NotifySubscribers` |
+| AI summaries | `DynamicsActivities_Summarize`, optionally enhanced by `Skyline.DataMiner.Assistant.Integration.dll` |
+| Packaging | `DynamicsActivitiesPackage/` .NET package project copies `dist-dataminer/` into DMAPP companion files |
 
 ---
 
-## Getting Started
+## Authentication and access control
 
-### Prerequisites
+The app uses layered access checks:
 
-- Node.js 18+
-- Access to the Skyline Dynamics 365 environment
-- An Entra app registration with Dataverse and Graph permissions
+1. **DataMiner session** on DMA hosts via `/auth/`
+2. **MSAL sign-in** for Graph, Dataverse, and Skyline API scopes
+3. **Dynamics license validation** using Graph `licenseDetails`, with fallback to `assignedPlans` only when `licenseDetails` is unavailable
+4. **Dataverse access pre-check** before entering the mounted app shell
 
-### Environment Variables
+Rules reflected in the current code:
 
-Copy `.env.example` to `.env` and fill in the values:
+- Sales / Team Member-capable Dynamics licenses are accepted
+- Pure Dataverse/CDS-only SKU families such as `DYN365_CDS_*` are explicitly rejected
+- Users without usable access are shown a request-access screen and can still open the standalone **lead** and **opportunity** forms
+- On localhost, the DataMiner session check is skipped and popup-based MSAL auth is used directly
+
+### Redirect behavior
+
+- Default DMA base path: `/public/DynamicsActivities/`
+- Dev deploy base path: `/public/DynamicsActivitiesDev/`
+- Callback path: `<base>/auth-callback`
+
+`src/authConfig.js` derives the callback from `VITE_APP_BASE_PATH` when `VITE_REDIRECT_URI` is not explicitly supplied.
+
+---
+
+## Notification subscriptions
+
+Subscriptions are fully **DataMiner-native** in the current implementation.
+
+- Stored in **DataMiner DOM**
+- Managed by `DynamicsActivities_ManageSubscriptions`
+- Delivered by `DynamicsActivities_NotifySubscribers`
+- Support scopes: **account**, **country**, **region**, **escalation**
+- Support frequencies: `instant`, `daily`, `weekly`, `monthly`
+- Support activity-type filtering across phone calls, appointments, emails, escalations, and notes
+
+Behavior to be aware of:
+
+- The notify script has **no internal cadence gate**; each run processes subscriptions matching the requested frequency
+- New activity detection uses `createdon > LastSentAt`
+- Digest emails can include Assistant-generated HTML timeline summaries, with deterministic fallback when Assistant integration is unavailable
+- Sender/from behavior is controlled by DataMiner mail / SMTP configuration
+
+---
+
+## Standalone forms
+
+The mounted app shell does not currently expose activity creation, but it does expose two standalone forms through the auth/access flow:
+
+| Route | Purpose | Backend |
+|---|---|---|
+| `#/forms/lead` | Submit a new lead | `DynamicsActivities_SubmitLead` automation script |
+| `#/forms/opportunity` | Submit a new opportunity | `DynamicsActivities_SubmitOpportunity` automation script |
+
+These forms are intentionally reachable outside the normal Dynamics browse experience and depend on the **DataMiner session**, not on Dataverse access.
+
+---
+
+## Environment variables
+
+### Frontend variables used by the current app
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `VITE_DATAVERSE_URL` | Yes | Dataverse environment base URL |
+| `VITE_CLIENT_ID` | Yes | Entra app registration client ID |
+| `VITE_TENANT_ID` | Yes | Entra tenant ID |
+| `VITE_REDIRECT_URI` | Usually | Explicit MSAL redirect URI |
+| `VITE_APP_BASE_PATH` | Optional | Public app base path; defaults to `/public/DynamicsActivities/` on DMA, `/` on localhost |
+| `VITE_SKYLINE_API_URL` | Optional | Skyline API base URL; local dev can use `/skyline-api` |
+| `VITE_SKYLINE_SCOPE` | Optional | Skyline API scope override |
+
+### Example local setup
 
 ```env
 VITE_DATAVERSE_URL=https://yourorg.crm4.dynamics.com/
 VITE_CLIENT_ID=your-local-app-registration-client-id
 VITE_TENANT_ID=your-tenant-id
 VITE_REDIRECT_URI=http://localhost:5173/auth-callback
+VITE_SKYLINE_API_URL=/skyline-api
 ```
 
-For the DataMiner production build, `.env.dataminer` is used with the production client ID and redirect URI matching the DMA deployment URL.
+### Important note about `VITE_FUNCTIONS_BASE_URL`
 
-### Development
+You will still see `VITE_FUNCTIONS_BASE_URL` in `.env.example`, workflow inputs, and the `Infrastructure/` folder. That value is **not used by the current mounted frontend runtime** in `src/`; the current notification flow is DataMiner-native rather than Azure-Functions-backed.
+
+---
+
+## Local development
+
+### Prerequisites
+
+- Node.js 20+ recommended
+- Access to the Skyline Dynamics / Dataverse environment
+- An Entra app registration with the required Graph and Dataverse permissions
+
+### Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-The dev server includes a proxy for the Skyline API (`/skyline-api` → `https://api.skyline.be`) to bypass CORS restrictions.
+The Vite dev server runs on `http://localhost:5173/` and proxies:
 
-### Build
+```text
+/skyline-api -> https://api.skyline.be
+```
 
-| Command | Output | Env file |
-|---|---|---|
-| `npm run build` | `dist-dataminer/` | `.env.dataminer` |
-| `npm run build:local` | `dist/` | `.env` |
+On localhost:
 
-**Always use `npm run build` for DataMiner deployment.**
+- DataMiner session bootstrap is skipped
+- MSAL uses popup auth flows
+- `base` resolves to `./` for local builds and `/` for the dev server
 
 ---
 
-## Deployment
+## Build, packaging, and deployment
 
-Deployment is automated via the **"Build, Register and Deploy DMAPP"** GitHub Actions workflow:
+### Frontend build commands
 
-1. Triggers on PR merge to `main` or via manual `workflow_dispatch`
-2. Builds the frontend (`npm run build`)
-3. Packages into a `.dmapp` using the `DynamicsActivitiesPackage/` .NET project
-4. Uploads to the DataMiner Catalog
-5. Deploys to the target DMA agent
+| Command | Purpose | Output |
+|---|---|---|
+| `npm run dev` | Local dev server | none |
+| `npm run build` | DataMiner production build | `dist-dataminer/` |
+| `npm run build:local` | Standalone local build | `dist/` |
+| `npm run preview` | Preview built site | Vite preview server |
 
-Bug reports are auto-triaged by the **"Copilot bug triage"** workflow, which triggers on `bug`-labeled issues and asks `@copilot` to investigate and propose a limited-scope fix PR when appropriate.
+### Packaging
 
-The build output (`dist-dataminer/`) is packaged as companion files and installed to:
-```
+`DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj`:
+
+- packages the app as a **DMAPP**
+- copies `dist-dataminer/` into companion files
+- installs the web app under:
+
+```text
 C:\Skyline DataMiner\Webpages\public\DynamicsActivities\
 ```
 
-**Access URL:**
+Manual `dev` deploys instead target:
+
+```text
+C:\Skyline DataMiner\Webpages\public\DynamicsActivitiesDev\
 ```
+and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so static asset URLs resolve correctly.
+
+### GitHub Actions workflows
+
+| Workflow | Purpose |
+|---|---|
+| `.github/workflows/build.yml` | Builds the frontend and uploads a zipped `dataminer-dist` artifact |
+| `.github/workflows/deploy-dma-on-pr-merge.yml` | Caller workflow for production-on-merge, manual `production` from `main` only, and manual `dev` deploys |
+| `.github/workflows/deploy-dmapp-reusable.yml` | Reusable build/register/deploy workflow for DMAPP packaging and Catalog deployment |
+| `.github/workflows/copilot-bug-triage.yml` | Auto-comments on `bug`-labeled issues to ask `@copilot` for investigation |
+
+### Deployment URLs
+
+**Production**
+
+```text
 https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivities%2Findex.html
 ```
 
-### Versioning
+**Manual dev deploy**
 
-Every PR must bump `<Version>` in `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj` to avoid Catalog conflicts.
-
----
-
-## Notification Subscriptions (DataMiner-native)
-
-- Subscriptions are stored in **DataMiner DOM** and managed via `DynamicsActivities_ManageSubscriptions`.
-- Digests are sent by `DynamicsActivities_NotifySubscribers` (run by scheduler task or manually), which invokes `DynamicsActivities_Summarize` to generate timeline highlights.
-- Digest emails now include a top-level Assistant-generated timeline summary (with deterministic fallback if Assistant integration is unavailable), rendered as formatted HTML instead of escaped plain text.
-- Browse view (`NotesList`) can request timeline highlights through `DynamicsActivities_Summarize`.
-- Timeline highlights now show whether Assistant or deterministic fallback generated the text, and surface fallback warning details from script output.
-- Assistant agent usage requires DataMiner Assistant Agent Integration to be enabled on the DMA (see manual configuration notes in implementation handoff).
-- Notify script parameters:
-  - `Frequency` (string): `instant`, `daily`, `weekly`, `monthly` — used to select which subscriptions to process.
-  - `ClientSecret` (string): Dataverse app secret used for token acquisition.
-- There is **no internal cadence gate** in the notify script anymore: each run processes eligible subscriptions immediately.
-- New items are still detected using `createdon > LastSentAt` per subscription.
-- Sender address is controlled by DataMiner/SMTP configuration.
-
----
-
-## Known Dataverse Constraints
-
-- **`$expand` + `$top` on the same query → HTTP 400 (`0x80060888`)** — use `Prefer: odata.maxpagesize=N` instead of `$top` when expanding activity parties
-- On localhost, auth uses popup flows — `ssoSilent` only works when a DataMiner Entra session already exists
-- Browse attendee filter uses **OR** semantics across selected attendees (`any` activity-party match). This is intentional: attendees are optional and variable per activity, so **AND** would hide valid timelines unless all selected contacts happened to be on the same record.
-
----
-
-## Project Structure
-
+```text
+https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivitiesDev%2Findex.html
 ```
+
+### Versioning rule
+
+Every PR must bump both:
+
+- `<Version>`
+- `<VersionComment>`
+
+in `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackage.csproj`.
+
+---
+
+## DataMiner automation projects in this repo
+
+| Project | Purpose |
+|---|---|
+| `DynamicsActivities_ManageSubscriptions` | CRUD for DOM-backed subscriptions |
+| `DynamicsActivities_NotifySubscribers` | Scheduled / manual digest sender |
+| `DynamicsActivities_Summarize` | Timeline-summary generation for browse and digest flows |
+| `DynamicsActivities_SkylineApiProxy` | DMA-host proxy to Skyline API to avoid browser CORS issues |
+| `DynamicsActivities_SubmitLead` | Emails submitted standalone lead forms |
+| `DynamicsActivities_SubmitOpportunity` | Emails submitted standalone opportunity forms |
+
+### Optional Assistant dependency
+
+If `DynamicsActivitiesPackage/Dependencies/Assistant/Skyline.DataMiner.Assistant.Integration.dll` is present, summarize flows can use Assistant Agent Integration. If it is absent, build still succeeds and summary scripts fall back to deterministic mode.
+
+---
+
+## Repository layout
+
+```text
 src/
+  App.jsx                       # Mounted shell: Activities + Subscriptions tabs
+  main.jsx                      # MSAL bootstrap and config guard
+  authConfig.js                 # MSAL config, redirect handling, scopes
   api/
-    dataminer.js       # DataMiner session bootstrap, cookies, sign-out
-    dataverse.js       # All Dataverse ops (auth, search, create)
-    graph.js           # Graph calendar fetch for attendee prefill
-    skyline.js         # Skyline Collaboration API (TAM accounts)
-    subscriptions.js   # Subscription CRUD via DataMiner Automation scripts (DOM-backed)
-    activitySummary.js # Browse timeline summary via DataMiner automation
+    dataminer.js                # DataMiner session bootstrap and JSON API helpers
+    dataverse.js                # Dataverse search, browse, create/import helpers
+    graph.js                    # Graph license, inbox, and calendar helpers
+    skyline.js                  # Skyline API token + proxy/direct fetch helpers
+    subscriptions.js            # Subscription CRUD through automation
+    activitySummary.js          # Browse/digest summary automation client
+    leads.js                    # Standalone lead submission client
+    opportunities.js           # Standalone opportunity submission client
   components/
-    AuthGuard.jsx      # Triple-auth gate (DMA → MSAL → WhoAmI)
-    ActivityForm.jsx   # Activity creation (4 types, pickers, calendar)
-    NotesList.jsx      # Browse view with lazy server-side OData filters + AI highlights
-    SubscriptionsPanel.jsx  # Notification subscription management
-    AutocompletePicker.jsx
-    CalendarPicker.jsx
-    CalendarImportTab.jsx
-    InboxTab.jsx
+    AuthGuard.jsx               # Access gate and no-access UX
+    NotesList.jsx               # Mounted browse experience
+    SubscriptionsPanel.jsx      # Mounted subscriptions experience
+    SubscriptionForm.jsx        # Create/edit subscription UI
+    forms/
+      FormPage.jsx              # Standalone form shell
+      LeadForm.jsx              # Standalone lead form
+      OpportunityForm.jsx       # Standalone opportunity form
+    ActivityForm.jsx            # Present in repo but not mounted by App.jsx
+    InboxTab.jsx                # Present in repo but not mounted by App.jsx
+    CalendarImportTab.jsx       # Present in repo but not mounted by App.jsx
+  forms/
+    registry.js                 # Standalone form registry
   hooks/
-    useTamContext.js   # TAM account context from Skyline API
+    useHashRoute.js             # Minimal hash router for forms
+    useTamContext.js            # TAM account resolution
   services/
-    postCreateBrowseAccount.js # Centralized account resolution after create/import flows
-  authConfig.js        # MSAL config, scopes
+    postCreateBrowseAccount.js  # Helper for post-create browse targeting
   styles/
-    main.css           # DataMiner design system CSS
+    main.css
 public/
-  web.config           # IIS SPA rewrite rule
-DynamicsActivitiesPackage/  # .NET project for .dmapp packaging
-  DynamicsActivities_Summarize/ # Assistant summary script reused by browse timeline and digest flow
-.github/workflows/     # CI/CD workflows
+  web.config                    # IIS SPA rewrite
+DynamicsActivitiesPackage/
+  DynamicsActivitiesPackage/    # DMAPP packaging project
+  DynamicsActivities_*/         # Automation script projects
+Infrastructure/                 # Legacy / alternate Azure Functions IaC docs and Bicep files
 ```
+
+---
+
+## Known constraints and implementation notes
+
+- Dataverse rejects **`$expand` + `$top`** together on the same query (`0x80060888`); use `Prefer: odata.maxpagesize=...` instead
+- Browse attendee filtering intentionally uses **OR semantics**, not AND
+- Graph conversation fetch falls back when Graph returns `InefficientFilter`
+- HTML previews are sanitized before rendering
+- Skyline TAM context and Skyline user lookup degrade gracefully if the Skyline API or consent flow is unavailable
+- The current mounted shell does **not** expose the repository's activity creation/import UI, even though supporting code exists in the repo
