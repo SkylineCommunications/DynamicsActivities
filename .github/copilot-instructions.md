@@ -21,6 +21,13 @@ Users access it via DataMiner's `/auth/` page, which handles Entra sign-in and s
 
 The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge` runs automatically on PR merge to main. Manual `workflow_dispatch` supports `dev` deploys on any branch, while `production` deploys are allowed from `main` only. It builds the frontend, packages a `.dmapp`, uploads to the DataMiner Catalog, and deploys to the target agent.
 
+### Branch and PR workflow
+
+- Create feature and fix branches from `origin/release-candidate`.
+- Target `release-candidate` for normal feature, bug-fix, and Dataverse write pull requests.
+- Use `main` only for the promotion pull request that merges the complete approved release candidate into production.
+- If a normal feature PR is accidentally opened against `main`, change the PR base to `release-candidate` and rebase its head branch onto `origin/release-candidate`.
+
 ---
 
 ## Stack
