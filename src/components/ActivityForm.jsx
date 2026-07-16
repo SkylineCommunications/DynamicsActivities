@@ -245,7 +245,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const useManagedAccounts = accountMode === 'managed' && hasManagedAccounts
 
   const dateLabel = type === 'appointment' ? 'Start Time' : 'Date & time'
-  const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
+  const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Attendees'
 
   // ─── Search functions for pickers ──────────────────────────────────────────
   function searchAccountsFn(q, paging) {
@@ -674,7 +674,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
               <input type="datetime-local" className="input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
             <div className="field">
-              <label className="field-label">Location <span className="optional">(optional)</span></label>
+              <label className="field-label">Location</label>
               <input className="input" value={location} onChange={(e) => setLocation(e.target.value)} />
             </div>
           </>
@@ -683,7 +683,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         {/* Attendees — not shown for notes */}
         {!isNote && (
         <div className="field">
-          <label className="field-label">{attendeesLabel} <span className="optional">(optional)</span></label>
+          <label className="field-label">{attendeesLabel}</label>
           <div className="chip-list">
             {attendees.map((a, i) => {
               const linkedContact = a.contactId
