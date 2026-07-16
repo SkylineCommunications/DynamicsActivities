@@ -41,14 +41,7 @@ concurrency:
 
 jobs:
   deploy_production:
-<<<<<<< HEAD
-    if: >
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'production' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
-=======
     if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'production' && github.ref == 'refs/heads/main')
->>>>>>> origin/release-candidate
     uses: ./.github/workflows/deploy-dmapp-reusable.yml
     with:
       catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
