@@ -103,7 +103,7 @@ Subscriptions are fully **DataMiner-native** in the current implementation.
 Behavior to be aware of:
 
 - The notify script has **no internal cadence gate**; each run processes subscriptions matching the requested frequency
-- New activity detection uses `createdon > LastSentAt`
+- Activity detection includes both new and updated activities: a record is included if `createdon > since` OR `modifiedon > since`
 - Digest emails can include Assistant-generated HTML timeline summaries, with deterministic fallback when Assistant integration is unavailable
 - Sender/from behavior is controlled by DataMiner mail / SMTP configuration
 
@@ -219,6 +219,7 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 | `.github/workflows/deploy-dma-on-pr-merge.yml` | Caller workflow for production-on-merge, manual `production` from `main` only, and manual `dev` deploys |
 | `.github/workflows/deploy-dmapp-reusable.yml` | Reusable build/register/deploy workflow for DMAPP packaging and Catalog deployment |
 | `.github/workflows/copilot-bug-triage.yml` | Auto-comments on `bug`-labeled issues to ask `@copilot` for investigation |
+| `.github/workflows/sync-main-to-release-candidate.yml` | Opens or updates the `main` → `release-candidate` promotion PR, enables auto-merge, asks `@copilot` to resolve conflicts, and retries when the PR is updated |
 
 ### Release candidate deployment
 
