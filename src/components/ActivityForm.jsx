@@ -51,7 +51,7 @@ function toLocalInputValue(date) {
 function getDefaultDate() {
   const d = new Date()
   d.setSeconds(0, 0)
-  return d.toISOString().slice(0, 16)
+  return toLocalInputValue(d)
 }
 
 function splitCalendarParticipants(event) {
