@@ -35,6 +35,11 @@ export default function AutocompletePicker({
   const listRef = useRef(null)
   const requestRef = useRef(0)
 
+  useEffect(() => () => {
+    clearTimeout(timer.current)
+    requestRef.current += 1
+  }, [])
+
   useEffect(() => {
     if (!clearOnPick) setQuery(value ? getLabel(value) : '')
   }, [value])

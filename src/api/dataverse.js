@@ -250,7 +250,7 @@ export async function searchAccounts(msalInstance, query, paging = null) {
   const skip = paging?.skip ?? 0
   const top = paging?.top ?? 25
   const fetchTop = Math.min(Math.max(skip + top + 1, top + 1), 101)
-  const q = encodeURIComponent(trimmed.replace(/'/g, "''"))
+  const q = trimmed.replace(/'/g, "''")
   const select = 'accountid,name,address1_country,address1_stateorprovince'
   if (!trimmed) {
     const data = await dvFetch(
@@ -262,8 +262,8 @@ export async function searchAccounts(msalInstance, query, paging = null) {
   }
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
-    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
-    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=${encodeURIComponent(`startswith(name,'${q}')`)}&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=${encodeURIComponent(`contains(name,'${q}')`)}&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
   ])
   const seen = new Set()
   const results = []
