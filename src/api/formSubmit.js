@@ -17,8 +17,8 @@ async function resolveConnection(redirectOnFailure) {
   return bootstrapSession({ redirectOnFailure, maxAttempts: 4, retryDelayMs: 300 })
 }
 
-function buildParameters(payload, userEmail, userName) {
-  return [
+function buildParameters(payload, userEmail, userName, recipient) {
+  const parameters = [
     {
       __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
       ParameterId: 10,
@@ -43,16 +43,22 @@ function buildParameters(payload, userEmail, userName) {
       Name: 'UserName',
       Value: userName,
     },
-    {
-      // Optional recipient override. Left empty so the script uses its default recipient.
-      __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-      ParameterId: 13,
-      Values: null,
-      MemoryFile: '',
-      Name: 'Recipient',
-      Value: '',
-    },
   ]
+
+  // Recipient override. DataMiner requires every declared script parameter to be
+  // provided a value ("there's no script parameter value provided for id 13" if
+  // it's missing), so always send it — empty when there's no override. The script
+  // falls back to its own default recipient when the value is empty.
+  parameters.push({
+    __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+    ParameterId: 13,
+    Values: null,
+    MemoryFile: '',
+    Name: 'Recipient',
+    Value: recipient || '',
+  })
+
+  return parameters
 }
 
 /**
@@ -61,9 +67,11 @@ function buildParameters(payload, userEmail, userName) {
  * @param {string} scriptName Automation script name (e.g. `DynamicsActivities_SubmitLead`).
  * @param {object} payload    Form fields to send as the JSON payload.
  * @param {string} label      Human-readable noun for error messages (e.g. `lead`).
+ * @param {string} [recipient] Optional recipient override. When omitted, the
+ *                             script uses its own default recipient.
  * @returns {Promise<object>} Parsed script result (e.g. `{ success: true }`).
  */
-export async function submitForm(scriptName, payload, label) {
+export async function submitForm(scriptName, payload, label, recipient = '') {
   let connection = await resolveConnection(false)
   if (!connection) {
     connection = await resolveConnection(true)
@@ -87,7 +95,7 @@ export async function submitForm(scriptName, payload, label) {
           RequireInteractive: false,
           HasFindInteractiveClient: false,
         },
-        Parameters: buildParameters(payload, userEmail, userName),
+        Parameters: buildParameters(payload, userEmail, userName, recipient),
         Dummies: [],
         MemoryFiles: [],
       },

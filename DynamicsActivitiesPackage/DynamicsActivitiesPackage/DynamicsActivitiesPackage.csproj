@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.11.0</Version>
-		<VersionComment>Add a local/dev-only license test control (bottom-left) that shows the detected Dynamics license/CAL type and lets testers force each possible view (no license, no Dataverse access, Team Member, Sales). Hidden on production and RC.</VersionComment>
+		<Version>1.11.1</Version>
+		<VersionComment>Fix "no script parameter value provided for id 13" error when submitting a lead/opportunity: always send the optional Recipient parameter (empty when no override) since DataMiner requires every declared script parameter to have a value.</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
