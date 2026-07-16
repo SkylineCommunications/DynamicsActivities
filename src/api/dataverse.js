@@ -779,8 +779,11 @@ export async function createInboxEmailActivity(
   if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
   if (!resolvedRegardingId) throw new Error(`Missing Dynamics link id for type: ${regardingType}`)
 
+  const messageDescription = Object.prototype.hasOwnProperty.call(message, 'description')
+    ? formatPreviewHtml(message.description)
+    : formatPreviewHtml(message.bodyHtml || message.bodyPreview)
   const description = [
-    formatPreviewHtml(message.bodyHtml || message.bodyPreview),
+    messageDescription,
     `<p>Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}</p>`,
   ].filter(Boolean).join('')
 
