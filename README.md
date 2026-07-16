@@ -87,6 +87,10 @@ Rules reflected in the current code:
 
 `src/authConfig.js` derives the callback from `VITE_APP_BASE_PATH` when `VITE_REDIRECT_URI` is not explicitly supplied.
 
+### License test control (local + dev only)
+
+A small widget is pinned to the bottom-left corner on **localhost** and the **dev deployment** (`/public/DynamicsActivitiesDev/`). It shows the Dynamics license / CAL type detected at sign-in and provides a **"View as" dropdown** to force each possible view — no Dynamics license, Dynamics without Dataverse access, Team Member, or Sales — so testers can preview what each user type sees. The selection is persisted in `localStorage`. `isTestEnvironment()` in `src/api/dataminer.js` gates it, so it never renders on production or RC. Note that `systemuser.caltype` is only reliably populated on-premises; in Dynamics 365 Online it may default to `0` (Professional), which is another reason the override is useful.
+
 ---
 
 ## Notification subscriptions
@@ -219,23 +223,6 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 | `.github/workflows/deploy-dma-on-pr-merge.yml` | Caller workflow for production-on-merge, manual `production` from `main` only, and manual `dev` deploys |
 | `.github/workflows/deploy-dmapp-reusable.yml` | Reusable build/register/deploy workflow for DMAPP packaging and Catalog deployment |
 | `.github/workflows/copilot-bug-triage.yml` | Auto-comments on `bug`-labeled issues to ask `@copilot` for investigation |
-| `.github/workflows/sync-main-to-release-candidate.yml` | Opens or updates the `main` → `release-candidate` promotion PR, enables auto-merge, asks `@copilot` to resolve conflicts, and retries when the PR is updated |
-
-### Release candidate deployment
-
-`release-candidate` is the integration branch for all changes that create, update, or delete Dataverse data. Every push to it deploys the app to:
-
-```text
-https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivitiesRC%2Findex.html
-```
-
-Open write-capable PRs with `release-candidate` selected as their base branch. When the candidate is approved, open a promotion PR from `release-candidate` into `main`; production remains deployed only when that PR merges.
-
-The release-candidate deployment uses the repository variable `VITE_REDIRECT_URI_RC`, which must match the redirect URI registered on the deployed Entra application:
-
-```text
-https://solutionsdma-skyline.on.dataminer.services/public/DynamicsActivitiesRC/
-```
 
 ### Deployment URLs
 
@@ -297,6 +284,7 @@ src/
     opportunities.js           # Standalone opportunity submission client
   components/
     AuthGuard.jsx               # Access gate and no-access UX
+    LicenseTestControl.jsx      # Local/dev-only widget to preview each license view
     NotesList.jsx               # Mounted browse experience
     SubscriptionsPanel.jsx      # Mounted subscriptions experience
     SubscriptionForm.jsx        # Create/edit subscription UI
@@ -309,6 +297,8 @@ src/
     CalendarImportTab.jsx       # Present in repo but not mounted by App.jsx
   forms/
     registry.js                 # Standalone form registry
+  context/
+    LicenseTestContext.jsx      # Local/dev-only license view override state
   hooks/
     useHashRoute.js             # Minimal hash router for forms
     useTamContext.js            # TAM account resolution

@@ -17,8 +17,30 @@ export const LICENSE_OVERRIDES = [
   { value: 'sales', label: 'Sales / Enterprise (full app)' },
 ]
 
-// CAL types considered sales-capable (mirrors SALES_CAL_TYPES in dataverse.js).
+// CAL types that can create/manage leads in Dynamics Sales (mirrors
+// SALES_CAL_TYPES in dataverse.js). Confirmed against the Dataverse Web API
+// systemuser.caltype option set.
 const SALES_CAL_TYPES = new Set([7, 8, 9, 10, 11, 12])
+
+// Full systemuser.caltype option set → label, per the Dataverse Web API
+// reference. Note: caltype is only reliably populated on-premises; in Dynamics
+// 365 Online it often defaults to 0 (Professional) regardless of the real SKU,
+// so treat the detected value as a hint and use the override to force a view.
+const CALTYPE_LABELS = {
+  0: 'Professional',
+  1: 'Administrative',
+  2: 'Basic',
+  3: 'Device Professional',
+  4: 'Device Basic',
+  5: 'Essential',
+  6: 'Device Essential',
+  7: 'Enterprise',
+  8: 'Device Enterprise',
+  9: 'Sales',
+  10: 'Service',
+  11: 'Field Service',
+  12: 'Project Service',
+}
 
 const STORAGE_KEY = 'dm-license-test-override'
 
@@ -57,8 +79,9 @@ export function LicenseTestProvider({ children }) {
     if (detected.dataverseAccessDenied === true) return 'Dynamics, no Dataverse access'
     if (detected.hasLicense === true) {
       if (typeof detected.caltype === 'number') {
-        const kind = SALES_CAL_TYPES.has(detected.caltype) ? 'Sales / Enterprise' : 'Team Member'
-        return `${kind} (caltype ${detected.caltype})`
+        const name = CALTYPE_LABELS[detected.caltype] ?? `CAL ${detected.caltype}`
+        const kind = SALES_CAL_TYPES.has(detected.caltype) ? 'Sales' : 'Team Member'
+        return `${name} · ${kind} (caltype ${detected.caltype})`
       }
       return 'Dynamics license'
     }

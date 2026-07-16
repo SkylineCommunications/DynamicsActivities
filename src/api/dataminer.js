@@ -169,3 +169,11 @@ export async function bootstrapSession(options = {}) {
 export function isDataMinerHost() {
   return !['localhost', '127.0.0.1'].includes(location.hostname)
 }
+
+// True on localhost or the DataMiner "dev" deployment (/public/DynamicsActivitiesDev/),
+// but false on production (/public/DynamicsActivities/) and RC. Used to gate
+// testing-only UI so it never appears in production.
+export function isTestEnvironment() {
+  if (!isDataMinerHost()) return true
+  return /\/DynamicsActivitiesDev\//i.test(location.pathname)
+}

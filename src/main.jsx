@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { PublicClientApplication } from '@azure/msal-browser'
 import { MsalProvider } from '@azure/msal-react'
 import { msalConfig, msalConfigValid } from './authConfig'
-import { bootstrapSession, isDataMinerHost } from './api/dataminer'
+import { bootstrapSession, isDataMinerHost, isTestEnvironment } from './api/dataminer'
 import App from './App'
 import { LicenseTestProvider } from './context/LicenseTestContext'
 import LicenseTestControl from './components/LicenseTestControl'
@@ -45,7 +45,7 @@ if (!msalConfigValid) {
       <MsalProvider instance={msalInstance}>
         <LicenseTestProvider>
           <App />
-          {!isDataMinerHost() && <LicenseTestControl />}
+          {isTestEnvironment() && <LicenseTestControl />}
         </LicenseTestProvider>
       </MsalProvider>
     </React.StrictMode>,
