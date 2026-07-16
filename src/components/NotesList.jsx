@@ -284,8 +284,9 @@ function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
     || note._resolvedAccountName
     || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
     || ''
-  // Person (e.g. contact) the activity is filed against, shown alongside the account.
-  const personName = regardingType === 'contact' ? (note._regardingPersonName || regardingName) : ''
+  const personName = regardingType === 'contact' ? note._regardingDisplayName : ''
+  const leadName = (regardingType === 'lead') ? note._regardingDisplayName : ''
+  const opportunityName = (regardingType === 'opportunity') ? note._regardingDisplayName : ''
   const accountId = noteAccountId(note)
   const rawPreview = note.notetext || note.description || ''
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
@@ -317,7 +318,7 @@ function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
       </div>
 
       {note.subject && note.subject !== label && <div className="note-subject">{note.subject}</div>}
-      {(accountName || personName) && (
+      {(accountName || personName || leadName || opportunityName) && (
         <div className="note-account">
           {accountName && (
             <span className="note-account-name">
@@ -327,8 +328,18 @@ function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
             </span>
           )}
           {personName && (
-            <span className="note-account-contact">
+            <span className="note-account-regarding">
               <span className="icon icon-sm">person</span> {personName}
+            </span>
+          )}
+          {leadName && (
+            <span className="note-account-regarding">
+              <span className="icon icon-sm">trending_up</span> {leadName}
+            </span>
+          )}
+          {opportunityName && (
+            <span className="note-account-regarding">
+              <span className="icon icon-sm">work</span> {opportunityName}
             </span>
           )}
         </div>
