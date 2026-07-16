@@ -69,7 +69,7 @@ export const ACTIVITY_TYPES = [
     iconLigature: 'trending_up',
     entity: 'leads',
     cssClass: 'type-lead',
-    tooltip: 'BD lead (managed in Dynamics)',
+    tooltip: 'Lead (managed in Dynamics)',
   },
   {
     id: 'opportunity',
@@ -170,7 +170,7 @@ export async function getActiveEscalation(msalInstance, accountId) {
 // ─── Lead helpers ────────────────────────────────────────────────────────────
 
 /**
- * Fetch open BD leads for an account.
+ * Fetch open leads for an account.
  * Returns leads with statecode=0 (Open), ordered by creation date desc.
  */
 export async function getAccountLeads(msalInstance, accountId) {
@@ -182,6 +182,18 @@ export async function getAccountLeads(msalInstance, accountId) {
   return (data?.value ?? []).map((l) => ({
     ...l,
     statusLabel: l['statuscode@OData.Community.Display.V1.FormattedValue'] || 'Open',
+  }))
+}
+
+export async function getAccountOpportunities(msalInstance, accountId) {
+  if (!accountId) return []
+  const data = await dvFetch(
+    msalInstance,
+    `/opportunities?$filter=_parentaccountid_value eq ${accountId} and statecode eq 0&$select=opportunityid,name,statuscode&$orderby=createdon desc&$top=20`,
+  ).catch(() => null)
+  return (data?.value ?? []).map((opportunity) => ({
+    ...opportunity,
+    statusLabel: opportunity['statuscode@OData.Community.Display.V1.FormattedValue'] || 'Open',
   }))
 }
 
@@ -563,6 +575,7 @@ function buildParties(typeId, currentUserId, attendees) {
       'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
     })
     attendees.forEach((a) => {
+      if (a.role === 'organizer') return
       if (a.contactId) {
         parties.push({ participationtypemask: 2, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
       } else if (a.email) {
@@ -570,16 +583,25 @@ function buildParties(typeId, currentUserId, attendees) {
       }
     })
   } else if (typeId === 'appointment') {
-    // Organizer = current user (mask 7), required attendees (mask 5)
-    parties.push({
-      participationtypemask: 7,
-      'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
-    })
+    // Organizer = imported organizer when available, otherwise current user.
+    const organizer = attendees.find((a) => a.role === 'organizer')
+    if (organizer?.contactId) {
+      parties.push({ participationtypemask: 7, 'partyid_contact@odata.bind': `/contacts(${organizer.contactId})` })
+    } else if (organizer?.email) {
+      parties.push({ participationtypemask: 7, addressused: organizer.email })
+    } else {
+      parties.push({
+        participationtypemask: 7,
+        'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
+      })
+    }
     attendees.forEach((a) => {
+      if (a.role === 'organizer') return
+      const participationtypemask = a.role === 'optional' ? 6 : 5
       if (a.contactId) {
-        parties.push({ participationtypemask: 5, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
+        parties.push({ participationtypemask, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
       } else if (a.email) {
-        parties.push({ participationtypemask: 5, addressused: a.email })
+        parties.push({ participationtypemask, addressused: a.email })
       }
     })
   } else {
@@ -600,22 +622,41 @@ function buildParties(typeId, currentUserId, attendees) {
   return parties
 }
 
-export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId, linkToEscalationId, linkToLeadId }) {
+export async function createActivity(msalInstance, {
+  type,
+  accountId,
+  date,
+  end,
+  note,
+  subject,
+  location,
+  attendees = [],
+  currentUserId,
+  linkToEscalationId,
+  linkToLeadId,
+  regardingType,
+  regardingId,
+  regardingAccountId,
+}) {
   const typeConfig = ACTIVITY_TYPES.find((t) => t.id === type)
   if (!typeConfig) throw new Error(`Unknown activity type: ${type}`)
 
   const dateStr = new Date(date).toISOString()
-  const endStr = new Date(new Date(date).getTime() + 30 * 60 * 1000).toISOString()
+  const endStr = end
+    ? new Date(end).toISOString()
+    : new Date(new Date(date).getTime() + 30 * 60 * 1000).toISOString()
 
   // Note (annotation) — links to escalation, lead, or account
   if (type === 'note') {
     const objectBind = linkToEscalationId
       ? { 'objectid_slc_escalation@odata.bind': `/slc_escalations(${linkToEscalationId})` }
+      : regardingType === 'opportunity' && regardingId
+        ? { 'objectid_opportunity@odata.bind': `/opportunities(${regardingId})` }
       : linkToLeadId
         ? { 'objectid_lead@odata.bind': `/leads(${linkToLeadId})` }
         : { 'objectid_account@odata.bind': `/accounts(${accountId})` }
     const body = {
-      subject: 'Note',
+      subject: subject?.trim() || typeConfig.label,
       notetext: limitActivityDescription(type, note),
       ...objectBind,
     }
@@ -630,23 +671,29 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
   // Lead is a native regarding target — use direct binding. Escalation is not — use description prefix.
   let regardingBind, desc
-  if (linkToLeadId) {
+  if (regardingId && ['account', 'opportunity', 'lead'].includes(regardingType)) {
+    const entityPlural = {
+      account: 'accounts',
+      opportunity: 'opportunities',
+      lead: 'leads',
+    }[regardingType]
+    regardingBind = { [`regardingobjectid_${regardingType}@odata.bind`]: `/${entityPlural}(${regardingId})` }
+    desc = note
+  } else if (linkToLeadId) {
     regardingBind = { 'regardingobjectid_lead@odata.bind': `/leads(${linkToLeadId})` }
     desc = note
   } else if (linkToEscalationId) {
     regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
     desc = `[Linked to escalation]\n${note}`
   } else {
-    regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
+    regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${regardingAccountId || accountId})` }
     desc = note
   }
   desc = limitActivityDescription(type, desc)
 
-  const activityDateField = type === 'appointment' ? 'scheduledend' : 'actualend'
   const base = {
     description: desc,
-    subject: typeConfig.label,
-    [activityDateField]: dateStr,
+    subject: subject?.trim() || typeConfig.label,
     ...regardingBind,
   }
 
@@ -654,14 +701,30 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
   if (type === 'phonecall') {
     entity = 'phonecalls'
-    body = { ...base, directioncode: false, phonecall_activity_parties: parties }
+    body = {
+      ...base,
+      actualend: dateStr,
+      directioncode: false,
+      phonecall_activity_parties: parties,
+    }
   } else if (type === 'appointment') {
     entity = 'appointments'
-    body = { ...base, scheduledstart: dateStr, appointment_activity_parties: parties }
+    body = {
+      ...base,
+      ...(location?.trim() ? { location: location.trim() } : {}),
+      scheduledstart: dateStr,
+      scheduledend: endStr,
+      appointment_activity_parties: parties,
+    }
   } else {
     // email
     entity = 'emails'
-    body = { ...base, directioncode: false, email_activity_parties: parties }
+    body = {
+      ...base,
+      actualend: dateStr,
+      directioncode: false,
+      email_activity_parties: parties,
+    }
   }
 
   return dvFetch(msalInstance, `/${entity}`, {
