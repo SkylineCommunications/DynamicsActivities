@@ -89,6 +89,13 @@ export function sanitizeHtml(value) {
         if (!allowed) el.removeAttribute(attr.name)
       }
     }
+
+    if (el.tagName?.toLowerCase() === 'a' && (el.getAttribute('target') || '').toLowerCase() === '_blank') {
+      const tokens = (el.getAttribute('rel') || '').split(/\s+/).filter(Boolean)
+      if (!tokens.includes('noopener')) tokens.push('noopener')
+      if (!tokens.includes('noreferrer')) tokens.push('noreferrer')
+      el.setAttribute('rel', tokens.join(' '))
+    }
   })
 
   return doc.body.innerHTML
