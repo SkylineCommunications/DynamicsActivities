@@ -535,7 +535,20 @@ export async function resolveAttendees(msalInstance, attendees) {
     attendees.map(async (a) => {
       if (a.contactId) return a // already resolved
       const contact = await findContactByEmail(msalInstance, a.email)
-      return contact ? { ...a, contactId: contact.contactid, name: contact.fullname } : a
+      const accountId = contact?.['_parentcustomerid_value@Microsoft.Dynamics.CRM.lookuplogicalname'] === 'account'
+        ? contact._parentcustomerid_value
+        : null
+      return contact
+        ? {
+            ...a,
+            contactId: contact.contactid,
+            name: contact.fullname,
+            accountId: accountId || null,
+            accountName: accountId
+              ? contact['_parentcustomerid_value@OData.Community.Display.V1.FormattedValue'] || null
+              : null,
+          }
+        : a
     }),
   )
 }
@@ -629,10 +642,11 @@ export async function createActivity(msalInstance, { type, accountId, date, note
   }
   desc = limitActivityDescription(type, desc)
 
+  const activityDateField = type === 'appointment' ? 'scheduledend' : 'actualend'
   const base = {
     description: desc,
     subject: typeConfig.label,
-    scheduledend: dateStr,
+    [activityDateField]: dateStr,
     ...regardingBind,
   }
 
