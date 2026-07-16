@@ -103,7 +103,7 @@ Subscriptions are fully **DataMiner-native** in the current implementation.
 Behavior to be aware of:
 
 - The notify script has **no internal cadence gate**; each run processes subscriptions matching the requested frequency
-- New activity detection uses `createdon > LastSentAt`
+- Activity detection includes both new and updated activities: a record is included if `createdon > since` OR `modifiedon > since`
 - Digest emails can include Assistant-generated HTML timeline summaries, with deterministic fallback when Assistant integration is unavailable
 - Sender/from behavior is controlled by DataMiner mail / SMTP configuration
 
