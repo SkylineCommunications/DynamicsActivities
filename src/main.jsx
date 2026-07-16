@@ -5,6 +5,8 @@ import { MsalProvider } from '@azure/msal-react'
 import { msalConfig, msalConfigValid } from './authConfig'
 import { bootstrapSession, isDataMinerHost } from './api/dataminer'
 import App from './App'
+import { LicenseTestProvider } from './context/LicenseTestContext'
+import LicenseTestControl from './components/LicenseTestControl'
 import './styles/main.css'
 
 const root = ReactDOM.createRoot(document.getElementById('root'))
@@ -41,7 +43,10 @@ if (!msalConfigValid) {
   root.render(
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>
-        <App />
+        <LicenseTestProvider>
+          <App />
+          {!isDataMinerHost() && <LicenseTestControl />}
+        </LicenseTestProvider>
       </MsalProvider>
     </React.StrictMode>,
   )

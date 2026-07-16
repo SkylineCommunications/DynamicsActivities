@@ -8,11 +8,14 @@ import {
   noteTypeLabel,
   noteDate,
   getDynamicsUrl,
+  getUserCanManageLeads,
   ACTIVITY_TYPES,
   ESCALATION_STATUSES,
 } from '../api/dataverse'
 import { summarizeActivities } from '../api/activitySummary'
 import AutocompletePicker from './AutocompletePicker'
+import { navigate } from '../hooks/useHashRoute'
+import { useLicenseTest, resolveCanManageLeads } from '../context/LicenseTestContext'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
 const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.iconLigature || t.icon]))
@@ -95,6 +98,10 @@ const BROWSE_VIEWS = [
     hint: 'Select an account under Regarding to browse sales opportunities.',
     typeIds: ['opportunity'],
     emptyTitle: 'No opportunities found',
+    // Team Member users (no native lead/opportunity access) can submit one via email.
+    addFormId: 'opportunity',
+    addLabel: 'Add opportunity',
+    addIcon: 'lightbulb',
   },
   {
     id: 'leads',
@@ -102,6 +109,10 @@ const BROWSE_VIEWS = [
     hint: 'Select an account under Regarding to browse lead records.',
     typeIds: ['lead'],
     emptyTitle: 'No leads found',
+    // Team Member users (no native lead/opportunity access) can submit one via email.
+    addFormId: 'lead',
+    addLabel: 'Add lead',
+    addIcon: 'person_add',
   },
   {
     id: 'support',
@@ -111,6 +122,19 @@ const BROWSE_VIEWS = [
     emptyTitle: 'No support records found',
   },
 ]
+
+// Persist the active browse view so it survives leaving for a standalone form
+// (e.g. "Add lead") and returning — the user lands back on the view they were in.
+const ACTIVE_VIEW_STORAGE_KEY = 'dm-activities-active-view'
+
+function readStoredActiveView() {
+  try {
+    const stored = sessionStorage.getItem(ACTIVE_VIEW_STORAGE_KEY)
+    return BROWSE_VIEWS.some((v) => v.id === stored) ? stored : 'activities'
+  } catch {
+    return 'activities'
+  }
+}
 
 function fmtDate(d) {
   if (!d) return ''
@@ -365,8 +389,9 @@ function NoteCard({ note, expanded, onToggle }) {
   )
 }
 
-export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false }) {
+export default function NotesList({ refreshKey, initialAccount, managedAccounts = [], tamLoading = false, currentUserId }) {
   const { instance } = useMsal()
+  const { override } = useLicenseTest()
   const summaryRequestRef = useRef(0)
   const [notes, setNotes] = useState(null) // null = no search run yet
   const [loading, setLoading] = useState(false)
@@ -375,7 +400,25 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
   const [timelineSummaryLoading, setTimelineSummaryLoading] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const [tamAutoApplied, setTamAutoApplied] = useState(false)
-  const [activeViewId, setActiveViewId] = useState('activities')
+  const [activeViewId, setActiveViewId] = useState(readStoredActiveView)
+  const [canManageLeads, setCanManageLeads] = useState(false)
+
+  // Remember the active view so returning from a standalone form restores it.
+  useEffect(() => {
+    try { sessionStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, activeViewId) } catch {}
+  }, [activeViewId])
+
+  // Team Member CAL users cannot create leads/opportunities natively in Dynamics,
+  // so they get the email-based "Add lead" / "Add opportunity" forms instead.
+  // Sales/Enterprise users manage these directly in Dynamics and don't see the buttons.
+  const isTeamMember = !resolveCanManageLeads(override, canManageLeads)
+
+  useEffect(() => {
+    if (!currentUserId) return
+    getUserCanManageLeads(instance, currentUserId)
+      .then(setCanManageLeads)
+      .catch(() => setCanManageLeads(false))
+  }, [instance, currentUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
@@ -494,6 +537,15 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     <div className="notes-container">
       {/* Filter panel */}
       <div className="filter-panel">
+        {activeView.addFormId && isTeamMember && (
+          <button
+            type="button"
+            className="btn btn-secondary filter-add-btn"
+            onClick={() => navigate(`forms/${activeView.addFormId}`)}
+          >
+            <span className="icon icon-sm" aria-hidden="true">{activeView.addIcon}</span> {activeView.addLabel}
+          </button>
+        )}
         <div className="filter-field">
           <label className="filter-label">View</label>
           <div className="filter-mode-toggle">

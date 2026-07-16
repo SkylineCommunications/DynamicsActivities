@@ -43,6 +43,15 @@ function buildParameters(payload, userEmail, userName) {
       Name: 'UserName',
       Value: userName,
     },
+    {
+      // Optional recipient override. Left empty so the script uses its default recipient.
+      __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
+      ParameterId: 13,
+      Values: null,
+      MemoryFile: '',
+      Name: 'Recipient',
+      Value: '',
+    },
   ]
 }
 

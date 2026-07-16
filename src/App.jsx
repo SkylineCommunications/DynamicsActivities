@@ -112,7 +112,7 @@ function cycleTheme() {
 
   return (
     <AuthGuard onDmaConnection={setDmaConnection}>
-      {() => (
+      {(currentUserId) => (
         <div className="app">
           {/* Header — 49px with logo */}
           <header className="app-header">
@@ -178,6 +178,7 @@ function cycleTheme() {
                   initialAccount={null}
                   managedAccounts={managedAccounts}
                   tamLoading={tamLoading}
+                  currentUserId={currentUserId}
                 />
               )}
               {activeTab === 'subscriptions' && (

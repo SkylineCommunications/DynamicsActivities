@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.10.5</Version>
-		<VersionComment>Add dev/prod deploy switch: workflow_dispatch can target the DynamicsActivitiesDev folder.</VersionComment>
+		<Version>1.10.8</Version>
+		<VersionComment>Move Add lead/Add opportunity buttons into the Activities tab Leads and Opportunities views (Team Member CAL only), remove them from the no-access screens, and restore the previously active browse view after closing a form.</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
