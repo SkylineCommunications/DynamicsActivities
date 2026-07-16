@@ -9,14 +9,24 @@ import {
   getAccountLeads,
   getUserCanManageLeads,
   ACTIVITY_TYPES,
+  ACTIVITY_DESCRIPTION_LIMITS,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
 import CalendarImportTab from './CalendarImportTab'
 import InboxTab from './InboxTab'
 
-const NOTE_LIMIT = 500
+const ESCALATION_DESCRIPTION_PREFIX = '[Linked to escalation]\n'
 
+function calendarBodyText(event) {
+  if (event.bodyHtml) {
+    const container = document.createElement('div')
+    container.innerHTML = event.bodyHtml
+    container.querySelectorAll('br').forEach((breakNode) => breakNode.replaceWith('\n'))
+    return (container.textContent || '').replace(/\u00a0/g, ' ').trim()
+  }
+  return String(event.bodyPreview || '').trim()
+}
 
 function AttendeeChip({ attendee, onRemove }) {
   const isLinked = !!attendee.contactId
@@ -118,7 +128,14 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const isAppointment = type === 'appointment'
   const isInboxImportMode = isEmail && emailMode === 'import'
   const isCalendarImportMode = isAppointment && appointmentMode === 'import'
-  const charsLeft = NOTE_LIMIT - note.length
+  const descriptionLimit = ACTIVITY_DESCRIPTION_LIMITS[type] ?? ACTIVITY_DESCRIPTION_LIMITS.note
+  const noteLimit = Math.max(
+    0,
+    descriptionLimit - (type !== 'note' && linkToEscalation && !linkToLeadId
+      ? ESCALATION_DESCRIPTION_PREFIX.length
+      : 0),
+  )
+  const charsLeft = noteLimit - note.length
   const canSubmit = !isInboxImportMode && !isCalendarImportMode && account && note.trim().length > 0 && !submitting
   const hasManagedAccounts = managedAccounts.length > 0
   const useManagedAccounts = accountMode === 'managed' && hasManagedAccounts
@@ -127,15 +144,21 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
 
   // ─── Search functions for pickers ──────────────────────────────────────────
-  function searchAccountsFn(q) {
+  function searchAccountsFn(q, paging) {
     if (useManagedAccounts) {
+      paging = paging || {}
       const query = q.trim().toLowerCase()
       const matches = query
         ? managedAccounts.filter((a) => a.name?.toLowerCase().includes(query))
         : managedAccounts
-      return Promise.resolve(matches.slice(0, 50))
+      const top = paging.top ?? 25
+      const skip = paging.skip ?? 0
+      return Promise.resolve({
+        items: matches.slice(skip, skip + top),
+        hasMore: matches.length > skip + top,
+      })
     }
-    return searchAccounts(instance, q)
+    return searchAccounts(instance, q, paging)
   }
 
   function handleAccountModeChange(mode) {
@@ -143,7 +166,13 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     setAccount(null)
     setAccountMode(mode)
   }
-  function searchContactsFn(q) { return searchContacts(instance, q) }
+  function searchContactsFn(q, paging) {
+    return searchContacts(instance, q, { ...paging, accountIds: account?.accountid ? [account.accountid] : [] })
+  }
+
+  useEffect(() => {
+    setNote((current) => current.slice(0, noteLimit))
+  }, [noteLimit])
 
   function handleAttendeeSelected(contact) {
     if (!contact) return
@@ -157,6 +186,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   async function handleCalendarSelect(event) {
     setShowCalendar(false)
     setDate(event.start ? event.start.toISOString().slice(0, 16) : date)
+    const body = calendarBodyText(event)
+    if (body) setNote(body.slice(0, noteLimit))
     // Resolve attendees against Dynamics contacts
     const raw = event.attendees.map((a) => ({ name: a.name, email: a.email }))
     const resolved = await resolveAttendees(instance, raw)
@@ -307,8 +338,10 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
             onChange={setAccount}
             placeholder={useManagedAccounts ? 'Search my accounts…' : 'Search accounts…'}
             autoSelectSingle
+            showSelectedIndicator
             minChars={useManagedAccounts ? 0 : 2}
-            showOnFocus={useManagedAccounts}
+            loadOnFocus
+            allowEmptySearch
           />
           {tamLoading && <p className="hint-text">Loading your managed accounts…</p>}
           {useManagedAccounts && (
@@ -393,6 +426,10 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
             placeholder="Search Dynamics contacts to add…"
             clearOnPick
             autoSelectSingle
+            minChars={0}
+            loadOnFocus
+            allowEmptySearch
+            preferredIds={account?.accountid ? [account.accountid] : []}
           />
           {attendees.some((a) => !a.contactId) && (
             <p className="hint-text hint-warning">
@@ -411,12 +448,13 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
             className={`textarea ${charsLeft < 50 ? 'near-limit' : ''}`}
             placeholder="What did you learn / observe? Keep it short and to the point."
             value={note}
-            onChange={(e) => setNote(e.target.value.slice(0, NOTE_LIMIT))}
+            onChange={(e) => setNote(e.target.value.slice(0, noteLimit))}
+            maxLength={noteLimit}
             rows={4}
           />
           <div className="char-counter">
             <span className="hint-text">Internal only · Short &amp; to the point · Not for project notes</span>
-            <span className={`char-count ${charsLeft < 50 ? 'near-limit' : ''}`}>{note.length}/{NOTE_LIMIT}</span>
+            <span className={`char-count ${charsLeft < 50 ? 'near-limit' : ''}`}>{note.length}/{noteLimit}</span>
           </div>
         </div>
 

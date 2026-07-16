@@ -11,6 +11,7 @@ import {
   searchOpportunities,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
+import RichHtmlPreview from './RichHtmlPreview'
 import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
 const REGARDING_TYPES = [
@@ -153,7 +154,7 @@ function CalendarAddModal({ event, onClose, onImported, selectedAccount = null }
 
   const regardingConfig = {
     account: {
-      searchFn: (q) => searchAccounts(instance, q),
+      searchFn: (q, paging) => searchAccounts(instance, q, paging),
       getKey: (a) => a.accountid,
       getLabel: (a) => a.name,
       placeholder: 'Search account…',
@@ -236,7 +237,11 @@ function CalendarAddModal({ event, onClose, onImported, selectedAccount = null }
               <span>{fmtDate(event.start)}</span>
               {event.location && <span>{event.location}</span>}
             </div>
-            {event.bodyPreview && <div className="inbox-message-preview">{event.bodyPreview}</div>}
+            {(event.bodyHtml || event.bodyPreview) && (
+              <div className="inbox-message-preview">
+                <RichHtmlPreview html={event.bodyHtml} fallback={event.bodyPreview} />
+              </div>
+            )}
           </div>
 
           <div className="inbox-modal-actions inbox-modal-actions-top">
@@ -273,6 +278,9 @@ function CalendarAddModal({ event, onClose, onImported, selectedAccount = null }
               onChange={setRegardingItem}
               placeholder={regardingConfig.placeholder}
               autoSelectSingle
+              showSelectedIndicator={regardingType === 'account'}
+              loadOnFocus
+              allowEmptySearch
             />
 
             {regardingType === 'account' && !regardingItem && suggestedAccount && (
@@ -469,7 +477,9 @@ export default function CalendarImportTab({ compact = false, onImported, selecte
                   <span>{selectedEvent.location || '—'}</span>
                 </div>
               </div>
-              <div className="mail-detail-body">{selectedEvent.bodyPreview || <em>No preview available</em>}</div>
+              <div className="mail-detail-body">
+                <RichHtmlPreview html={selectedEvent.bodyHtml} fallback={selectedEvent.bodyPreview} />
+              </div>
               {(selectedEvent.attendees ?? []).length > 0 && (
                 <div className="inbox-section">
                   <div className="inbox-section-label">Attendees</div>
