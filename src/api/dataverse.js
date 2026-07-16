@@ -863,8 +863,9 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   const relatedIds = []
   const escalationIds = []
   const leadIds = []
+  const opportunityIds = []
 
-  for (const opp of opportunitiesData?.value ?? []) relatedIds.push(opp.opportunityid)
+  for (const opp of opportunitiesData?.value ?? []) { relatedIds.push(opp.opportunityid); opportunityIds.push(opp.opportunityid) }
   for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
   for (const lead of leadsData?.value ?? []) { relatedIds.push(lead.leadid); leadIds.push(lead.leadid) }
   for (const escalation of escalationsData?.value ?? []) {
@@ -872,7 +873,7 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
     if (escalationId) escalationIds.push(escalationId)
   }
 
-  return { relatedIds, escalationIds, leadIds }
+  return { relatedIds, escalationIds, leadIds, opportunityIds }
 }
 
 // Maps a "regarding" lookup type (contact/lead/opportunity) to the query needed
@@ -887,7 +888,7 @@ const REGARDING_PARENT_LOOKUP = {
 /**
  * For activities whose "regarding" is a contact/lead/opportunity (not an account),
  * resolve the parent account and attach `_resolvedAccountId` / `_resolvedAccountName`
- * while preserving the original person name via `_regardingPersonName`.
+ * while preserving the original person/lead/opportunity name via `_regardingDisplayName`.
  * Also resolves the display name for account-regarding notes (e.g. annotations)
  * when Dataverse does not return a formatted name for the lookup.
  * Mutates the given notes in place.
@@ -953,7 +954,7 @@ async function resolveRegardingAccounts(msalInstance, notes) {
       continue
     }
     if (!REGARDING_PARENT_LOOKUP[type]) continue
-    note._regardingPersonName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
+    note._regardingDisplayName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
     const parent = parentById.get(id)
     if (!parent) continue
     note._resolvedAccountId = parent.accountId
@@ -1147,6 +1148,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     const escalationBase = []
     let escalationIds = []
     let leadIds = []
+    let opportunityIds = []
     const fetches = []
 
     const needsRelatedIds = wantCalls || wantAppts || wantEmails || wantEscalations || wantAnnotations
@@ -1155,6 +1157,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
       const related = await getAccountRelatedEntityIds(msalInstance, accountId)
       escalationIds = related.escalationIds
       leadIds = related.leadIds
+      opportunityIds = related.opportunityIds
       const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
       const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
       base.push(buildLookupFilter('_regardingobjectid_value', allIds))
@@ -1206,7 +1209,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     }
 
     if (wantAnnotations) {
-      const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds])).slice(0, 50) : []
+      const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds, ...opportunityIds])).slice(0, 50) : []
       const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
       addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
       fetches.push(fetchAnnotations(msalInstance, annotationFilter))
