@@ -23,10 +23,10 @@ The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge
 
 ### Branch and PR workflow
 
-- Create feature and fix branches from `origin/release-candidate`.
-- Target `release-candidate` for normal feature, bug-fix, and Dataverse write pull requests.
-- Use `main` only for the promotion pull request that merges the complete approved release candidate into production.
-- If a normal feature PR is accidentally opened against `main`, change the PR base to `release-candidate` and rebase its head branch onto `origin/release-candidate`.
+- Choose the base branch according to the intended release path: use `main` for work that can go directly to production, and `release-candidate` for work that needs RC validation first.
+- If work starts from `origin/release-candidate`, keep the PR based on `release-candidate`; do not rebase it onto `main` just to change the PR target.
+- Use the `main` promotion PR for approved work that has already gone through the RC path.
+- When creating or updating a PR, make sure the base branch matches both the branch the work started from and the intended deployment path.
 
 ---
 

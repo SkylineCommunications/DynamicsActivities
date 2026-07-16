@@ -246,9 +246,7 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivitiesRC%2Findex.html
 ```
 
-Open write-capable PRs with `release-candidate` selected as their base branch. When the candidate is approved, open a promotion PR from `release-candidate` into `main`; production remains deployed only when that PR merges.
-
-The normal feature PR base is `release-candidate`, not `main`. A PR targeting `main` is reserved for promoting the complete release candidate. If a feature PR is opened against `main` by mistake, change its base to `release-candidate` and ensure its head branch is based on `origin/release-candidate`.
+Choose the PR base according to the intended release path. Features that can go directly to production may target `main`; features that need RC validation or are started from `release-candidate` must target `release-candidate`. A branch based on `origin/release-candidate` should not be rebased onto `main` merely to change the PR base, because that can introduce unrelated history. Approved RC work can later be promoted to `main`.
 
 The release-candidate deployment uses the repository variable `VITE_REDIRECT_URI_RC`, which must match the redirect URI registered on the deployed Entra application:
 
