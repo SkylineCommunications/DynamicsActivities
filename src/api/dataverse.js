@@ -790,7 +790,7 @@ export async function createInboxAppointmentActivity(
 
   const body = {
     subject: event.subject || '(No subject)',
-    description: limitActivityDescription('appointment', isEscalationLink ? `<p>[Linked to escalation]</p>${description}` : description),
+    description: limitActivityDescription('appointment', isEscalationLink ? `[Linked to escalation]\n${description}` : description),
     scheduledstart: start,
     scheduledend: end,
     [bindName]: `/${entityPlural}(${resolvedRegardingId})`,
