@@ -602,7 +602,7 @@ namespace DynamicsActivitiesSummarize
 				return DateTime.MinValue;
 			}
 
-			if (DateTime.TryParse(raw, null, DateTimeStyles.RoundtripKind, out var parsed))
+			if (DateTime.TryParseExact(raw, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
 			{
 				return parsed;
 			}
