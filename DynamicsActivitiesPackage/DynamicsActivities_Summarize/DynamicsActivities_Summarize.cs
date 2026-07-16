@@ -18,6 +18,7 @@ namespace DynamicsActivitiesSummarize
 	public class Script
 	{
 		private static readonly Guid AssistantAgentId = new Guid("7a7ee855-cb26-4067-bc8e-122a961ac4cf");
+		private static readonly string[] TimestampFormats = { "o", "yyyy-MM-ddTHH:mm:ssZ", "yyyy-MM-ddTHH:mm:ss.fffZ", "yyyy-MM-ddTHH:mm:sszzz" };
 		private const string InfoPrefix = "[Summarize]";
 		private const string SummaryHeadingStyle = "font-size:13px;font-weight:700;color:#1d4ed8;margin:0 0 8px;";
 		private const string TimelineHeadingStyle = "font-size:13px;font-weight:700;color:#1d4ed8;margin:8px 0;";
@@ -602,8 +603,7 @@ namespace DynamicsActivitiesSummarize
 				return DateTime.MinValue;
 			}
 
-			string[] formats = { "o", "yyyy-MM-ddTHH:mm:ssZ", "yyyy-MM-ddTHH:mm:ss.fffZ", "yyyy-MM-ddTHH:mm:sszzz" };
-			if (DateTime.TryParseExact(raw, formats, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+			if (DateTime.TryParseExact(raw, TimestampFormats, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
 			{
 				return parsed;
 			}
