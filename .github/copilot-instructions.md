@@ -45,7 +45,7 @@ The GitHub Actions workflow `Build, Register and Deploy DMAPP to DMA on PR Merge
   - `Frequency` (`id=10`, string): `instant`, `daily`, `weekly`, `monthly`.
   - `ClientSecret` (`id=11`, string): Dataverse client secret.
 - The notify script does **not** enforce an internal cadence gate; every run processes subscriptions matching the passed `Frequency`.
-- Activity detection includes both new and updated activities: a record is included if `createdon > since` OR `modifiedon > since` per subscription.
+- New activity detection uses `createdon > LastSentAt` per subscription.
 - Sender/from behavior is controlled by DataMiner mail/SMTP configuration.
 
 ---
