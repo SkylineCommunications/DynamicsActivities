@@ -17,11 +17,42 @@ import CalendarImportTab from './CalendarImportTab'
 import InboxTab from './InboxTab'
 
 const ESCALATION_DESCRIPTION_PREFIX = '[Linked to escalation]\n'
+const INTERNAL_EMAIL_DOMAINS = ['@skyline.be', '@dataminer.services']
+
+function isInternalEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase()
+  return INTERNAL_EMAIL_DOMAINS.some((domain) => normalized.endsWith(domain))
+}
+
+function getBestAccountFromAttendees(attendees) {
+  const accountCounts = new Map()
+  for (const attendee of attendees) {
+    if (!attendee.accountId) continue
+    const account = accountCounts.get(attendee.accountId) || {
+      accountid: attendee.accountId,
+      name: attendee.accountName || 'Account',
+      externalCount: 0,
+      count: 0,
+    }
+    account.count += 1
+    if (!isInternalEmail(attendee.email)) account.externalCount += 1
+    accountCounts.set(attendee.accountId, account)
+  }
+
+  const best = [...accountCounts.values()]
+    .sort((a, b) => b.externalCount - a.externalCount || b.count - a.count)[0]
+  return best ? { accountid: best.accountid, name: best.name } : null
+}
 
 function calendarBodyText(event) {
   if (event.bodyHtml) {
     const container = document.createElement('div')
     container.innerHTML = event.bodyHtml
+    container.querySelectorAll('style, script, head, meta, title').forEach((node) => node.remove())
+    const comments = document.createTreeWalker(container, NodeFilter.SHOW_COMMENT)
+    const commentNodes = []
+    while (comments.nextNode()) commentNodes.push(comments.currentNode)
+    commentNodes.forEach((node) => node.remove())
     container.querySelectorAll('br').forEach((breakNode) => breakNode.replaceWith('\n'))
     return (container.textContent || '').replace(/\u00a0/g, ' ').trim()
   }
@@ -140,7 +171,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const hasManagedAccounts = managedAccounts.length > 0
   const useManagedAccounts = accountMode === 'managed' && hasManagedAccounts
 
-  const dateLabel = type === 'appointment' ? 'Start Time' : 'Due Date'
+  const dateLabel = type === 'appointment' ? 'Start Time' : 'Date & time'
   const attendeesLabel = type === 'phonecall' ? 'Call To' : type === 'email' ? 'To' : 'Required Attendees'
 
   // ─── Search functions for pickers ──────────────────────────────────────────
@@ -192,6 +223,8 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     const raw = event.attendees.map((a) => ({ name: a.name, email: a.email }))
     const resolved = await resolveAttendees(instance, raw)
     setAttendees(resolved)
+    const suggestedAccount = getBestAccountFromAttendees(resolved)
+    if (suggestedAccount) setAccount(suggestedAccount)
   }
 
   function removeAttendee(idx) {
@@ -294,7 +327,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         )}
 
         {/* Calendar link — not shown for notes */}
-        {type === 'phonecall' && !isInboxImportMode && !isCalendarImportMode && (
+        {(type === 'phonecall' || type === 'appointment') && !isInboxImportMode && !isCalendarImportMode && (
         <div className="calendar-row">
           <button type="button" className="btn-ghost" onClick={() => setShowCalendar(true)}>
             <span className="icon icon-sm">calendar_today</span> Fill from calendar
