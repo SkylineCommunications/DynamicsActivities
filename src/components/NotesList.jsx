@@ -14,7 +14,8 @@ import {
 } from '../api/dataverse'
 import { summarizeActivities } from '../api/activitySummary'
 import AutocompletePicker from './AutocompletePicker'
-import RichHtmlPreview, { formatPreviewHtml, previewVisibleLength } from './RichHtmlPreview'
+import RichHtmlPreview from './RichHtmlPreview'
+import { formatPreviewHtml, previewVisibleLength } from '../utils/htmlPreview'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
 const TYPE_ICONS = Object.fromEntries(ACTIVITY_TYPES.map((t) => [t.label, t.iconLigature || t.icon]))
