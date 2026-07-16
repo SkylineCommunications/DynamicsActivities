@@ -3,7 +3,6 @@ import { useMsal } from '@azure/msal-react'
 import {
   searchActivities,
   searchAccounts,
-  getAccountImages,
   searchContacts,
   extractAttendees,
   noteTypeLabel,
@@ -288,6 +287,7 @@ function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
   const leadName = (regardingType === 'lead') ? note._regardingDisplayName : ''
   const opportunityName = (regardingType === 'opportunity') ? note._regardingDisplayName : ''
   const accountId = noteAccountId(note)
+  const accountImage = accountImages[accountId] ?? note._resolvedAccountImage ?? null
   const rawPreview = note.notetext || note.description || ''
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const previewHtml = formatPreviewHtml(preview)
@@ -323,7 +323,7 @@ function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
           {accountName && (
             <span className="note-account-name">
               {accountId
-                ? <AccountAvatar name={accountName} image={accountImages[accountId]} size="md" />
+                ? <AccountAvatar name={accountName} image={accountImage} size="md" />
                 : <span className="icon icon-sm">business_center</span>} {accountName}
             </span>
           )}
@@ -476,33 +476,6 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     }))
     setTamAutoApplied(true)
   }, [tamLoading, managedAccounts, initialAccount])
-
-  // Fetch logos for every account that appears in the results. Runs once per
-  // search (keyed on notes), refetching images in batched queries so updated
-  // logos in Dataverse are picked up. Existing avatars stay visible until the
-  // fresh value arrives (merge, not clear), so there's no flicker.
-  useEffect(() => {
-    const wanted = [...new Set(
-      (notes ?? []).map(noteAccountId).filter(Boolean)
-    )]
-    if (!wanted.length) return
-
-    let cancelled = false
-    const chunkSize = 20
-
-    ;(async () => {
-      for (let i = 0; i < wanted.length && !cancelled; i += chunkSize) {
-        const chunk = wanted.slice(i, i + chunkSize)
-        const images = await getAccountImages(instance, chunk)
-        // Ensure every requested ID gets a key (null when absent) so avatars
-        // fall back to initials for imageless accounts.
-        const merged = Object.fromEntries(chunk.map((id) => [id, images[id] ?? null]))
-        if (!cancelled) setAccountImages((p) => ({ ...p, ...merged }))
-      }
-    })()
-
-    return () => { cancelled = true }
-  }, [instance, notes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const runSearch = useCallback(() => {
     setLoading(true)

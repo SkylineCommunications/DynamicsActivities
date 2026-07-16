@@ -219,25 +219,6 @@ export async function searchAccounts(msalInstance, query) {
 }
 
 /**
- * Fetch images (logos) for multiple accounts in a single query.
- * Batches account IDs into an OR filter to avoid one request per account.
- * @param {string[]} accountIds
- * @returns {Promise<Record<string, string|null>>} map of accountid → base64 image (or null)
- */
-export async function getAccountImages(msalInstance, accountIds) {
-  const ids = [...new Set((accountIds ?? []).filter(Boolean))]
-  if (!ids.length) return {}
-  const filter = buildLookupFilter('accountid', ids)
-  const data = await dvFetch(
-    msalInstance,
-    `/accounts?$select=accountid,entityimage&$filter=${encodeURIComponent(filter)}`,
-  ).catch(() => null)
-  const images = {}
-  for (const row of data?.value ?? []) images[row.accountid] = row.entityimage ?? null
-  return images
-}
-
-/**
  * Resolve an array of Skyline customers to Dataverse accounts.
  * Strategy: batch exact name matches with acronym exact/starts-with matches.
  * @param {Array<{ name: string, acronym: string }>} customers
@@ -888,7 +869,8 @@ const REGARDING_PARENT_LOOKUP = {
 /**
  * For activities whose "regarding" is a contact/lead/opportunity (not an account),
  * resolve the parent account and attach `_resolvedAccountId` / `_resolvedAccountName`
- * while preserving the original person/lead/opportunity name via `_regardingDisplayName`.
+ * / `_resolvedAccountImage` while preserving the original contact/lead/opportunity
+ * name via `_regardingDisplayName`.
  * Also resolves the display name for account-regarding notes (e.g. annotations)
  * when Dataverse does not return a formatted name for the lookup.
  * Mutates the given notes in place.
@@ -931,15 +913,25 @@ async function resolveRegardingAccounts(msalInstance, notes) {
     }
   }
 
-  // Resolve display names for account-regarding notes (annotations) directly.
+  // Batch-fetch the name (when missing) and logo for every resolved account —
+  // both the parent accounts and the account-regarding notes lacking a name.
+  const accountIdsForLookup = new Set(accountIdsNeedingName)
+  for (const { accountId } of parentById.values()) {
+    if (accountId) accountIdsForLookup.add(accountId)
+  }
+
   const accountNameById = new Map()
-  for (const chunk of chunkArray([...accountIdsNeedingName], 20)) {
+  const accountImageById = new Map()
+  for (const chunk of chunkArray([...accountIdsForLookup], 20)) {
     const filter = chunk.map((id) => `accountid eq ${id}`).join(' or ')
     const data = await dvFetch(
       msalInstance,
-      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,name`,
+      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,name,entityimage`,
     ).catch(() => null)
-    for (const row of data?.value ?? []) accountNameById.set(row.accountid, row.name || '')
+    for (const row of data?.value ?? []) {
+      accountNameById.set(row.accountid, row.name || '')
+      accountImageById.set(row.accountid, row.entityimage ?? null)
+    }
   }
 
   for (const note of notes) {
@@ -947,6 +939,7 @@ async function resolveRegardingAccounts(msalInstance, notes) {
     const id = note._regardingobjectid_value
     if (!id) continue
     if (type === 'account') {
+      if (accountImageById.has(id)) note._resolvedAccountImage = accountImageById.get(id)
       if (!note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] && accountNameById.has(id)) {
         note._resolvedAccountId = id
         note._resolvedAccountName = accountNameById.get(id)
@@ -959,6 +952,7 @@ async function resolveRegardingAccounts(msalInstance, notes) {
     if (!parent) continue
     note._resolvedAccountId = parent.accountId
     note._resolvedAccountName = parent.accountName
+    if (accountImageById.has(parent.accountId)) note._resolvedAccountImage = accountImageById.get(parent.accountId)
   }
 }
 
