@@ -1401,7 +1401,7 @@ namespace DynamicsActivitiesNotifySubscribers
 		private static DateTime GetActivityTimestamp(ActivityItem item)
 		{
 			if (item == null) return DateTime.MinValue;
-			if (item.ModifiedOn > DateTime.MinValue && item.ModifiedOn > item.CreatedOn) return item.ModifiedOn;
+			if (item.ModifiedOn > DateTime.MinValue && item.ModifiedOn >= item.CreatedOn) return item.ModifiedOn;
 			return item.CreatedOn;
 		}
 
@@ -1413,7 +1413,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				return String.Empty;
 			}
 
-			if (item?.ModifiedOn > DateTime.MinValue && item.ModifiedOn > item.CreatedOn)
+			if (item?.ModifiedOn > DateTime.MinValue && item.ModifiedOn >= item.CreatedOn)
 			{
 				return $"Updated {timestamp:yyyy-MM-dd HH:mm} UTC";
 			}

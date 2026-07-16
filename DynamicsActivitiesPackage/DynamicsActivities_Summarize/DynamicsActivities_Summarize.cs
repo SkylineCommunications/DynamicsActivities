@@ -602,9 +602,15 @@ namespace DynamicsActivitiesSummarize
 				return DateTime.MinValue;
 			}
 
-			if (DateTime.TryParseExact(raw, "o", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+			string[] formats = { "o", "yyyy-MM-ddTHH:mm:ssZ", "yyyy-MM-ddTHH:mm:ss.fffZ", "yyyy-MM-ddTHH:mm:sszzz" };
+			if (DateTime.TryParseExact(raw, formats, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
 			{
 				return parsed;
+			}
+
+			if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var fallback))
+			{
+				return fallback;
 			}
 
 			return DateTime.MinValue;
