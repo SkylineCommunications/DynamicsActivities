@@ -56,7 +56,10 @@ jobs:
             exit 0
           fi
 
-          gh pr merge "$PR_NUMBER" --auto --merge
+          if ! gh pr merge "$PR_NUMBER" --auto --merge 2>/dev/null; then
+            # Auto-merge requires branch protection rules; fall back to direct merge
+            gh pr merge "$PR_NUMBER" --merge
+          fi
 
       - name: Ask Copilot to resolve merge conflicts
         if: steps.merge.outputs.conflicting == 'true' || failure()
