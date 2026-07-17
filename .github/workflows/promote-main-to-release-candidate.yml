@@ -40,6 +40,8 @@ jobs:
         run: |
           promotion_branch="automation/main-to-release-candidate"
           conflict=false
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin main
 
           if git ls-remote --exit-code --heads origin "$promotion_branch" >/dev/null; then
@@ -50,7 +52,9 @@ jobs:
               if git merge --no-edit origin/main; then
                 git push origin "HEAD:refs/heads/${promotion_branch}"
               else
-                git merge --abort
+                if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+                  git merge --abort
+                fi
                 conflict=true
                 echo "::warning::Merge conflict detected between main and the promotion branch."
               fi
