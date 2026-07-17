@@ -605,16 +605,25 @@ function buildParties(typeId, currentUserId, attendees) {
       }
     })
   } else {
-    // Email: from = current user (mask 1), to = attendees (mask 2)
-    parties.push({
-      participationtypemask: 1,
-      'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
-    })
+    // Email: from = current user (mask 1), recipients use To/CC/BCC masks 2/3/4.
+    const sender = attendees.find((a) => a.role === 'From')
+    if (sender?.contactId) {
+      parties.push({ participationtypemask: 1, 'partyid_contact@odata.bind': `/contacts(${sender.contactId})` })
+    } else if (sender?.email) {
+      parties.push({ participationtypemask: 1, addressused: sender.email })
+    } else {
+      parties.push({
+        participationtypemask: 1,
+        'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
+      })
+    }
     attendees.forEach((a) => {
+      if (a.role === 'From') return
+      const participationtypemask = a.role === 'CC' ? 3 : a.role === 'BCC' ? 4 : 2
       if (a.contactId) {
-        parties.push({ participationtypemask: 2, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
+        parties.push({ participationtypemask, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
       } else if (a.email) {
-        parties.push({ participationtypemask: 2, addressused: a.email })
+        parties.push({ participationtypemask, addressused: a.email })
       }
     })
   }
@@ -742,8 +751,6 @@ export async function createInboxEmailActivity(
   if (!regardingType || (!regardingId && !regardingAccountId)) throw new Error('A Dynamics link target is required')
 
   const fromAddress = message.from?.email || ''
-  const toRecipients = [...(message.toRecipients ?? []), ...(message.ccRecipients ?? [])]
-
   const parties = []
 
   if (fromAddress) {
@@ -755,14 +762,19 @@ export async function createInboxEmailActivity(
     }
   }
 
-  for (const recipient of toRecipients) {
+  const recipients = [
+    ...(message.toRecipients ?? []).map((recipient) => ({ ...recipient, participationtypemask: 2 })),
+    ...(message.ccRecipients ?? []).map((recipient) => ({ ...recipient, participationtypemask: 3 })),
+    ...(message.bccRecipients ?? []).map((recipient) => ({ ...recipient, participationtypemask: 4 })),
+  ]
+  for (const recipient of recipients) {
     const email = (recipient.email || '').toLowerCase()
     if (!email) continue
     const contact = contactsByEmail[email]
     if (contact) {
-      parties.push({ participationtypemask: 2, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
+      parties.push({ participationtypemask: recipient.participationtypemask, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
     } else {
-      parties.push({ participationtypemask: 2, addressused: recipient.email })
+      parties.push({ participationtypemask: recipient.participationtypemask, addressused: recipient.email })
     }
   }
 
@@ -779,8 +791,11 @@ export async function createInboxEmailActivity(
   if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
   if (!resolvedRegardingId) throw new Error(`Missing Dynamics link id for type: ${regardingType}`)
 
+  const messageDescription = Object.prototype.hasOwnProperty.call(message, 'description')
+    ? formatPreviewHtml(message.description)
+    : formatPreviewHtml(message.bodyHtml || message.bodyPreview)
   const description = [
-    formatPreviewHtml(message.bodyHtml || message.bodyPreview),
+    messageDescription,
     `<p>Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}</p>`,
   ].filter(Boolean).join('')
 

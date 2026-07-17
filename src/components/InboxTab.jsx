@@ -13,18 +13,16 @@ import {
   relinkExistingEmails,
   suggestAccountByEmailDomain,
   searchAccounts,
-  searchLeads,
-  searchOpportunities,
+  searchContacts,
+  getActiveEscalation,
+  getAccountLeads,
+  getAccountOpportunities,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
+import EmailParticipantFields from './EmailParticipantFields'
 import RichHtmlPreview from './RichHtmlPreview'
 import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
-const REGARDING_TYPES = [
-  { id: 'account', label: 'Account' },
-  { id: 'opportunity', label: 'Opportunity' },
-  { id: 'lead', label: 'Lead' },
-]
 const INTERNAL_DOMAINS = ['@skyline.be', '@dataminer.services']
 
 function fmtDate(d) {
@@ -60,13 +58,11 @@ function splitRecipients(message) {
     if (!recipient.email) continue
     participants.push({ role: 'CC', name: recipient.name || recipient.email, email: recipient.email })
   }
-  const seen = new Set()
-  return participants.filter((p) => {
-    const key = p.email.toLowerCase()
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  for (const recipient of message.bccRecipients ?? []) {
+    if (!recipient.email) continue
+    participants.push({ role: 'BCC', name: recipient.name || recipient.email, email: recipient.email })
+  }
+  return participants
 }
 
 function normaliseThreadMessages(messages) {
@@ -126,6 +122,7 @@ function threadSearchHaystack(thread) {
       m.bodyPreview,
       ...(m.toRecipients ?? []).map((r) => `${r.name} ${r.email}`),
       ...(m.ccRecipients ?? []).map((r) => `${r.name} ${r.email}`),
+      ...(m.bccRecipients ?? []).map((r) => `${r.name} ${r.email}`),
     ])
     .join(' ')
     .toLowerCase()
@@ -142,6 +139,7 @@ function threadHasExternalContacts(thread) {
       m.from?.email,
       ...(m.toRecipients ?? []).map((r) => r.email),
       ...(m.ccRecipients ?? []).map((r) => r.email),
+      ...(m.bccRecipients ?? []).map((r) => r.email),
     ]
     return addresses
       .map((email) => String(email || '').trim().toLowerCase())
@@ -247,7 +245,7 @@ function ContactCreatePrompt({
               getLabel={(a) => a.name}
               value={draft.account}
               onChange={(item) => onChange('account', item)}
-              placeholder="Search account…"
+              placeholder="Search accounts…"
               autoSelectSingle
               showSelectedIndicator
               loadOnFocus
@@ -296,7 +294,35 @@ function ImportedMessageLink({ activity }) {
   )
 }
 
-function ThreadDetailView({ thread, onAddToDynamics }) {
+function ThreadParticipantChip({ participant, contact, onCreateContact, onRemove }) {
+  const linked = !!contact
+  return (
+    <span
+      className={`chip ${linked ? 'chip-linked' : 'chip-unlinked'}`}
+      title={`${participant.role}: ${participant.email}`}
+    >
+      <span className="icon icon-sm">{linked ? 'check_circle' : 'radio_button_unchecked'}</span>
+      <span>{participant.name || participant.email}</span>
+      {!linked && onCreateContact && (
+        <button
+          type="button"
+          className="chip-action"
+          onClick={onCreateContact}
+          aria-label={`Create contact for ${participant.email}`}
+        >
+          <span className="icon icon-sm" aria-hidden="true">person_add</span>
+        </button>
+      )}
+      {onRemove && (
+        <button type="button" className="chip-remove" onClick={onRemove} aria-label="Remove participant">
+          <span className="icon icon-sm" aria-hidden="true">close</span>
+        </button>
+      )}
+    </span>
+  )
+}
+
+function ThreadDetailView({ thread, onManageThreadImport, onSelectMessage }) {
   const { instance } = useMsal()
   const [expandedMessageIds, setExpandedMessageIds] = useState(() => new Set())
   const [existingByMessageId, setExistingByMessageId] = useState(new Map())
@@ -357,8 +383,13 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
       </div>
 
       <div className="mail-detail-top-actions">
-        <button type="button" className="btn-primary" onClick={onAddToDynamics}>
-          Import thread to Dynamics
+        {onSelectMessage && !latestExisting?.activityid && (
+          <button type="button" className="btn-primary" onClick={() => onSelectMessage(latestMessage)}>
+            Fill latest message
+          </button>
+        )}
+        <button type="button" className={onSelectMessage ? 'btn-ghost' : 'btn-primary'} onClick={onManageThreadImport}>
+          {onSelectMessage ? 'Manage thread import' : 'Import thread to Dynamics'}
         </button>
         {latestMessage.webLink && (
           <a href={latestMessage.webLink} target="_blank" rel="noopener noreferrer" className="btn-ghost">
@@ -437,6 +468,11 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
                       </a>
                     )}
                     <ImportedMessageLink activity={existing} />
+                    {onSelectMessage && !existing?.activityid && (
+                      <button type="button" className="btn-ghost btn-sm" onClick={() => onSelectMessage(message)}>
+                        Fill this message
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -448,11 +484,19 @@ function ThreadDetailView({ thread, onAddToDynamics }) {
   )
 }
 
-function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = null }) {
+function MailAddModal({
+  thread,
+  mailbox,
+  onClose,
+  onImported,
+  selectedAccount: initialSelectedAccount = null,
+}) {
   const { instance } = useMsal()
   const [regardingType, setRegardingType] = useState('account')
   const [regardingItem, setRegardingItem] = useState(() => (
-    selectedAccount?.accountid ? { accountid: selectedAccount.accountid, name: selectedAccount.name } : null
+    initialSelectedAccount?.accountid
+      ? { accountid: initialSelectedAccount.accountid, name: initialSelectedAccount.name }
+      : null
   ))
   const [contactsByEmail, setContactsByEmail] = useState({})
   const [loadingContacts, setLoadingContacts] = useState(true)
@@ -465,6 +509,15 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
   const [threadMessages, setThreadMessages] = useState(thread.messages)
   const [existingByMessageId, setExistingByMessageId] = useState(new Map())
   const [originalSuggestion, setOriginalSuggestion] = useState(null)
+  const [accountLeads, setAccountLeads] = useState([])
+  const [accountOpportunities, setAccountOpportunities] = useState([])
+  const [activeEscalation, setActiveEscalation] = useState(null)
+  const [escalationLoading, setEscalationLoading] = useState(false)
+  const [linkToLeadId, setLinkToLeadId] = useState('')
+  const [linkToOpportunityId, setLinkToOpportunityId] = useState('')
+  const [linkToEscalation, setLinkToEscalation] = useState(false)
+  const pendingOriginalLinkRef = useRef(null)
+  const [participantEdits, setParticipantEdits] = useState({ added: [], removed: new Set() })
 
   useEffect(() => {
     let cancelled = false
@@ -507,28 +560,33 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
   const participants = useMemo(() => {
     const merged = []
     for (const message of threadMessages) merged.push(...splitRecipients(message))
-    const seen = new Set()
-    return merged.filter((p) => {
-      const key = p.email.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+    return merged
   }, [threadMessages])
+  const editableParticipants = useMemo(() => {
+    const removed = participantEdits.removed
+    return [...participants, ...participantEdits.added].filter((participant) => (
+      !removed.has(`${participant.role}:${participant.email.toLowerCase()}`)
+    ))
+  }, [participants, participantEdits])
 
   const importedCount = useMemo(
     () => threadIds.filter((id) => existingByMessageId.has(id)).length,
     [threadIds, existingByMessageId],
   )
   const missingCount = Math.max(threadIds.length - importedCount, 0)
+  const canImport = !!(regardingItem || linkToLeadId || linkToOpportunityId || (linkToEscalation && activeEscalation))
 
   useEffect(() => {
     let cancelled = false
     setLoadingContacts(true)
     setContactsByEmail({})
     Promise.all(
-      participants.map(async (p) => {
-        const contact = await findContactByEmail(instance, p.email, selectedAccount?.accountid || null)
+      editableParticipants.map(async (p) => {
+        const contact = await findContactByEmail(
+          instance,
+          p.email,
+          regardingType === 'account' ? regardingItem?.accountid || null : null,
+        )
         return [p.email.toLowerCase(), contact]
       }),
     )
@@ -539,7 +597,7 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
       .catch((e) => { if (!cancelled) setError(e.message) })
       .finally(() => { if (!cancelled) setLoadingContacts(false) })
     return () => { cancelled = true }
-  }, [instance, participants, selectedAccount?.accountid])
+  }, [instance, editableParticipants, regardingType, regardingItem?.accountid])
 
   const suggestedAccount = useMemo(() => {
     if (regardingType !== 'account') return null
@@ -562,34 +620,86 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
     return best ? { accountid: best.accountid, name: best.name } : null
   }, [contactsByEmail, regardingType])
 
-  const regardingConfig = {
-    account: {
-      searchFn: (q, paging) => searchAccounts(instance, q, paging),
-      getKey: (a) => a.accountid,
-      getLabel: (a) => a.name,
-      placeholder: 'Search account…',
-      sublabel: null,
-    },
-    opportunity: {
-      searchFn: (q) => searchOpportunities(instance, q),
-      getKey: (o) => o.opportunityid,
-      getLabel: (o) => o.name,
-      placeholder: 'Search opportunity…',
-      sublabel: null,
-    },
-    lead: {
-      searchFn: (q) => searchLeads(instance, q),
-      getKey: (l) => l.leadid,
-      getLabel: (l) => l.fullname || '(No name)',
-      placeholder: 'Search lead…',
-      sublabel: (l) => l.companyname || '',
-    },
-  }[regardingType]
+  useEffect(() => {
+    if (regardingType !== 'account' || regardingItem || !suggestedAccount) return
+    setRegardingItem(suggestedAccount)
+  }, [regardingType, regardingItem, suggestedAccount])
 
-  function pickOriginalSuggestion() {
+  useEffect(() => {
+    const accountId = regardingItem?.accountid
+    if (!accountId || regardingType !== 'account') {
+      setAccountLeads([])
+      setAccountOpportunities([])
+      setActiveEscalation(null)
+      setEscalationLoading(false)
+      setLinkToLeadId('')
+      setLinkToOpportunityId('')
+      setLinkToEscalation(false)
+      return
+    }
+    const pendingLink = pendingOriginalLinkRef.current
+    const pendingLinkMatchesAccount = pendingLink?.accountId === accountId
+    let active = true
+    setLinkToLeadId(pendingLinkMatchesAccount && pendingLink.type === 'lead' ? pendingLink.id : '')
+    setLinkToOpportunityId(pendingLinkMatchesAccount && pendingLink.type === 'opportunity' ? pendingLink.id : '')
+    setLinkToEscalation(false)
+    setEscalationLoading(true)
+    Promise.all([
+      getAccountLeads(instance, accountId),
+      getAccountOpportunities(instance, accountId),
+      getActiveEscalation(instance, accountId),
+    ])
+      .then(([leads, opportunities, escalation]) => {
+        if (!active) return
+        setAccountLeads(leads)
+        setAccountOpportunities(opportunities)
+        setActiveEscalation(escalation)
+        setLinkToEscalation(pendingLinkMatchesAccount ? false : !!escalation)
+        if (pendingLinkMatchesAccount) {
+          setLinkToLeadId(pendingLink.type === 'lead' ? pendingLink.id : '')
+          setLinkToOpportunityId(pendingLink.type === 'opportunity' ? pendingLink.id : '')
+          pendingOriginalLinkRef.current = null
+        }
+      })
+      .catch((e) => {
+        if (!active) return
+        setError(e.message)
+        setAccountLeads([])
+        setAccountOpportunities([])
+        setActiveEscalation(null)
+        setLinkToEscalation(false)
+      })
+      .finally(() => {
+        if (active) setEscalationLoading(false)
+      })
+    return () => { active = false }
+  }, [instance, regardingItem?.accountid, regardingType])
+
+  async function pickOriginalSuggestion() {
     if (!originalSuggestion) return
-    setRegardingType(originalSuggestion.regardingType)
-    setRegardingItem(mapSuggestionToItem(originalSuggestion))
+    if (originalSuggestion.regardingType === 'account') {
+      setRegardingType('account')
+      setRegardingItem(mapSuggestionToItem(originalSuggestion))
+      return
+    }
+    const account = await resolveAccountForRegarding(instance, {
+      regardingType: originalSuggestion.regardingType,
+      regardingId: originalSuggestion.regardingId,
+    })
+    if (!account) {
+      setError('The original link has no parent account and cannot be imported.')
+      return
+    }
+    pendingOriginalLinkRef.current = {
+      accountId: account.accountid,
+      type: originalSuggestion.regardingType,
+      id: originalSuggestion.regardingId,
+    }
+    setLinkToLeadId(originalSuggestion.regardingType === 'lead' ? originalSuggestion.regardingId : '')
+    setLinkToOpportunityId(originalSuggestion.regardingType === 'opportunity' ? originalSuggestion.regardingId : '')
+    setLinkToEscalation(false)
+    setRegardingType('account')
+    setRegardingItem(account)
   }
 
   function handleOpenCreateContact(participant) {
@@ -604,6 +714,79 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
       phone: '',
       account: defaultAccount,
     })
+  }
+
+  function handleAddParticipant(contact, role) {
+    if (!contact?.emailaddress1) return
+    const participant = {
+      role,
+      name: contact.fullname || contact.emailaddress1,
+      email: contact.emailaddress1,
+      contactId: contact.contactid,
+    }
+    const key = `${role}:${participant.email.toLowerCase()}`
+    setParticipantEdits((current) => {
+      const removed = new Set(current.removed)
+      if (role === 'From') {
+        participants
+          .filter((item) => item.role === 'From')
+          .forEach((item) => removed.add(`From:${item.email.toLowerCase()}`))
+        current.added
+          .filter((item) => item.role === 'From')
+          .forEach((item) => removed.add(`From:${item.email.toLowerCase()}`))
+      }
+      removed.delete(key)
+      return {
+        added: current.added.some((item) => `${item.role}:${item.email.toLowerCase()}` === key)
+          ? current.added
+          : [...current.added, participant],
+        removed,
+      }
+    })
+    setContactsByEmail((current) => ({
+      ...current,
+      [participant.email.toLowerCase()]: { contactid: contact.contactid },
+    }))
+  }
+
+  function handleRemoveParticipant(participant) {
+    const key = `${participant.role}:${participant.email.toLowerCase()}`
+    setParticipantEdits((current) => ({
+      added: current.added.filter((item) => `${item.role}:${item.email.toLowerCase()}` !== key),
+      removed: new Set([...current.removed, key]),
+    }))
+  }
+
+  function applyParticipantEdits(message) {
+    const removed = participantEdits.removed
+    const additions = participantEdits.added
+    const getKey = (participant) => `${participant.role}:${participant.email.toLowerCase()}`
+    const activeAdditions = additions.filter((participant) => !removed.has(getKey(participant)))
+    const isRemoved = (role, recipient) => removed.has(`${role}:${recipient.email.toLowerCase()}`)
+    const additionsFor = (role) => activeAdditions
+      .filter((participant) => participant.role === role)
+      .map(({ name, email }) => ({ name, email }))
+    const fromAddition = [...activeAdditions].reverse().find((participant) => participant.role === 'From')
+    const originalFrom = message.from?.email && !isRemoved('From', message.from) ? message.from : null
+
+    return {
+      ...message,
+      from: fromAddition
+        ? { name: fromAddition.name, email: fromAddition.email }
+        : originalFrom,
+      toRecipients: [
+        ...(message.toRecipients ?? []).filter((recipient) => !isRemoved('To', recipient)),
+        ...additionsFor('To'),
+      ],
+      ccRecipients: [
+        ...(message.ccRecipients ?? []).filter((recipient) => !isRemoved('CC', recipient)),
+        ...additionsFor('CC'),
+      ],
+      bccRecipients: [
+        ...(message.bccRecipients ?? []).filter((recipient) => !isRemoved('BCC', recipient)),
+        ...additionsFor('BCC'),
+      ],
+    }
   }
 
   function handleCloseCreateContact() {
@@ -678,8 +861,23 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
   }
 
   async function handleImport({ missingOnly }) {
-    if (!regardingItem) return
-    const { regardingId, regardingAccountId } = getImportRegardingPayload(regardingType, regardingItem)
+    const effectiveType = linkToOpportunityId
+      ? 'opportunity'
+      : linkToLeadId
+        ? 'lead'
+        : linkToEscalation && activeEscalation
+          ? 'escalation'
+          : 'account'
+    const effectiveItem = effectiveType === 'opportunity'
+      ? { opportunityid: linkToOpportunityId }
+      : effectiveType === 'lead'
+        ? { leadid: linkToLeadId }
+        : effectiveType === 'escalation'
+          ? activeEscalation
+          : regardingItem
+    if (!effectiveItem) return
+    const { regardingId, regardingAccountId: linkedAccountId } = getImportRegardingPayload(effectiveType, effectiveItem)
+    const regardingAccountId = linkedAccountId || regardingItem?.accountid || null
     setSaving(true)
     setError(null)
     try {
@@ -697,8 +895,8 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
         }
 
         await createInboxEmailActivity(instance, {
-          message,
-          regardingType,
+          message: applyParticipantEdits(message),
+          regardingType: effectiveType,
           regardingId,
           regardingAccountId,
           contactsByEmail,
@@ -708,17 +906,17 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
 
       if (relinkActivityIds.length && !missingOnly) {
         await relinkExistingEmails(instance, relinkActivityIds, {
-          regardingType,
+          regardingType: effectiveType,
           regardingId,
           regardingAccountId,
         })
       }
 
-      const resolvedAccount = regardingType === 'account'
+      const resolvedAccount = effectiveType === 'account'
         ? null
-        : await resolveAccountForRegarding(instance, { regardingType, regardingId })
+        : await resolveAccountForRegarding(instance, { regardingType: effectiveType, regardingId })
       const browseAccount = buildBrowseAccountFromRegarding({
-        regardingType,
+        regardingType: effectiveType,
         regardingItem,
         resolvedAccount,
       })
@@ -740,13 +938,13 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
     <div className="modal-overlay inbox-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal inbox-modal">
         <div className="modal-header">
-          <h3 className="modal-title">Import thread to Dynamics</h3>
+          <h3 className="modal-title">Import full thread</h3>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
         </div>
 
         <div className="modal-body inbox-modal-body">
           <div className="inbox-message-summary">
-            <div className="inbox-message-subject">{thread.latest.subject}</div>
+            <div className="field-label">Thread import</div>
             <div className="inbox-message-meta">
               <span>{threadMessages.length} messages in thread</span>
               <span>{fmtDate(thread.latest.receivedDateTime)}</span>
@@ -763,13 +961,25 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
                 ) : (
                   <span className="inbox-thread-badge">Not imported yet</span>
                 )}
-                {(thread.latest.bodyHtml || thread.latest.bodyPreview) && (
-                  <div className="inbox-message-preview">
-                    <RichHtmlPreview html={thread.latest.bodyHtml} fallback={thread.latest.bodyPreview} />
-                  </div>
-                )}
               </div>
             )}
+          </div>
+
+          <div className="inbox-section inbox-thread-message-section">
+            <div className="field">
+              <label className="field-label">Subject</label>
+              <div className="input inbox-readonly-field">{thread.latest.subject || '(No subject)'}</div>
+            </div>
+            <div className="field">
+              <label className="field-label">Date &amp; time</label>
+              <div className="input inbox-readonly-field">{fmtDate(thread.latest.receivedDateTime)}</div>
+            </div>
+            <div className="field">
+              <label className="field-label">Description</label>
+              <div className="inbox-message-preview inbox-thread-description">
+                <RichHtmlPreview html={thread.latest.bodyHtml} fallback={thread.latest.bodyPreview} />
+              </div>
+            </div>
           </div>
 
           <div className="inbox-imported-messages">
@@ -784,56 +994,44 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
                       {message.from?.name || message.from?.email || 'Unknown'} · {fmtDate(message.receivedDateTime)}
                     </div>
                   </div>
-                  {existing?.activityid ? (
-                    <div className="inbox-imported-message-status">
+                  <div className="inbox-imported-message-status">
+                    {existing?.activityid ? (
+                      <>
                       <span className="inbox-thread-badge inbox-thread-complete">Imported</span>
                       <ImportedMessageLink activity={existing} />
-                    </div>
-                  ) : (
-                    <span className="inbox-thread-badge">Not imported</span>
-                  )}
+                      </>
+                    ) : <span className="inbox-thread-badge">Not imported</span>}
+                    {message.webLink && (
+                      <a href={message.webLink} target="_blank" rel="noopener noreferrer" className="mail-imported-link">
+                        Open in Outlook →
+                      </a>
+                    )}
+                  </div>
                 </div>
               )
             })}
           </div>
 
-          <div className="inbox-modal-actions inbox-modal-actions-top">
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            {missingCount > 0 && (
-              <button type="button" className="btn-ghost" onClick={() => handleImport({ missingOnly: true })} disabled={!regardingItem || saving}>
-                {saving ? 'Importing…' : `Import missing (${missingCount})`}
-              </button>
-            )}
-            <button type="button" className="btn-primary" onClick={() => handleImport({ missingOnly: false })} disabled={!regardingItem || saving}>
-              {saving ? 'Importing…' : 'Import full thread'}
-            </button>
-          </div>
-
-          <div className="inbox-section">
-            <div className="inbox-section-label">Link thread to</div>
-            <div className="filter-type-btns inbox-regarding-types">
-              {REGARDING_TYPES.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`filter-type-btn ${regardingType === t.id ? 'active' : ''}`}
-                  onClick={() => setRegardingType(t.id)}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+          <div className="inbox-section inbox-regarding-section">
+            <label className="field-label">Account <span className="required">*</span></label>
 
             <AutocompletePicker
-              searchFn={regardingConfig.searchFn}
-              getKey={regardingConfig.getKey}
-              getLabel={regardingConfig.getLabel}
-              getSublabel={regardingConfig.sublabel}
+              searchFn={(q, paging) => searchAccounts(instance, q, paging)}
+              getKey={(item) => item.accountid}
+              getLabel={(item) => item.name}
               value={regardingItem}
-              onChange={setRegardingItem}
-              placeholder={regardingConfig.placeholder}
+              onChange={(item) => {
+                setRegardingType('account')
+                setRegardingItem(item)
+                setLinkToLeadId('')
+                setLinkToOpportunityId('')
+                setLinkToEscalation(false)
+              }}
+              placeholder="Search account…"
               autoSelectSingle
-              showSelectedIndicator={regardingType === 'account'}
+              showSelectedIndicator
+              loadOnFocus
+              allowEmptySearch
             />
 
             {!regardingItem && originalSuggestion && (
@@ -847,38 +1045,115 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
                 💡 Suggested: {suggestedAccount.name}
               </button>
             )}
+
+            {regardingItem?.accountid && accountLeads.length > 0 && (
+              <div className="lead-link-banner">
+                <span className="icon icon-sm">trending_up</span>
+                <label className="lead-link-select">
+                  <span>Link to lead</span>
+                  <select
+                    value={linkToLeadId}
+                    onChange={(e) => {
+                      setLinkToLeadId(e.target.value)
+                      if (e.target.value) {
+                        setLinkToOpportunityId('')
+                        setLinkToEscalation(false)
+                      }
+                    }}
+                  >
+                    <option value="">None</option>
+                    {accountLeads.map((lead) => (
+                      <option key={lead.leadid} value={lead.leadid}>
+                        {lead.subject || '(Untitled)'} — {lead.statusLabel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+
+            {regardingItem?.accountid && accountOpportunities.length > 0 && (
+              <div className="lead-link-banner">
+                <span className="icon icon-sm">trending_up</span>
+                <label className="lead-link-select">
+                  <span>Link to opportunity</span>
+                  <select
+                    value={linkToOpportunityId}
+                    onChange={(e) => {
+                      setLinkToOpportunityId(e.target.value)
+                      if (e.target.value) {
+                        setLinkToLeadId('')
+                        setLinkToEscalation(false)
+                      }
+                    }}
+                  >
+                    <option value="">None</option>
+                    {accountOpportunities.map((opportunity) => (
+                      <option key={opportunity.opportunityid} value={opportunity.opportunityid}>
+                        {opportunity.name || '(Untitled)'} — {opportunity.statusLabel}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+
+            {regardingItem?.accountid && (activeEscalation || escalationLoading) && (
+              <div className="escalation-link-banner">
+                <span className="icon">warning</span>
+                <span>{escalationLoading ? 'Checking for active escalation…' : 'This account has an active escalation'}</span>
+                <label className="escalation-link-toggle">
+                  <input
+                    type="checkbox"
+                    checked={linkToEscalation}
+                    onChange={(e) => {
+                      setLinkToEscalation(e.target.checked)
+                      if (e.target.checked) {
+                        setLinkToLeadId('')
+                        setLinkToOpportunityId('')
+                      }
+                    }}
+                    disabled={!activeEscalation || escalationLoading}
+                  />
+                  {escalationLoading ? 'Checking escalation…' : 'Link to escalation'}
+                </label>
+              </div>
+            )}
           </div>
 
-          <div className="inbox-section">
-            <div className="inbox-section-label">Contacts</div>
-            <div className="inbox-participants">
-              {participants.map((participant) => {
-                const contact = contactsByEmail[participant.email.toLowerCase()]
-                return (
-                  <div key={participant.email} className="inbox-participant">
-                    <div>
-                      <div className="inbox-participant-role">{participant.role}</div>
-                      <div className="inbox-participant-name">{participant.name}</div>
-                      <div className="inbox-participant-email">{participant.email}</div>
-                    </div>
-                    {contact ? (
-                      <span className="chip-sm chip-linked">✓ Linked contact</span>
-                    ) : (
-                      <button type="button" className="btn-ghost btn-sm" onClick={() => handleOpenCreateContact(participant)}>
-                        Create contact
-                      </button>
-                    )}
-                  </div>
-                )
+          <div className="inbox-section inbox-participants-section">
+            <EmailParticipantFields
+              participants={editableParticipants}
+              searchFn={(q, paging) => searchContacts(instance, q, {
+                ...paging,
+                accountIds: regardingItem?.accountid ? [regardingItem.accountid] : [],
               })}
-            </div>
+              onAdd={handleAddParticipant}
+              onRemove={handleRemoveParticipant}
+              renderParticipant={({ participant, onRemove }) => (
+                <ThreadParticipantChip
+                  participant={participant}
+                  contact={contactsByEmail[participant.email.toLowerCase()]}
+                  onCreateContact={() => handleOpenCreateContact(participant)}
+                  onRemove={onRemove}
+                />
+              )}
+            />
             {loadingContacts && <div className="hint-text">Checking existing contacts…</div>}
           </div>
 
           {error && <div className="alert alert-error">{error}</div>}
 
           <div className="inbox-modal-actions">
-            <button type="button" className="btn-ghost" onClick={onClose}>Close</button>
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            {missingCount > 0 && (
+              <button type="button" className="btn-ghost" onClick={() => handleImport({ missingOnly: true })} disabled={!canImport || saving}>
+                {saving ? 'Importing…' : `Import missing (${missingCount})`}
+              </button>
+            )}
+            <button type="button" className="btn-primary" onClick={() => handleImport({ missingOnly: false })} disabled={!canImport || saving}>
+              {saving ? 'Importing…' : 'Import full thread'}
+            </button>
           </div>
         </div>
       </div>
@@ -896,8 +1171,14 @@ function MailAddModal({ thread, mailbox, onClose, onImported, selectedAccount = 
   )
 }
 
-export default function InboxTab({ compact = false, onImported, selectedAccount = null }) {
-  const { instance } = useMsal()
+export default function InboxTab({
+  compact = false,
+  onImported,
+  selectedAccount = null,
+  onSelectMessage,
+  onClose,
+}) {
+  const { instance, accounts } = useMsal()
   const [messages, setMessages] = useState([])
   const [nextLink, setNextLink] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -908,10 +1189,31 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
   const [externalOnly, setExternalOnly] = useState(false)
   const [trackedSet, setTrackedSet] = useState(new Set())
   const [mailbox, setMailbox] = useState('')
-  const [mailboxDraft, setMailboxDraft] = useState('')
   const [selectedThreadKey, setSelectedThreadKey] = useState(null)
   const [addingThread, setAddingThread] = useState(null)
   const sentinelRef = useRef(null)
+  const personalMailbox = accounts?.[0]?.username || ''
+  const mailboxOptions = useMemo(() => {
+    const configured = (import.meta.env.VITE_SHARED_MAILBOXES || '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean)
+    let recent = []
+    try {
+      recent = JSON.parse(localStorage.getItem('inbox_recent_mailboxes') || '[]')
+        .map((value) => String(value).trim().toLowerCase())
+        .filter(Boolean)
+    } catch {
+      recent = []
+    }
+    const shared = [...configured, ...recent]
+      .filter((value, index, values) => value !== personalMailbox.toLowerCase() && values.indexOf(value) === index)
+      .map((email) => ({ value: email, label: email }))
+    return [
+      { value: '', label: personalMailbox ? `My inbox (${personalMailbox})` : 'My inbox' },
+      ...shared,
+    ]
+  }, [personalMailbox])
 
   function mergeChecked(ids) {
     if (!ids.size) return
@@ -989,35 +1291,46 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
     }
   }, [filteredThreads, allThreads, selectedThreadKey])
 
-  function commitMailbox() {
-    setMailbox(mailboxDraft.trim())
+  function selectMailbox(value) {
+    setMailbox(value)
+    try {
+      if (value) {
+        const recent = JSON.parse(localStorage.getItem('inbox_recent_mailboxes') || '[]')
+        localStorage.setItem(
+          'inbox_recent_mailboxes',
+          JSON.stringify([value, ...recent.filter((item) => item !== value)].slice(0, 8)),
+        )
+      }
+    } catch {
+      // Local mailbox history is optional; mailbox selection still works.
+    }
   }
 
-  return (
-    <div className={compact ? 'inbox-container inbox-container-embedded' : 'inbox-container'}>
+  const isPicker = typeof onSelectMessage === 'function'
+  const inboxContent = (
+    <div className={compact || isPicker ? 'inbox-container inbox-container-embedded' : 'inbox-container'}>
       <div className="filter-panel inbox-toolbar">
         <div className="filter-row">
-          <div className="filter-field">
-            <label className="filter-label">Mailbox</label>
-            <div className="mailbox-field">
-              <input
-                className="input"
-                value={mailboxDraft}
-                onChange={(e) => setMailboxDraft(e.target.value)}
-                onBlur={commitMailbox}
-                onKeyDown={(e) => e.key === 'Enter' && commitMailbox()}
-                placeholder="My mailbox"
-              />
-              {mailbox && (
-                <button
-                  type="button"
-                  className="mailbox-clear"
-                  onClick={() => { setMailboxDraft(''); setMailbox('') }}
-                  aria-label="Clear mailbox"
-                >×</button>
-              )}
+          {mailboxOptions.length > 1 && (
+            <div className="filter-field">
+              <label className="filter-label" htmlFor="inbox-mailbox">Mailbox</label>
+              <div className="mailbox-field">
+                <select
+                  id="inbox-mailbox"
+                  className="input mailbox-select"
+                  value={mailbox}
+                  onChange={(e) => selectMailbox(e.target.value)}
+                  aria-label="Select mailbox"
+                >
+                  {mailboxOptions.map((option) => (
+                    <option key={option.value || 'personal'} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
           <div className="filter-field inbox-search-field">
             <label className="filter-label">Search</label>
             <input
@@ -1106,7 +1419,8 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
           {selectedThread ? (
             <ThreadDetailView
               thread={selectedThread}
-              onAddToDynamics={() => setAddingThread(selectedThread)}
+              onManageThreadImport={() => setAddingThread(selectedThread)}
+              onSelectMessage={onSelectMessage}
             />
           ) : (
             <div className="empty-state inbox-empty-state">
@@ -1124,16 +1438,35 @@ export default function InboxTab({ compact = false, onImported, selectedAccount 
           mailbox={mailbox}
           selectedAccount={selectedAccount}
           onClose={() => setAddingThread(null)}
-          onImported={({ importedIds, allThreadIds, browseAccount }) => {
-            const knownIds = [...importedIds, ...allThreadIds].filter(Boolean)
+          onImported={({ importedIds, browseAccount }) => {
+            // Existing tracked IDs are already in trackedSet; only newly
+            // imported message IDs should change the partial-thread marker.
+            const knownIds = importedIds.filter(Boolean)
             if (knownIds.length) {
               setTrackedSet((prev) => new Set([...prev, ...knownIds]))
             }
-            onImported?.({ importedIds, allThreadIds, browseAccount })
+            onImported?.({ importedIds, browseAccount })
             setAddingThread(null)
+            if (isPicker) onClose?.()
           }}
         />
       )}
+    </div>
+  )
+
+  if (!isPicker) return inboxContent
+
+  return (
+    <div className="modal-overlay inbox-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose?.()}>
+      <div className="modal inbox-picker-modal">
+        <div className="modal-header">
+          <h3 className="modal-title">Fill from inbox</h3>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className="modal-body inbox-picker-body">
+          {inboxContent}
+        </div>
+      </div>
     </div>
   )
 }
