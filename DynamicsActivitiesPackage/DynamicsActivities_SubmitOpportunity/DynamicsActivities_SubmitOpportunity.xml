@@ -24,9 +24,6 @@
 		<ScriptParameter id="12" type="string" values="">
 			<Description>UserName</Description>
 		</ScriptParameter>
-		<ScriptParameter id="13" type="string" values="">
-			<Description>Recipient</Description>
-		</ScriptParameter>
 	</Parameters>
 
 	<Script>

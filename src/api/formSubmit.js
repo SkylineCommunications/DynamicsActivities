@@ -17,8 +17,13 @@ async function resolveConnection(redirectOnFailure) {
   return bootstrapSession({ redirectOnFailure, maxAttempts: 4, retryDelayMs: 300 })
 }
 
-function buildParameters(payload, userEmail, userName, recipient) {
-  const parameters = [
+function buildParameters(payload, userEmail, userName) {
+  // Mirror the working subscriptions script: only ever declare/send parameters
+  // that always carry a value. DataMiner rejects a script start with
+  // "there's no script parameter value provided for id N" for any declared
+  // parameter whose value is missing OR empty, so we do NOT send an optional
+  // (often-empty) recipient parameter. The script uses its own default recipient.
+  return [
     {
       __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
       ParameterId: 10,
@@ -44,21 +49,6 @@ function buildParameters(payload, userEmail, userName, recipient) {
       Value: userName,
     },
   ]
-
-  // Recipient override. DataMiner requires every declared script parameter to be
-  // provided a value ("there's no script parameter value provided for id 13" if
-  // it's missing), so always send it — empty when there's no override. The script
-  // falls back to its own default recipient when the value is empty.
-  parameters.push({
-    __type: 'Skyline.DataMiner.Web.Common.v1.DMAAutomationScriptParameter',
-    ParameterId: 13,
-    Values: null,
-    MemoryFile: '',
-    Name: 'Recipient',
-    Value: recipient || '',
-  })
-
-  return parameters
 }
 
 /**
@@ -67,11 +57,9 @@ function buildParameters(payload, userEmail, userName, recipient) {
  * @param {string} scriptName Automation script name (e.g. `DynamicsActivities_SubmitLead`).
  * @param {object} payload    Form fields to send as the JSON payload.
  * @param {string} label      Human-readable noun for error messages (e.g. `lead`).
- * @param {string} [recipient] Optional recipient override. When omitted, the
- *                             script uses its own default recipient.
  * @returns {Promise<object>} Parsed script result (e.g. `{ success: true }`).
  */
-export async function submitForm(scriptName, payload, label, recipient = '') {
+export async function submitForm(scriptName, payload, label) {
   let connection = await resolveConnection(false)
   if (!connection) {
     connection = await resolveConnection(true)
@@ -95,7 +83,7 @@ export async function submitForm(scriptName, payload, label, recipient = '') {
           RequireInteractive: false,
           HasFindInteractiveClient: false,
         },
-        Parameters: buildParameters(payload, userEmail, userName, recipient),
+        Parameters: buildParameters(payload, userEmail, userName),
         Dummies: [],
         MemoryFiles: [],
       },
