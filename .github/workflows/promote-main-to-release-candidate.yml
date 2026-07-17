@@ -1,9 +1,9 @@
-name: Sync main to release candidate
+name: Promote main to release candidate
 
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   sync:
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     steps:
       - name: Create or reuse promotion pull request
@@ -35,7 +36,7 @@ jobs:
               --base release-candidate \
               --head main \
               --title "Sync main into release-candidate" \
-              --body $'Automated promotion of the latest main branch changes into release-candidate.\n\nThis pull request is maintained by the Sync main to release candidate workflow.')"
+              --body $'Automated promotion of the latest main branch changes into release-candidate.\n\nThis pull request is maintained by the Promote main to release candidate workflow.')"
           fi
 
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
@@ -71,11 +72,11 @@ jobs:
             --paginate \
             --jq '.[].body' | grep -Fq "$marker"; then
             gh pr comment "$PR_NUMBER" --body "$(cat <<'EOF'
-<!-- automated-main-to-rc-conflict-request -->
-@copilot Please resolve the merge conflicts in this pull request between `main` and `release-candidate`.
+          <!-- automated-main-to-rc-conflict-request -->
+          @copilot Please resolve the merge conflicts in this pull request between `main` and `release-candidate`.
 
-Preserve the intended changes from both branches, run the repository's relevant checks, and push the conflict resolution to this pull request's head branch. Do not merge the pull request yourself; leave it ready for this workflow to auto-merge once it is clean.
-EOF
+          Preserve the intended changes from both branches, run the repository's relevant checks, and push the conflict resolution to this pull request's head branch. Do not merge the pull request yourself; leave it ready for this workflow to auto-merge once it is clean.
+          EOF
             )"
           fi
 

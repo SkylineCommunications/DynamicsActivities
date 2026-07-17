@@ -219,7 +219,7 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 | `.github/workflows/deploy-dma-on-pr-merge.yml` | Caller workflow for production-on-merge, manual `production` from `main` only, and manual `dev` deploys |
 | `.github/workflows/deploy-dmapp-reusable.yml` | Reusable build/register/deploy workflow for DMAPP packaging and Catalog deployment |
 | `.github/workflows/copilot-bug-triage.yml` | Auto-comments on `bug`-labeled issues to ask `@copilot` for investigation |
-| `.github/workflows/sync-main-to-release-candidate.yml` | Opens or updates the `main` → `release-candidate` promotion PR after changes reach `main`, enables auto-merge, and asks `@copilot` to resolve conflicts |
+| `.github/workflows/promote-main-to-release-candidate.yml` | Opens or updates the `main` → `release-candidate` promotion PR after changes reach `main`, enables auto-merge, and asks `@copilot` to resolve conflicts |
 
 ### Release candidate deployment
 
