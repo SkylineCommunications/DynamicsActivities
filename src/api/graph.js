@@ -105,8 +105,8 @@ export async function getRecentInboxMessages(msalInstance, { nextLink, mailbox }
     nextLink ||
     (() => {
       const select = [
-        'id', 'subject', 'from', 'toRecipients', 'ccRecipients',
-        'receivedDateTime', 'bodyPreview', 'isRead', 'hasAttachments', 'webLink',
+        'id', 'subject', 'from', 'toRecipients', 'ccRecipients', 'bccRecipients',
+        'receivedDateTime', 'body', 'bodyPreview', 'isRead', 'hasAttachments', 'webLink',
         'internetMessageId', 'conversationId', 'conversationIndex',
       ].join(',')
       const base = mailbox
@@ -137,8 +137,8 @@ export async function getConversationMessages(msalInstance, { conversationId, ma
   const token = await getGraphToken(msalInstance)
 
   const select = [
-    'id', 'subject', 'from', 'toRecipients', 'ccRecipients',
-    'receivedDateTime', 'bodyPreview', 'isRead', 'hasAttachments', 'webLink',
+    'id', 'subject', 'from', 'toRecipients', 'ccRecipients', 'bccRecipients',
+    'receivedDateTime', 'body', 'bodyPreview', 'isRead', 'hasAttachments', 'webLink',
     'internetMessageId', 'conversationId', 'conversationIndex',
   ].join(',')
   const base = mailbox
@@ -224,6 +224,10 @@ function normaliseMessage(message) {
       name: r.emailAddress?.name || '',
       email: r.emailAddress?.address || '',
     })),
+    bccRecipients: (message.bccRecipients ?? []).map((r) => ({
+      name: r.emailAddress?.name || '',
+      email: r.emailAddress?.address || '',
+    })),
     receivedDateTime: message.receivedDateTime ? new Date(message.receivedDateTime) : null,
     bodyPreview: message.bodyPreview || '',
     isRead: !!message.isRead,
@@ -232,6 +236,7 @@ function normaliseMessage(message) {
     internetMessageId: (message.internetMessageId || '').toLowerCase(),
     conversationId: message.conversationId || '',
     conversationIndex: message.conversationIndex || '',
+    bodyHtml: message.body?.contentType?.toLowerCase() === 'html' ? message.body.content || '' : '',
   }
 }
 
@@ -240,7 +245,7 @@ function normaliseMessage(message) {
 export async function getRecentCalendarEvents(msalInstance) {
   const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
   const until = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-  const select = 'id,subject,start,end,attendees,bodyPreview,location,organizer,isAllDay'
+  const select = 'id,subject,start,end,attendees,body,bodyPreview,location,organizer,isAllDay'
   const filter = encodeURIComponent(
     `start/dateTime ge '${since}' and start/dateTime le '${until}' and isAllDay eq false`,
   )
@@ -259,6 +264,7 @@ function normaliseEvent(e) {
     end: e.end?.dateTime ? new Date(e.end.dateTime + (e.end.timeZone === 'UTC' ? 'Z' : '')) : null,
     location: e.location?.displayName || '',
     bodyPreview: e.bodyPreview || '',
+    bodyHtml: e.body?.contentType?.toLowerCase() === 'html' ? e.body.content || '' : '',
     attendees: (e.attendees || [])
       .filter((a) => a.type !== 'resource')
       .map((a) => ({

@@ -2,13 +2,14 @@
 
 React + Vite SPA packaged as a **DataMiner Custom App** for working with Dynamics 365 customer activity data.
 
-Today, the mounted app shell is primarily a **browse + subscriptions** experience:
+The mounted app shell is a three-tab experience with **New Activity** selected by default:
 
+- **New Activity** tab for manual activity creation plus inbox and shared calendar-assisted phone-call/appointment creation
 - **Activities** tab for searching Dynamics records across activity, opportunity, lead, and support views
 - **Subscriptions** tab for DataMiner-native email digests
 - **Access-gate fallback forms** for submitting leads and opportunities when a user does not have Dynamics/Dataverse access
 
-The repository also contains creation/import components (`ActivityForm`, `InboxTab`, `CalendarImportTab`) and related Dataverse helpers, but those flows are **not currently mounted by `src/App.jsx`**.
+After a successful manual creation or import, the app hands off to the Activities tab and targets the related account in the browse view.
 
 ---
 
@@ -17,6 +18,8 @@ The repository also contains creation/import components (`ActivityForm`, `InboxT
 | Area | What the current app exposes |
 |---|---|
 | App shell | Header with DataMiner user display, theme toggle (`light` / `dark` / `system`), bug-report button, and sign-out |
+| New Activity tab | Manual creation of phone calls, appointments, emails, and notes, with account, attendee, escalation, and lead linking where applicable |
+| Activity imports | Inbox email-thread imports and shared Microsoft Graph calendar-event creation for phone calls and appointments |
 | Activities tab | Search and browse Dynamics data with filters, rich previews, direct Dynamics links, and Assistant-generated timeline highlights |
 | Browse views | `Activities`, `Opportunities`, `Leads`, and `Support` |
 | Subscriptions tab | Create, edit, pause, resume, and delete DataMiner DOM-backed notification subscriptions |
@@ -27,12 +30,22 @@ The repository also contains creation/import components (`ActivityForm`, `InboxT
 
 - Multi-account **Regarding** filtering
 - Multi-attendee filtering with visible chips and **OR semantics**
+- Account and contact pickers load their first page on focus; contacts from selected accounts appear first, alphabetically, followed by other matches
 - Type filters per view
 - Date range filters
 - **AI timeline highlights** for the `Activities` view, backed by the `DynamicsActivities_Summarize` automation script
 - Rich HTML preview sanitization for imported email/body content
 - Direct **Open in Dynamics** links for browsed records
+- Intentional deletion of writable activity records with an explicit confirmation step
 - TAM auto-filtering based on Skyline Collaboration API account ownership
+
+### New Activity tab details
+
+- Manual creation of phone calls, appointments, emails, and notes
+- Inbox import of email threads through Microsoft Graph
+- Calendar-assisted phone-call and appointment creation through Microsoft Graph, with stable type-specific fields: editable subject for every activity type, appointment-only end/location, and calendar prefill limited to fields supported by the selected type
+- Optional linking to active escalations and eligible leads
+- Successful creates and imports switch to the Activities tab and preselect the related account
 
 ### Record types shown in browse
 
@@ -109,9 +122,13 @@ Behavior to be aware of:
 
 ---
 
-## Standalone forms
+## Activity creation, imports, and standalone forms
 
-The mounted app shell does not currently expose activity creation, but it does expose two standalone forms through the auth/access flow:
+The mounted app shell exposes activity creation and imports from the **New Activity** tab. Manual creation supports phone calls, appointments, emails, and notes. Phone-call and appointment calendar assistance now use the shared `ActivityForm`, preserving event discovery, preview, editable event fields, exact times, participant roles, contact matching/creation, unresolved address-only attendees, account/opportunity/lead regarding links, escalation/lead linking, and browse handoff. Account-linked leads and opportunities are selected directly below the account, while calendar attendees are shown as compact editable pills. Email uses the same pattern: **Fill from inbox** opens a mailbox/search/filter/thread explorer, and selecting a message closes it and fills the normal `ActivityForm` subject, date, description, attendees, account, and link controls. Saving that form creates a completed inbound Dynamics email with its Graph message ID. The picker retains Outlook/Dynamics source links, contact creation, suggestions, partial tracking, and a **Manage thread import** action for missing/full thread imports and relinking existing activities. Full-thread import follows the same review order and control patterns for the latest message, automatically selects the best Dynamics account when possible, exposes conditional lead/opportunity/escalation links, and shows participants with the same linked-contact chips before the bulk import actions. Escalation lookup now distinguishes loading from “no active escalation,” so the link control does not remain stuck after an empty result. Users with multiple configured or recently used mailboxes can switch them from the mailbox dropdown; the control is hidden when only the personal inbox is available and defaults to that inbox.
+
+Description input follows the native Dataverse field limits: phone calls (2,000), appointments (1,048,576), emails (1,073,741,823), and notes (100,000) characters. There is no general 500-character Dataverse limit; see the [phone call](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/phonecall), [appointment](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/appointment), [email](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/email), and [annotation](https://learn.microsoft.com/en-us/power-apps/developer/data-platform/reference/entities/annotation) metadata references.
+
+The app also exposes two standalone forms through the auth/access flow:
 
 | Route | Purpose | Backend |
 |---|---|---|
@@ -283,18 +300,18 @@ If `DynamicsActivitiesPackage/Dependencies/Assistant/Skyline.DataMiner.Assistant
 
 ```text
 src/
-  App.jsx                       # Mounted shell: Activities + Subscriptions tabs
+  App.jsx                       # Mounted three-tab shell: New Activity, Activities, Subscriptions
   main.jsx                      # MSAL bootstrap and config guard
   authConfig.js                 # MSAL config, redirect handling, scopes
   api/
     dataminer.js                # DataMiner session bootstrap and JSON API helpers
-    dataverse.js                # Dataverse search, browse, create/import helpers
+    dataverse.js                # Dataverse search, browse, create/import/delete helpers
     graph.js                    # Graph license, inbox, and calendar helpers
     skyline.js                  # Skyline API token + proxy/direct fetch helpers
     subscriptions.js            # Subscription CRUD through automation
     activitySummary.js          # Browse/digest summary automation client
     leads.js                    # Standalone lead submission client
-    opportunities.js           # Standalone opportunity submission client
+    opportunities.js            # Standalone opportunity submission client
   components/
     AuthGuard.jsx               # Access gate and no-access UX
     NotesList.jsx               # Mounted browse experience
@@ -304,9 +321,9 @@ src/
       FormPage.jsx              # Standalone form shell
       LeadForm.jsx              # Standalone lead form
       OpportunityForm.jsx       # Standalone opportunity form
-    ActivityForm.jsx            # Present in repo but not mounted by App.jsx
-    InboxTab.jsx                # Present in repo but not mounted by App.jsx
-    CalendarImportTab.jsx       # Present in repo but not mounted by App.jsx
+    ActivityForm.jsx            # New Activity tab: manual creation and import mode orchestration
+    InboxTab.jsx                # Microsoft Graph inbox email-thread import UI
+    RichHtmlPreview.jsx         # Sanitized rich HTML preview rendering
   forms/
     registry.js                 # Standalone form registry
   hooks/
@@ -331,6 +348,6 @@ Infrastructure/                 # Legacy / alternate Azure Functions IaC docs an
 - Dataverse rejects **`$expand` + `$top`** together on the same query (`0x80060888`); use `Prefer: odata.maxpagesize=...` instead
 - Browse attendee filtering intentionally uses **OR semantics**, not AND
 - Graph conversation fetch falls back when Graph returns `InefficientFilter`
-- HTML previews are sanitized before rendering
+- Rich HTML previews are sanitized before rendering; unsafe tags, event-handler attributes, inline styles, and unsafe URLs are removed
 - Skyline TAM context and Skyline user lookup degrade gracefully if the Skyline API or consent flow is unavailable
-- The current mounted shell does **not** expose the repository's activity creation/import UI, even though supporting code exists in the repo
+- Writable activity deletion is intentional and requires an explicit confirmation step; read-only browse record types do not expose deletion

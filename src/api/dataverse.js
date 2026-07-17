@@ -1,5 +1,6 @@
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 import { dataverseRequest } from '../authConfig'
+import { formatPreviewHtml } from '../utils/htmlPreview'
 
 const BASE_URL = (import.meta.env.VITE_DATAVERSE_URL || '').replace(/\/$/, '')
 const API = `${BASE_URL}/api/data/v9.2`
@@ -68,7 +69,7 @@ export const ACTIVITY_TYPES = [
     iconLigature: 'trending_up',
     entity: 'leads',
     cssClass: 'type-lead',
-    tooltip: 'BD lead (managed in Dynamics)',
+    tooltip: 'Lead (managed in Dynamics)',
   },
   {
     id: 'opportunity',
@@ -89,6 +90,50 @@ export const ACTIVITY_TYPES = [
     tooltip: 'Support renewal (managed in Dynamics)',
   },
 ]
+
+// Dataverse's native description/notetext limits. These are field limits, not
+// UI recommendations; keep the form aligned with the entity being created.
+export const ACTIVITY_DESCRIPTION_LIMITS = {
+  phonecall: 2000,
+  appointment: 1048576,
+  email: 1073741823,
+  note: 100000,
+}
+
+function compareNames(a, b) {
+  const nameA = String(a?.fullname || a?.emailaddress1 || a?.name || '')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '')
+  const nameB = String(b?.fullname || b?.emailaddress1 || b?.name || '')
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '')
+  if (!nameA && nameB) return 1
+  if (nameA && !nameB) return -1
+  if (nameA < nameB) return -1
+  if (nameA > nameB) return 1
+  return 0
+}
+
+function isUnnamedContact(contact) {
+  const name = String(contact?.fullname || '').trim()
+  const email = String(contact?.emailaddress1 || '').trim()
+  return !name
+    || !/[\p{L}\p{N}]/u.test(name)
+    || (email && name.toLowerCase() === email.toLowerCase())
+    || /^[^@\s]+@[^@\s]+$/.test(name)
+}
+
+function contactSortRank(contact, preferredContactIds) {
+  if (preferredContactIds.has(String(contact?.contactid || '').toLowerCase())) return 0
+  return isUnnamedContact(contact) ? 2 : 1
+}
+
+function limitActivityDescription(type, value) {
+  const description = String(value || '')
+  return description.slice(0, ACTIVITY_DESCRIPTION_LIMITS[type])
+}
 
 // Escalation status labels (for display in browse only — escalations are managed in Dynamics)
 export const ESCALATION_STATUSES = [
@@ -125,7 +170,7 @@ export async function getActiveEscalation(msalInstance, accountId) {
 // ─── Lead helpers ────────────────────────────────────────────────────────────
 
 /**
- * Fetch open BD leads for an account.
+ * Fetch open leads for an account.
  * Returns leads with statecode=0 (Open), ordered by creation date desc.
  */
 export async function getAccountLeads(msalInstance, accountId) {
@@ -137,6 +182,18 @@ export async function getAccountLeads(msalInstance, accountId) {
   return (data?.value ?? []).map((l) => ({
     ...l,
     statusLabel: l['statuscode@OData.Community.Display.V1.FormattedValue'] || 'Open',
+  }))
+}
+
+export async function getAccountOpportunities(msalInstance, accountId) {
+  if (!accountId) return []
+  const data = await dvFetch(
+    msalInstance,
+    `/opportunities?$filter=_parentaccountid_value eq ${accountId} and statecode eq 0&$select=opportunityid,name,statuscode&$orderby=createdon desc&$top=20`,
+  ).catch(() => null)
+  return (data?.value ?? []).map((opportunity) => ({
+    ...opportunity,
+    statusLabel: opportunity['statuscode@OData.Community.Display.V1.FormattedValue'] || 'Open',
   }))
 }
 
@@ -198,14 +255,27 @@ export async function getUserCanManageLeads(msalInstance, userId) {
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
-export async function searchAccounts(msalInstance, query) {
-  if (!query || query.trim().length < 2) return []
-  const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
+export async function searchAccounts(msalInstance, query, paging = null) {
+  const isPaged = !!paging
+  const trimmed = query?.trim() ?? ''
+  if ((!trimmed && !isPaged) || (trimmed && trimmed.length < 2)) return isPaged ? { items: [], hasMore: false } : []
+  const skip = paging?.skip ?? 0
+  const top = paging?.top ?? 25
+  const fetchTop = Math.min(Math.max(skip + top + 1, top + 1), 101)
+  const q = trimmed.replace(/'/g, "''")
   const select = 'accountid,name,address1_country,address1_stateorprovince'
+  if (!trimmed) {
+    const data = await dvFetch(
+      msalInstance,
+      `/accounts?$select=${select}&$orderby=name asc&$top=${fetchTop}`,
+    )
+    const items = data?.value ?? []
+    return isPaged ? { items: items.slice(skip, skip + top), hasMore: items.length > skip + top } : items
+  }
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
-    dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
-    dvFetch(msalInstance, `/accounts?$filter=contains(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=${encodeURIComponent(`startswith(name,'${q}')`)}&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
+    dvFetch(msalInstance, `/accounts?$filter=${encodeURIComponent(`contains(name,'${q}')`)}&$select=${select}&$orderby=name asc&$top=${fetchTop}`).catch(() => null),
   ])
   const seen = new Set()
   const results = []
@@ -215,7 +285,10 @@ export async function searchAccounts(msalInstance, query) {
       results.push(item)
     }
   }
-  return results
+  results.sort(compareNames)
+  return isPaged
+    ? { items: results.slice(skip, skip + top), hasMore: results.length > skip + top }
+    : results
 }
 
 
@@ -287,16 +360,58 @@ export async function searchRegions(msalInstance, query) {
 }
 
 // ─── Contacts ────────────────────────────────────────────────────────────────
-export async function searchContacts(msalInstance, query, accountId = null) {
-  if (!query || query.trim().length < 2) return []
-  const q = encodeURIComponent(query.trim())
-  let filter = `contains(fullname,'${q}')`
-  if (accountId) filter += ` and _parentaccountid_value eq ${accountId}`
-  const data = await dvFetch(
-    msalInstance,
-    `/contacts?$filter=${filter}&$select=contactid,fullname,emailaddress1,_parentcustomerid_value&$top=10`,
+export async function searchContacts(msalInstance, query, accountIdOrPaging = null, maybePaging = null) {
+  const paging = maybePaging || (accountIdOrPaging && typeof accountIdOrPaging === 'object' ? accountIdOrPaging : null)
+  const accountIds = paging?.accountIds
+    || (accountIdOrPaging ? [accountIdOrPaging] : [])
+  const legacyAccountId = !paging && typeof accountIdOrPaging === 'string' ? accountIdOrPaging : null
+  const trimmed = query?.trim() ?? ''
+  const isPaged = !!paging
+  if ((trimmed && trimmed.length < 2) || (!trimmed && !isPaged)) return isPaged ? { items: [], hasMore: false } : []
+
+  const skip = paging?.skip ?? 0
+  const top = paging?.top ?? 25
+  const fetchTop = Math.min(Math.max(skip + top + 1, top + 1), 101)
+  const nameFilter = trimmed ? `contains(fullname,'${trimmed.replace(/'/g, "''")}')` : ''
+  const select = 'contactid,fullname,emailaddress1,_parentcustomerid_value'
+  const accountFilter = legacyAccountId
+    ? `_parentcustomerid_value eq ${legacyAccountId}`
+    : ''
+  const preferredFilter = accountIds.length
+    ? `(${accountIds.map((id) => `_parentcustomerid_value eq ${id}`).join(' or ')})`
+    : ''
+  const queryContacts = async (extraFilters = []) => {
+    const filter = [nameFilter, accountFilter, ...extraFilters].filter(Boolean).join(' and ')
+    const data = await dvFetch(
+      msalInstance,
+      `/contacts${filter ? `?$filter=${encodeURIComponent(filter)}&` : '?'}$select=${select}&$orderby=fullname asc&$top=${fetchTop}`,
+    )
+    return data?.value ?? []
+  }
+
+  const [preferredContacts, namedOtherContacts, unnamedOtherContacts] = await Promise.all([
+    accountIds.length ? queryContacts([preferredFilter]) : Promise.resolve([]),
+    queryContacts(['fullname ne null', "not contains(fullname,'@')"]),
+    queryContacts(["contains(fullname,'@')"]),
+  ])
+  const otherContacts = [...namedOtherContacts, ...unnamedOtherContacts]
+  const preferredContactIds = new Set(
+    preferredContacts.map((contact) => String(contact.contactid || '').toLowerCase()),
   )
-  return data?.value ?? []
+  const seen = new Set()
+  const contacts = [...preferredContacts, ...otherContacts]
+    .filter((contact) => {
+      if (seen.has(contact.contactid)) return false
+      seen.add(contact.contactid)
+      return true
+    })
+    .sort((a, b) => {
+      const rankDifference = contactSortRank(a, preferredContactIds) - contactSortRank(b, preferredContactIds)
+      return rankDifference || compareNames(a, b)
+    })
+  return isPaged
+    ? { items: contacts.slice(skip, skip + top), hasMore: contacts.length > skip + top }
+    : contacts
 }
 
 export async function searchOpportunities(msalInstance, query) {
@@ -432,7 +547,20 @@ export async function resolveAttendees(msalInstance, attendees) {
     attendees.map(async (a) => {
       if (a.contactId) return a // already resolved
       const contact = await findContactByEmail(msalInstance, a.email)
-      return contact ? { ...a, contactId: contact.contactid, name: contact.fullname } : a
+      const accountId = contact?.['_parentcustomerid_value@Microsoft.Dynamics.CRM.lookuplogicalname'] === 'account'
+        ? contact._parentcustomerid_value
+        : null
+      return contact
+        ? {
+            ...a,
+            contactId: contact.contactid,
+            name: contact.fullname,
+            accountId: accountId || null,
+            accountName: accountId
+              ? contact['_parentcustomerid_value@OData.Community.Display.V1.FormattedValue'] || null
+              : null,
+          }
+        : a
     }),
   )
 }
@@ -447,6 +575,7 @@ function buildParties(typeId, currentUserId, attendees) {
       'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
     })
     attendees.forEach((a) => {
+      if (a.role === 'organizer') return
       if (a.contactId) {
         parties.push({ participationtypemask: 2, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
       } else if (a.email) {
@@ -454,29 +583,47 @@ function buildParties(typeId, currentUserId, attendees) {
       }
     })
   } else if (typeId === 'appointment') {
-    // Organizer = current user (mask 7), required attendees (mask 5)
-    parties.push({
-      participationtypemask: 7,
-      'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
-    })
+    // Organizer = imported organizer when available, otherwise current user.
+    const organizer = attendees.find((a) => a.role === 'organizer')
+    if (organizer?.contactId) {
+      parties.push({ participationtypemask: 7, 'partyid_contact@odata.bind': `/contacts(${organizer.contactId})` })
+    } else if (organizer?.email) {
+      parties.push({ participationtypemask: 7, addressused: organizer.email })
+    } else {
+      parties.push({
+        participationtypemask: 7,
+        'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
+      })
+    }
     attendees.forEach((a) => {
+      if (a.role === 'organizer') return
+      const participationtypemask = a.role === 'optional' ? 6 : 5
       if (a.contactId) {
-        parties.push({ participationtypemask: 5, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
+        parties.push({ participationtypemask, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
       } else if (a.email) {
-        parties.push({ participationtypemask: 5, addressused: a.email })
+        parties.push({ participationtypemask, addressused: a.email })
       }
     })
   } else {
-    // Email: from = current user (mask 1), to = attendees (mask 2)
-    parties.push({
-      participationtypemask: 1,
-      'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
-    })
+    // Email: from = current user (mask 1), recipients use To/CC/BCC masks 2/3/4.
+    const sender = attendees.find((a) => a.role === 'From')
+    if (sender?.contactId) {
+      parties.push({ participationtypemask: 1, 'partyid_contact@odata.bind': `/contacts(${sender.contactId})` })
+    } else if (sender?.email) {
+      parties.push({ participationtypemask: 1, addressused: sender.email })
+    } else {
+      parties.push({
+        participationtypemask: 1,
+        'partyid_systemuser@odata.bind': `/systemusers(${currentUserId})`,
+      })
+    }
     attendees.forEach((a) => {
+      if (a.role === 'From') return
+      const participationtypemask = a.role === 'CC' ? 3 : a.role === 'BCC' ? 4 : 2
       if (a.contactId) {
-        parties.push({ participationtypemask: 2, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
+        parties.push({ participationtypemask, 'partyid_contact@odata.bind': `/contacts(${a.contactId})` })
       } else if (a.email) {
-        parties.push({ participationtypemask: 2, addressused: a.email })
+        parties.push({ participationtypemask, addressused: a.email })
       }
     })
   }
@@ -484,23 +631,42 @@ function buildParties(typeId, currentUserId, attendees) {
   return parties
 }
 
-export async function createActivity(msalInstance, { type, accountId, date, note, attendees, currentUserId, linkToEscalationId, linkToLeadId }) {
+export async function createActivity(msalInstance, {
+  type,
+  accountId,
+  date,
+  end,
+  note,
+  subject,
+  location,
+  attendees = [],
+  currentUserId,
+  linkToEscalationId,
+  linkToLeadId,
+  regardingType,
+  regardingId,
+  regardingAccountId,
+}) {
   const typeConfig = ACTIVITY_TYPES.find((t) => t.id === type)
   if (!typeConfig) throw new Error(`Unknown activity type: ${type}`)
 
   const dateStr = new Date(date).toISOString()
-  const endStr = new Date(new Date(date).getTime() + 30 * 60 * 1000).toISOString()
+  const endStr = end
+    ? new Date(end).toISOString()
+    : new Date(new Date(date).getTime() + 30 * 60 * 1000).toISOString()
 
   // Note (annotation) — links to escalation, lead, or account
   if (type === 'note') {
     const objectBind = linkToEscalationId
       ? { 'objectid_slc_escalation@odata.bind': `/slc_escalations(${linkToEscalationId})` }
+      : regardingType === 'opportunity' && regardingId
+        ? { 'objectid_opportunity@odata.bind': `/opportunities(${regardingId})` }
       : linkToLeadId
         ? { 'objectid_lead@odata.bind': `/leads(${linkToLeadId})` }
         : { 'objectid_account@odata.bind': `/accounts(${accountId})` }
     const body = {
-      subject: 'Note',
-      notetext: note,
+      subject: subject?.trim() || typeConfig.label,
+      notetext: limitActivityDescription(type, note),
       ...objectBind,
     }
     return dvFetch(msalInstance, '/annotations', {
@@ -514,21 +680,29 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
   // Lead is a native regarding target — use direct binding. Escalation is not — use description prefix.
   let regardingBind, desc
-  if (linkToLeadId) {
+  if (regardingId && ['account', 'opportunity', 'lead'].includes(regardingType)) {
+    const entityPlural = {
+      account: 'accounts',
+      opportunity: 'opportunities',
+      lead: 'leads',
+    }[regardingType]
+    regardingBind = { [`regardingobjectid_${regardingType}@odata.bind`]: `/${entityPlural}(${regardingId})` }
+    desc = note
+  } else if (linkToLeadId) {
     regardingBind = { 'regardingobjectid_lead@odata.bind': `/leads(${linkToLeadId})` }
     desc = note
   } else if (linkToEscalationId) {
     regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
     desc = `[Linked to escalation]\n${note}`
   } else {
-    regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${accountId})` }
+    regardingBind = { 'regardingobjectid_account@odata.bind': `/accounts(${regardingAccountId || accountId})` }
     desc = note
   }
+  desc = limitActivityDescription(type, desc)
 
   const base = {
     description: desc,
-    subject: typeConfig.label,
-    scheduledend: dateStr,
+    subject: subject?.trim() || typeConfig.label,
     ...regardingBind,
   }
 
@@ -536,14 +710,30 @@ export async function createActivity(msalInstance, { type, accountId, date, note
 
   if (type === 'phonecall') {
     entity = 'phonecalls'
-    body = { ...base, directioncode: false, phonecall_activity_parties: parties }
+    body = {
+      ...base,
+      actualend: dateStr,
+      directioncode: false,
+      phonecall_activity_parties: parties,
+    }
   } else if (type === 'appointment') {
     entity = 'appointments'
-    body = { ...base, scheduledstart: dateStr, appointment_activity_parties: parties }
+    body = {
+      ...base,
+      ...(location?.trim() ? { location: location.trim() } : {}),
+      scheduledstart: dateStr,
+      scheduledend: endStr,
+      appointment_activity_parties: parties,
+    }
   } else {
     // email
     entity = 'emails'
-    body = { ...base, directioncode: false, email_activity_parties: parties }
+    body = {
+      ...base,
+      actualend: dateStr,
+      directioncode: false,
+      email_activity_parties: parties,
+    }
   }
 
   return dvFetch(msalInstance, `/${entity}`, {
@@ -561,8 +751,6 @@ export async function createInboxEmailActivity(
   if (!regardingType || (!regardingId && !regardingAccountId)) throw new Error('A Dynamics link target is required')
 
   const fromAddress = message.from?.email || ''
-  const toRecipients = [...(message.toRecipients ?? []), ...(message.ccRecipients ?? [])]
-
   const parties = []
 
   if (fromAddress) {
@@ -574,14 +762,19 @@ export async function createInboxEmailActivity(
     }
   }
 
-  for (const recipient of toRecipients) {
+  const recipients = [
+    ...(message.toRecipients ?? []).map((recipient) => ({ ...recipient, participationtypemask: 2 })),
+    ...(message.ccRecipients ?? []).map((recipient) => ({ ...recipient, participationtypemask: 3 })),
+    ...(message.bccRecipients ?? []).map((recipient) => ({ ...recipient, participationtypemask: 4 })),
+  ]
+  for (const recipient of recipients) {
     const email = (recipient.email || '').toLowerCase()
     if (!email) continue
     const contact = contactsByEmail[email]
     if (contact) {
-      parties.push({ participationtypemask: 2, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
+      parties.push({ participationtypemask: recipient.participationtypemask, 'partyid_contact@odata.bind': `/contacts(${contact.contactid})` })
     } else {
-      parties.push({ participationtypemask: 2, addressused: recipient.email })
+      parties.push({ participationtypemask: recipient.participationtypemask, addressused: recipient.email })
     }
   }
 
@@ -598,13 +791,17 @@ export async function createInboxEmailActivity(
   if (!entityPlural) throw new Error(`Unsupported Dynamics link type: ${regardingType}`)
   if (!resolvedRegardingId) throw new Error(`Missing Dynamics link id for type: ${regardingType}`)
 
-  const description = [message.bodyPreview, `Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}`]
-    .filter(Boolean)
-    .join('\n\n')
+  const messageDescription = Object.prototype.hasOwnProperty.call(message, 'description')
+    ? formatPreviewHtml(message.description)
+    : formatPreviewHtml(message.bodyHtml || message.bodyPreview)
+  const description = [
+    messageDescription,
+    `<p>Imported from inbox${message.receivedDateTime ? ` on ${message.receivedDateTime.toLocaleString()}` : ''}</p>`,
+  ].filter(Boolean).join('')
 
   const body = {
     subject: message.subject || '(No subject)',
-    description: isEscalationLink ? `[Linked to escalation]\n${description}` : description,
+    description: limitActivityDescription('email', isEscalationLink ? `[Linked to escalation]\n${description}` : description),
     directioncode: true,
     actualend: message.receivedDateTime ? message.receivedDateTime.toISOString() : undefined,
     ...(message.internetMessageId ? { messageid: message.internetMessageId.toLowerCase() } : {}),
@@ -678,14 +875,14 @@ export async function createInboxAppointmentActivity(
     : new Date(new Date(start).getTime() + 30 * 60 * 1000).toISOString()
 
   const description = [
-    event.bodyPreview,
-    `Imported from calendar${event.start ? ` on ${new Date(event.start).toLocaleString()}` : ''}`,
-    event.location ? `Location: ${event.location}` : '',
-  ].filter(Boolean).join('\n\n')
+    formatPreviewHtml(event.bodyHtml || event.bodyPreview),
+    `<p>Imported from calendar${event.start ? ` on ${new Date(event.start).toLocaleString()}` : ''}</p>`,
+    event.location ? `<p>Location: ${formatPreviewHtml(event.location)}</p>` : '',
+  ].filter(Boolean).join('')
 
   const body = {
     subject: event.subject || '(No subject)',
-    description: isEscalationLink ? `[Linked to escalation]\n${description}` : description,
+    description: limitActivityDescription('appointment', isEscalationLink ? `[Linked to escalation]\n${description}` : description),
     scheduledstart: start,
     scheduledend: end,
     [bindName]: `/${entityPlural}(${resolvedRegardingId})`,
@@ -701,9 +898,9 @@ export async function createInboxAppointmentActivity(
 
 /**
  * Given an array of internetMessageId strings, returns a Set of those that
- * already exist as email activities in Dataverse.
+ * already exist as email activities in Dataverse and are therefore tracked.
  */
-export async function checkSyncedMessageIds(msalInstance, internetMessageIds) {
+export async function checkTrackedMessageIds(msalInstance, internetMessageIds) {
   const ids = internetMessageIds.filter(Boolean).map((id) => id.toLowerCase())
   if (ids.length === 0) return new Set()
   const rows = await getEmailsByInternetMessageIds(msalInstance, ids, 'messageid')
@@ -864,6 +1061,10 @@ const ENTITY_SINGULAR = { phonecalls: 'phonecall', appointments: 'appointment', 
 export function getDynamicsUrl(entityType, activityid) {
   const etn = ENTITY_SINGULAR[entityType] || entityType
   return `${BASE_URL}/main.aspx?etn=${etn}&id=${activityid}&pagetype=entityrecord`
+}
+
+export async function deleteActivity(msalInstance, entityType, activityid) {
+  return dvFetch(msalInstance, `/${entityType}(${activityid})`, { method: 'DELETE' })
 }
 
 // Note: Dataverse rejects combining $expand (one-to-many) with $top (error 0x80060888).
