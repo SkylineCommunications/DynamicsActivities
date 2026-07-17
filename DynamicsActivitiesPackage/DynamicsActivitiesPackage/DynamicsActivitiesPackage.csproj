@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.12.0</Version>
-		<VersionComment>Lead/opportunity forms now open a prefilled email (mailto:) in the user's own mail client for manual sending, instead of sending server-side via automation scripts. This avoids the DMA SMTP dependency (Email/SMS Failed 0x80004005). Removed the now-unused DynamicsActivities_SubmitLead and DynamicsActivities_SubmitOpportunity script projects, the confirmation pop-up, and the formSubmit helper.</VersionComment>
+		<Version>1.12.1</Version>
+		<VersionComment>Lead/opportunity prefilled emails now include a guarded "Submitted by" line (DMA user name + email). Empty submitter values are omitted.</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>

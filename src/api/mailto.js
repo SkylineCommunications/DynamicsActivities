@@ -38,3 +38,17 @@ export function buildEmailBody(rows) {
     .map(([label, value]) => `${label}: ${String(value).trim()}`)
     .join('\n')
 }
+
+/**
+ * Format the submitter's name/email into a "Name <email>" string. Guards against
+ * missing values: returns whichever part is present, or '' when neither is.
+ * @param {string} [name]  Submitter full name.
+ * @param {string} [email] Submitter email address.
+ * @returns {string} e.g. `Jane Doe <jane@x.com>`, `Jane Doe`, `jane@x.com`, or ``.
+ */
+export function formatSubmitter(name, email) {
+  const cleanName = typeof name === 'string' ? name.trim() : ''
+  const cleanEmail = typeof email === 'string' ? email.trim() : ''
+  if (cleanName && cleanEmail) return `${cleanName} <${cleanEmail}>`
+  return cleanName || cleanEmail || ''
+}

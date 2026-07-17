@@ -6,7 +6,8 @@
  * DMA's server-side SMTP configuration.
  */
 
-import { openEmailDraft, buildEmailBody } from './mailto'
+import { openEmailDraft, buildEmailBody, formatSubmitter } from './mailto'
+import { getDmaUser } from './dataminer'
 
 // Where lead submissions are sent. Change this to route leads elsewhere.
 const RECIPIENT = 'loes.vervaele@skyline.be'
@@ -32,7 +33,13 @@ export function submitLead(lead) {
   const name = [lead.firstName, lead.lastName].filter((v) => v && v.trim()).join(' ').trim()
   const who = name || 'Unknown contact'
   const subject = lead.company ? `[New Lead] ${who} (${lead.company})` : `[New Lead] ${who}`
-  const body = buildEmailBody(FIELDS.map(([label, key]) => [label, lead[key]]))
+  const rows = FIELDS.map(([label, key]) => [label, lead[key]])
+
+  const dmaUser = getDmaUser()
+  const submittedBy = formatSubmitter(dmaUser?.FullName, dmaUser?.EmailAddress)
+  if (submittedBy) rows.push(['Submitted by', submittedBy])
+
+  const body = buildEmailBody(rows)
 
   openEmailDraft(RECIPIENT, subject, body)
 }
