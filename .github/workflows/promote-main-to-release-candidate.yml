@@ -3,7 +3,7 @@ name: Promote main to release candidate
 on:
   push:
     branches: [main]
-  pull_request:
+  pull_request_target:
     types: [synchronize]
     branches: [release-candidate]
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' &&
+      (github.event_name == 'pull_request_target' &&
        github.event.pull_request.head.ref == 'automation/main-to-release-candidate')
     runs-on: ubuntu-latest
     steps:
