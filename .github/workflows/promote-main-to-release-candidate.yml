@@ -53,11 +53,12 @@ jobs:
             --jq '.[0].number // empty')"
 
           if [[ -z "$pr_number" ]]; then
-            pr_number="$(gh pr create \
+            pr_url="$(gh pr create \
               --base release-candidate \
               --head "$promotion_branch" \
               --title "Sync main into release-candidate" \
               --body $'Automated promotion of the latest main branch changes into release-candidate.\n\nThis pull request is maintained by the Promote main to release candidate workflow. Its dedicated branch allows Copilot to resolve conflicts without modifying the default branch.')"
+            pr_number="${pr_url##*/}"
           fi
 
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
@@ -78,7 +79,10 @@ jobs:
 
           if ! gh pr merge "$PR_NUMBER" --auto --merge 2>/dev/null; then
             # Auto-merge requires branch protection rules; fall back to direct merge
-            gh pr merge "$PR_NUMBER" --merge
+            if ! gh pr merge "$PR_NUMBER" --merge; then
+              # Direct merge failed (likely due to conflicts); trigger conflict resolution
+              echo "conflicting=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Ask Copilot to resolve merge conflicts
@@ -90,7 +94,8 @@ jobs:
         run: |
           merge_state="$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq '.mergeStateStatus')"
           if [[ "$merge_state" != "CONFLICTING" ]]; then
-            exit 1
+            echo "::notice::PR merge state is '$merge_state', not CONFLICTING; conflict comment already posted or state is pending."
+            exit 0
           fi
 
           marker="<!-- automated-main-to-rc-conflict-request -->"
