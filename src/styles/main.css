@@ -367,6 +367,25 @@ body {
 /* ─── Fields ─────────────────────────────────────────────────────────────────── */
 .field { display: flex; flex-direction: column; gap: 4px; }
 
+.email-recipient-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.email-recipient-label {
+  padding-top: 8px;
+}
+
+.chip-list.email-recipient-content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
 .field-label-row {
   display: flex;
   align-items: center;

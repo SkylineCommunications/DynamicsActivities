@@ -19,6 +19,7 @@ import { getRecentCalendarEvents } from '../api/graph'
 import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
 import InboxTab from './InboxTab'
+import EmailParticipantFields from './EmailParticipantFields'
 import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
 const ESCALATION_DESCRIPTION_PREFIX = '[Linked to escalation]\n'
@@ -109,6 +110,7 @@ function splitInboxParticipants(message) {
   const recipients = [
     ...(message?.toRecipients ?? []).map((recipient) => ({ ...recipient, role: 'To' })),
     ...(message?.ccRecipients ?? []).map((recipient) => ({ ...recipient, role: 'CC' })),
+    ...(message?.bccRecipients ?? []).map((recipient) => ({ ...recipient, role: 'BCC' })),
   ].filter((recipient) => recipient.email)
   const sender = message?.from?.email
     ? [{ ...message.from, role: 'From' }]
@@ -378,7 +380,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
     return () => { active = false }
   }, [instance, calendarEvent?.id, account?.accountid]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleAttendeeSelected(contact) {
+  function handleAttendeeSelected(contact, role) {
     if (!contact) return
     if (attendees.some((a) => a.contactId === contact.contactid)) return
     setAttendees((prev) => [
@@ -387,7 +389,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         name: contact.fullname,
         email: contact.emailaddress1,
         contactId: contact.contactid,
-        ...(isInboxAssisted ? { role: 'To' } : {}),
+        ...(isEmail ? { role: isInboxAssisted ? 'To' : role } : {}),
       },
     ])
   }
@@ -535,6 +537,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
           description: note,
           toRecipients: attendees.filter((attendee) => attendee.role === 'To'),
           ccRecipients: attendees.filter((attendee) => attendee.role === 'CC'),
+          bccRecipients: attendees.filter((attendee) => attendee.role === 'BCC'),
         }
         await createInboxEmailActivity(instance, {
           message: importedMessage,
@@ -800,42 +803,73 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         {/* Attendees — not shown for notes */}
         {!isNote && (
         <div className="field">
-          <label className="field-label">{attendeesLabel}</label>
-          <div className="chip-list">
-            {attendees.map((a, i) => {
-              const linkedContact = a.contactId
-                ? null
-                : calendarContactsByEmail[a.email?.toLowerCase()]
-              const displayAttendee = linkedContact
-                ? { ...a, contactId: linkedContact.contactid, name: linkedContact.fullname || a.name }
-                : a
-              return (
-              <AttendeeChip
-                key={i}
-                attendee={displayAttendee}
-                onRemove={isInboxAssisted && a.role === 'From' ? undefined : () => removeAttendee(i)}
-                onCreateContact={(isCalendarAssisted || isInboxAssisted) && !displayAttendee.contactId
-                  ? () => handleCreateCalendarContact(a)
-                  : undefined}
-              />
-              )
-            })}
-          </div>
-          <AutocompletePicker
-            searchFn={searchContactsFn}
-            getKey={(c) => c.contactid}
-            getLabel={(c) => c.fullname}
-            getSublabel={(c) => c.emailaddress1}
-            value={null}
-            onChange={handleAttendeeSelected}
-            placeholder="Search Dynamics contacts to add…"
-            clearOnPick
-            autoSelectSingle
-            minChars={0}
-            loadOnFocus
-            allowEmptySearch
-            preferredIds={account?.accountid ? [account.accountid] : []}
-          />
+          {isEmail ? (
+            <EmailParticipantFields
+              participants={attendees}
+              searchFn={searchContactsFn}
+              onAdd={handleAttendeeSelected}
+              onRemove={(participant) => removeAttendee(attendees.indexOf(participant))}
+              preferredIds={account?.accountid ? [account.accountid] : []}
+              renderParticipant={({ participant, onRemove }) => {
+                const linkedContact = participant.contactId
+                  ? null
+                  : calendarContactsByEmail[participant.email?.toLowerCase()]
+                const displayParticipant = linkedContact
+                  ? { ...participant, contactId: linkedContact.contactid, name: linkedContact.fullname || participant.name }
+                  : participant
+                return (
+                  <AttendeeChip
+                    attendee={displayParticipant}
+                    onRemove={onRemove}
+                    onCreateContact={(isCalendarAssisted || isInboxAssisted) && !displayParticipant.contactId
+                      ? () => handleCreateCalendarContact(participant)
+                      : undefined}
+                  />
+                )
+              }}
+            />
+          ) : (
+            <>
+              <label className="field-label">{attendeesLabel}</label>
+              <div className="chip-list">
+                {attendees.map((a, i) => {
+                  const linkedContact = a.contactId
+                    ? null
+                    : calendarContactsByEmail[a.email?.toLowerCase()]
+                  const displayAttendee = linkedContact
+                    ? { ...a, contactId: linkedContact.contactid, name: linkedContact.fullname || a.name }
+                    : a
+                  return (
+                    <AttendeeChip
+                      key={i}
+                      attendee={displayAttendee}
+                      onRemove={() => removeAttendee(i)}
+                      onCreateContact={isCalendarAssisted && !displayAttendee.contactId
+                        ? () => handleCreateCalendarContact(a)
+                        : undefined}
+                    />
+                  )
+                })}
+              </div>
+            </>
+          )}
+          {!isEmail && (
+            <AutocompletePicker
+              searchFn={searchContactsFn}
+              getKey={(c) => c.contactid}
+              getLabel={(c) => c.fullname}
+              getSublabel={(c) => c.emailaddress1}
+              value={null}
+              onChange={handleAttendeeSelected}
+              placeholder="Search Dynamics contacts to add…"
+              clearOnPick
+              autoSelectSingle
+              minChars={0}
+              loadOnFocus
+              allowEmptySearch
+              preferredIds={account?.accountid ? [account.accountid] : []}
+            />
+          )}
           {attendees.some((a) => !a.contactId) && (
             <p className="hint-text hint-warning">
               ○ Outlook attendees without a Dynamics match are mentioned but not linked.

@@ -13,11 +13,13 @@ import {
   relinkExistingEmails,
   suggestAccountByEmailDomain,
   searchAccounts,
+  searchContacts,
   getActiveEscalation,
   getAccountLeads,
   getAccountOpportunities,
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
+import EmailParticipantFields from './EmailParticipantFields'
 import RichHtmlPreview from './RichHtmlPreview'
 import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
 
@@ -56,13 +58,11 @@ function splitRecipients(message) {
     if (!recipient.email) continue
     participants.push({ role: 'CC', name: recipient.name || recipient.email, email: recipient.email })
   }
-  const seen = new Set()
-  return participants.filter((p) => {
-    const key = p.email.toLowerCase()
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  for (const recipient of message.bccRecipients ?? []) {
+    if (!recipient.email) continue
+    participants.push({ role: 'BCC', name: recipient.name || recipient.email, email: recipient.email })
+  }
+  return participants
 }
 
 function normaliseThreadMessages(messages) {
@@ -122,6 +122,7 @@ function threadSearchHaystack(thread) {
       m.bodyPreview,
       ...(m.toRecipients ?? []).map((r) => `${r.name} ${r.email}`),
       ...(m.ccRecipients ?? []).map((r) => `${r.name} ${r.email}`),
+      ...(m.bccRecipients ?? []).map((r) => `${r.name} ${r.email}`),
     ])
     .join(' ')
     .toLowerCase()
@@ -138,6 +139,7 @@ function threadHasExternalContacts(thread) {
       m.from?.email,
       ...(m.toRecipients ?? []).map((r) => r.email),
       ...(m.ccRecipients ?? []).map((r) => r.email),
+      ...(m.bccRecipients ?? []).map((r) => r.email),
     ]
     return addresses
       .map((email) => String(email || '').trim().toLowerCase())
@@ -292,7 +294,7 @@ function ImportedMessageLink({ activity }) {
   )
 }
 
-function ThreadParticipantChip({ participant, contact, onCreateContact }) {
+function ThreadParticipantChip({ participant, contact, onCreateContact, onRemove }) {
   const linked = !!contact
   return (
     <span
@@ -309,6 +311,11 @@ function ThreadParticipantChip({ participant, contact, onCreateContact }) {
           aria-label={`Create contact for ${participant.email}`}
         >
           <span className="icon icon-sm" aria-hidden="true">person_add</span>
+        </button>
+      )}
+      {onRemove && (
+        <button type="button" className="chip-remove" onClick={onRemove} aria-label="Remove participant">
+          <span className="icon icon-sm" aria-hidden="true">close</span>
         </button>
       )}
     </span>
@@ -509,6 +516,8 @@ function MailAddModal({
   const [linkToLeadId, setLinkToLeadId] = useState('')
   const [linkToOpportunityId, setLinkToOpportunityId] = useState('')
   const [linkToEscalation, setLinkToEscalation] = useState(false)
+  const pendingOriginalLinkRef = useRef(null)
+  const [participantEdits, setParticipantEdits] = useState({ added: [], removed: new Set() })
 
   useEffect(() => {
     let cancelled = false
@@ -551,14 +560,14 @@ function MailAddModal({
   const participants = useMemo(() => {
     const merged = []
     for (const message of threadMessages) merged.push(...splitRecipients(message))
-    const seen = new Set()
-    return merged.filter((p) => {
-      const key = p.email.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+    return merged
   }, [threadMessages])
+  const editableParticipants = useMemo(() => {
+    const removed = participantEdits.removed
+    return [...participants, ...participantEdits.added].filter((participant) => (
+      !removed.has(`${participant.role}:${participant.email.toLowerCase()}`)
+    ))
+  }, [participants, participantEdits])
 
   const importedCount = useMemo(
     () => threadIds.filter((id) => existingByMessageId.has(id)).length,
@@ -572,7 +581,7 @@ function MailAddModal({
     setLoadingContacts(true)
     setContactsByEmail({})
     Promise.all(
-      participants.map(async (p) => {
+      editableParticipants.map(async (p) => {
         const contact = await findContactByEmail(
           instance,
           p.email,
@@ -588,7 +597,7 @@ function MailAddModal({
       .catch((e) => { if (!cancelled) setError(e.message) })
       .finally(() => { if (!cancelled) setLoadingContacts(false) })
     return () => { cancelled = true }
-  }, [instance, participants, regardingType, regardingItem?.accountid])
+  }, [instance, editableParticipants, regardingType, regardingItem?.accountid])
 
   const suggestedAccount = useMemo(() => {
     if (regardingType !== 'account') return null
@@ -641,6 +650,12 @@ function MailAddModal({
         setAccountOpportunities(opportunities)
         setActiveEscalation(escalation)
         setLinkToEscalation(!!escalation)
+        const pendingLink = pendingOriginalLinkRef.current
+        if (pendingLink?.accountId === accountId) {
+          setLinkToLeadId(pendingLink.type === 'lead' ? pendingLink.id : '')
+          setLinkToOpportunityId(pendingLink.type === 'opportunity' ? pendingLink.id : '')
+          pendingOriginalLinkRef.current = null
+        }
       })
       .catch((e) => {
         if (!active) return
@@ -656,17 +671,28 @@ function MailAddModal({
     return () => { active = false }
   }, [instance, regardingItem?.accountid, regardingType])
 
-  function pickOriginalSuggestion() {
+  async function pickOriginalSuggestion() {
     if (!originalSuggestion) return
     if (originalSuggestion.regardingType === 'account') {
       setRegardingType('account')
       setRegardingItem(mapSuggestionToItem(originalSuggestion))
       return
     }
+    const account = await resolveAccountForRegarding(instance, {
+      regardingType: originalSuggestion.regardingType,
+      regardingId: originalSuggestion.regardingId,
+    })
+    if (!account) {
+      setError('The original link has no parent account and cannot be imported.')
+      return
+    }
+    pendingOriginalLinkRef.current = {
+      accountId: account.accountid,
+      type: originalSuggestion.regardingType,
+      id: originalSuggestion.regardingId,
+    }
     setRegardingType('account')
-    setRegardingItem(null)
-    setLinkToLeadId(originalSuggestion.regardingType === 'lead' ? originalSuggestion.regardingId : '')
-    setLinkToOpportunityId(originalSuggestion.regardingType === 'opportunity' ? originalSuggestion.regardingId : '')
+    setRegardingItem(account)
   }
 
   function handleOpenCreateContact(participant) {
@@ -681,6 +707,77 @@ function MailAddModal({
       phone: '',
       account: defaultAccount,
     })
+  }
+
+  function handleAddParticipant(contact, role) {
+    if (!contact?.emailaddress1) return
+    const participant = {
+      role,
+      name: contact.fullname || contact.emailaddress1,
+      email: contact.emailaddress1,
+      contactId: contact.contactid,
+    }
+    const key = `${role}:${participant.email.toLowerCase()}`
+    setParticipantEdits((current) => {
+      const removed = new Set(current.removed)
+      if (role === 'From') {
+        participants
+          .filter((item) => item.role === 'From')
+          .forEach((item) => removed.add(`From:${item.email.toLowerCase()}`))
+        current.added
+          .filter((item) => item.role === 'From')
+          .forEach((item) => removed.add(`From:${item.email.toLowerCase()}`))
+      }
+      removed.delete(key)
+      return {
+        added: current.added.some((item) => `${item.role}:${item.email.toLowerCase()}` === key)
+          ? current.added
+          : [...current.added, participant],
+        removed,
+      }
+    })
+    setContactsByEmail((current) => ({
+      ...current,
+      [participant.email.toLowerCase()]: { contactid: contact.contactid },
+    }))
+  }
+
+  function handleRemoveParticipant(participant) {
+    const key = `${participant.role}:${participant.email.toLowerCase()}`
+    setParticipantEdits((current) => ({
+      added: current.added.filter((item) => `${item.role}:${item.email.toLowerCase()}` !== key),
+      removed: new Set([...current.removed, key]),
+    }))
+  }
+
+  function applyParticipantEdits(message) {
+    const removed = participantEdits.removed
+    const additions = participantEdits.added
+    const isRemoved = (role, recipient) => removed.has(`${role}:${recipient.email.toLowerCase()}`)
+    const additionsFor = (role) => additions
+      .filter((participant) => participant.role === role)
+      .map(({ name, email }) => ({ name, email }))
+    const fromAddition = additions.find((participant) => participant.role === 'From')
+    const originalFrom = message.from?.email && !isRemoved('From', message.from) ? message.from : null
+
+    return {
+      ...message,
+      from: fromAddition
+        ? { name: fromAddition.name, email: fromAddition.email }
+        : originalFrom,
+      toRecipients: [
+        ...(message.toRecipients ?? []).filter((recipient) => !isRemoved('To', recipient)),
+        ...additionsFor('To'),
+      ],
+      ccRecipients: [
+        ...(message.ccRecipients ?? []).filter((recipient) => !isRemoved('CC', recipient)),
+        ...additionsFor('CC'),
+      ],
+      bccRecipients: [
+        ...(message.bccRecipients ?? []).filter((recipient) => !isRemoved('BCC', recipient)),
+        ...additionsFor('BCC'),
+      ],
+    }
   }
 
   function handleCloseCreateContact() {
@@ -789,8 +886,8 @@ function MailAddModal({
         }
 
         await createInboxEmailActivity(instance, {
-          message,
-          regardingType,
+          message: applyParticipantEdits(message),
+          regardingType: effectiveType,
           regardingId,
           regardingAccountId,
           contactsByEmail,
@@ -800,7 +897,7 @@ function MailAddModal({
 
       if (relinkActivityIds.length && !missingOnly) {
         await relinkExistingEmails(instance, relinkActivityIds, {
-          regardingType,
+          regardingType: effectiveType,
           regardingId,
           regardingAccountId,
         })
@@ -1015,20 +1112,23 @@ function MailAddModal({
           </div>
 
           <div className="inbox-section inbox-participants-section">
-            <div className="field-label">Participants</div>
-            <div className="chip-list inbox-thread-participant-chips">
-              {participants.map((participant) => {
-                const contact = contactsByEmail[participant.email.toLowerCase()]
-                return (
-                  <ThreadParticipantChip
-                    key={participant.email}
-                    participant={participant}
-                    contact={contact}
-                    onCreateContact={() => handleOpenCreateContact(participant)}
-                  />
-                )
+            <EmailParticipantFields
+              participants={editableParticipants}
+              searchFn={(q, paging) => searchContacts(instance, q, {
+                ...paging,
+                accountIds: regardingItem?.accountid ? [regardingItem.accountid] : [],
               })}
-            </div>
+              onAdd={handleAddParticipant}
+              onRemove={handleRemoveParticipant}
+              renderParticipant={({ participant, onRemove }) => (
+                <ThreadParticipantChip
+                  participant={participant}
+                  contact={contactsByEmail[participant.email.toLowerCase()]}
+                  onCreateContact={() => handleOpenCreateContact(participant)}
+                  onRemove={onRemove}
+                />
+              )}
+            />
             {loadingContacts && <div className="hint-text">Checking existing contacts…</div>}
           </div>
 

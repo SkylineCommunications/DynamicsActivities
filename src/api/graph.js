@@ -105,7 +105,7 @@ export async function getRecentInboxMessages(msalInstance, { nextLink, mailbox }
     nextLink ||
     (() => {
       const select = [
-        'id', 'subject', 'from', 'toRecipients', 'ccRecipients',
+        'id', 'subject', 'from', 'toRecipients', 'ccRecipients', 'bccRecipients',
         'receivedDateTime', 'body', 'bodyPreview', 'isRead', 'hasAttachments', 'webLink',
         'internetMessageId', 'conversationId', 'conversationIndex',
       ].join(',')
@@ -137,7 +137,7 @@ export async function getConversationMessages(msalInstance, { conversationId, ma
   const token = await getGraphToken(msalInstance)
 
   const select = [
-    'id', 'subject', 'from', 'toRecipients', 'ccRecipients',
+    'id', 'subject', 'from', 'toRecipients', 'ccRecipients', 'bccRecipients',
     'receivedDateTime', 'body', 'bodyPreview', 'isRead', 'hasAttachments', 'webLink',
     'internetMessageId', 'conversationId', 'conversationIndex',
   ].join(',')
@@ -221,6 +221,10 @@ function normaliseMessage(message) {
       email: r.emailAddress?.address || '',
     })),
     ccRecipients: (message.ccRecipients ?? []).map((r) => ({
+      name: r.emailAddress?.name || '',
+      email: r.emailAddress?.address || '',
+    })),
+    bccRecipients: (message.bccRecipients ?? []).map((r) => ({
       name: r.emailAddress?.name || '',
       email: r.emailAddress?.address || '',
     })),
