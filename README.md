@@ -119,10 +119,10 @@ The mounted app shell does not currently expose activity creation, but it expose
 
 | Route | Purpose | Backend |
 |---|---|---|
-| `#/forms/lead` | Submit a new lead | `DynamicsActivities_SubmitLead` automation script |
-| `#/forms/opportunity` | Submit a new opportunity | `DynamicsActivities_SubmitOpportunity` automation script |
+| `#/forms/lead` | Submit a new lead | Opens a prefilled email in the user's mail client |
+| `#/forms/opportunity` | Submit a new opportunity | Opens a prefilled email in the user's mail client |
 
-These forms are opened from the **Add lead** / **Add opportunity** buttons shown in the Leads and Opportunities browse views. The buttons are visible only to **Team Member CAL** users — Sales/Enterprise users create leads and opportunities directly in Dynamics. Submission depends on the **DataMiner session**, not on Dataverse access.
+These forms are opened from the **Add lead** / **Add opportunity** buttons shown in the Leads and Opportunities browse views. The buttons are visible only to **Team Member CAL** users — Sales/Enterprise users create leads and opportunities directly in Dynamics. Submitting a form opens the user's own email client (via `mailto:`) with the recipient, subject and details prefilled; the user reviews and sends it manually, so no Dataverse access or server-side SMTP configuration is required.
 
 ---
 
@@ -257,8 +257,6 @@ in `DynamicsActivitiesPackage/DynamicsActivitiesPackage/DynamicsActivitiesPackag
 | `DynamicsActivities_NotifySubscribers` | Scheduled / manual digest sender |
 | `DynamicsActivities_Summarize` | Timeline-summary generation for browse and digest flows |
 | `DynamicsActivities_SkylineApiProxy` | DMA-host proxy to Skyline API to avoid browser CORS issues |
-| `DynamicsActivities_SubmitLead` | Emails submitted standalone lead forms |
-| `DynamicsActivities_SubmitOpportunity` | Emails submitted standalone opportunity forms |
 
 ### Optional Assistant dependency
 

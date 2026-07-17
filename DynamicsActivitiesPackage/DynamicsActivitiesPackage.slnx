@@ -4,6 +4,4 @@
   <Project Path="DynamicsActivities_NotifySubscribers/DynamicsActivities_NotifySubscribers.csproj" />
   <Project Path="DynamicsActivities_Summarize/DynamicsActivities_Summarize.csproj" />
   <Project Path="DynamicsActivities_SkylineApiProxy/DynamicsActivities_SkylineApiProxy.csproj" />
-  <Project Path="DynamicsActivities_SubmitLead/DynamicsActivities_SubmitLead.csproj" />
-  <Project Path="DynamicsActivities_SubmitOpportunity/DynamicsActivities_SubmitOpportunity.csproj" />
 </Solution>

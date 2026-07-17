@@ -153,8 +153,9 @@ App-specific behavior:
 | `src/api/graph.js` | Graph calendar fetch for attendee prefill |
 | `src/api/skyline.js` | Skyline Collaboration API — proxied via DMA automation script to avoid CORS |
 | `src/api/subscriptions.js` | Subscription CRUD via DataMiner Automation (DOM-backed) |
-| `src/api/leads.js` | Submit a lead via the `DynamicsActivities_SubmitLead` automation script (emails the lead) |
-| `src/api/opportunities.js` | Submit an opportunity via the `DynamicsActivities_SubmitOpportunity` automation script (emails the opportunity) |
+| `src/api/mailto.js` | Helpers to open a prefilled email (`mailto:`) for the standalone forms |
+| `src/api/leads.js` | Opens a prefilled lead email in the user's mail client for manual sending |
+| `src/api/opportunities.js` | Opens a prefilled opportunity email in the user's mail client for manual sending |
 | `src/authConfig.js` | MSAL config, scopes for Dataverse/Graph/Skyline |
 | `src/components/AuthGuard.jsx` | Triple-auth gate: DMA session → MSAL ssoSilent/popup → WhoAmI |
 | `src/components/ActivityForm.jsx` | Activity creation (4 types, account/attendee pickers, calendar) |
@@ -176,8 +177,6 @@ App-specific behavior:
 | `DynamicsActivitiesPackage/DynamicsActivities_ManageSubscriptions/` | CRUD automation script for subscriptions (list/create/update/delete) |
 | `DynamicsActivitiesPackage/DynamicsActivities_NotifySubscribers/` | Scheduled email digest sender |
 | `DynamicsActivitiesPackage/DynamicsActivities_SkylineApiProxy/` | Server-side proxy for Skyline API (avoids CORS) |
-| `DynamicsActivitiesPackage/DynamicsActivities_SubmitLead/` | Emails leads submitted via the "Add lead" form (recipient defaults to test address, overridable via `Recipient` param) |
-| `DynamicsActivitiesPackage/DynamicsActivities_SubmitOpportunity/` | Emails opportunities submitted via the "Add opportunity" form (recipient defaults to test address, overridable via `Recipient` param) |
 | `.github/workflows/deploy-dma-on-pr-merge.yml` | CI/CD — build, catalog upload, deploy to DMA |
 
 ---

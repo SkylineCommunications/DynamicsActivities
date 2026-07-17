@@ -19,32 +19,16 @@ const initialState = {
   description: '',
 }
 
-// Labels used in the confirmation summary, in display order.
-const CONFIRM_FIELDS = {
-  topic: 'Opportunity name',
-  company: 'Company / Account',
-  estimatedValue: 'Estimated value',
-  firstName: 'Contact first name',
-  lastName: 'Contact last name',
-  email: 'Email',
-  phone: 'Phone',
-  estimatedCloseDate: 'Estimated close date',
-  country: 'Country',
-  description: 'Description',
-}
-
 /**
- * "Add opportunity" form. Collects opportunity details and submits them via the
- * DataMiner automation script, which emails the configured recipient.
+ * "Add opportunity" form. Collects opportunity details and opens the user's email
+ * client with the details prefilled so they can review and send it to the sales team.
  *
  * @param {{ onDone?: () => void }} props
  */
 export default function OpportunityForm({ onDone }) {
   const [values, setValues] = useState(initialState)
-  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
 
   function update(field) {
     return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value.slice(0, MAX_FIELD_LENGTH) }))
@@ -61,25 +45,16 @@ export default function OpportunityForm({ onDone }) {
 
   function handleSubmit(e) {
     e.preventDefault()
-    if (!isValid() || submitting) return
-    setError(null)
-    setShowConfirm(true)
-  }
-
-  async function confirmSubmit() {
-    setShowConfirm(false)
-    setSubmitting(true)
+    if (!isValid()) return
     setError(null)
     try {
       const payload = Object.fromEntries(
         Object.entries(values).map(([k, v]) => [k, v.trim()]),
       )
-      await submitOpportunity(payload)
+      submitOpportunity(payload)
       setSubmitted(true)
     } catch (err) {
-      setError(err.message || 'Something went wrong while submitting the opportunity.')
-    } finally {
-      setSubmitting(false)
+      setError(err.message || 'Something went wrong while opening the opportunity email.')
     }
   }
 
@@ -88,8 +63,8 @@ export default function OpportunityForm({ onDone }) {
       <div className="form-card">
         <div className="lead-success">
           <div className="auth-icon"><span className="icon icon-lg" aria-hidden="true">check_circle</span></div>
-          <h2>Opportunity submitted</h2>
-          <p>Thanks! Your opportunity has been sent and the team will follow up.</p>
+          <h2>Email ready to send</h2>
+          <p>Your email app should have opened with the opportunity details. Review the message and hit send to submit the opportunity.</p>
           <div className="lead-form-actions">
             <button
               type="button"
@@ -165,65 +140,15 @@ export default function OpportunityForm({ onDone }) {
 
         <div className="lead-form-actions">
           {onDone && (
-            <button type="button" className="btn btn-secondary" onClick={onDone} disabled={submitting}>
+            <button type="button" className="btn btn-secondary" onClick={onDone}>
               Cancel
             </button>
           )}
-          <button type="submit" className="btn-primary" disabled={!isValid() || submitting}>
-            {submitting
-              ? (<><span className="auth-spinner spinner-inline" aria-hidden="true" /> Sending…</>)
-              : (<><span className="icon icon-sm" aria-hidden="true">send</span> Add opportunity</>)}
+          <button type="submit" className="btn-primary" disabled={!isValid()}>
+            <span className="icon icon-sm" aria-hidden="true">send</span> Add opportunity
           </button>
         </div>
       </form>
-
-      {showConfirm && (
-        <div
-          className="modal-overlay"
-          onClick={(e) => e.target === e.currentTarget && setShowConfirm(false)}
-        >
-          <div className="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="opp-confirm-title">
-            <div className="modal-header">
-              <div className="modal-title-group">
-                <span className="confirm-title-icon icon" aria-hidden="true">send</span>
-                <h3 className="modal-title" id="opp-confirm-title">Confirm opportunity submission</h3>
-              </div>
-              <button type="button" className="modal-close" onClick={() => setShowConfirm(false)} aria-label="Close">
-                <span className="icon">close</span>
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <p className="confirm-intro">The following actions will be performed:</p>
-              <ul className="confirm-actions">
-                <li>Send the opportunity details below to the DataMiner automation script.</li>
-                <li>The script emails the opportunity to the sales/team recipient for follow-up.</li>
-              </ul>
-
-              <div className="confirm-summary">
-                <div className="confirm-summary-title">Opportunity summary</div>
-                {Object.entries(CONFIRM_FIELDS)
-                  .filter(([key]) => values[key].trim())
-                  .map(([key, label]) => (
-                    <div className="confirm-summary-row" key={key}>
-                      <span className="confirm-summary-label">{label}</span>
-                      <span className="confirm-summary-value">{values[key].trim()}</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setShowConfirm(false)}>
-                Cancel
-              </button>
-              <button type="button" className="btn-primary" onClick={confirmSubmit}>
-                <span className="icon icon-sm" aria-hidden="true">send</span> Confirm &amp; send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

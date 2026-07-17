@@ -1,21 +1,37 @@
 /**
- * Client for submitting an opportunity via a DataMiner Automation Script.
+ * Client for the standalone "Add opportunity" form.
  *
- * Like ./leads.js, this form is reachable even when the user has no
- * Dynamics/Dataverse access, so it intentionally does NOT depend on
- * MSAL/Dataverse — only on the DataMiner session.
+ * Like ./leads.js, this opens the user's email client with the opportunity
+ * details prefilled so they can review and send it to the sales team manually.
  */
 
-import { submitForm } from './formSubmit'
+import { openEmailDraft, buildEmailBody } from './mailto'
 
-const SCRIPT_NAME = 'DynamicsActivities_SubmitOpportunity'
+// Where opportunity submissions are sent. Change this to route them elsewhere.
+const RECIPIENT = 'loes.vervaele@skyline.be'
+
+// Email body: [label, field key] pairs, in display order.
+const FIELDS = [
+  ['Opportunity name', 'topic'],
+  ['Company / Account', 'company'],
+  ['Estimated value', 'estimatedValue'],
+  ['Contact first name', 'firstName'],
+  ['Contact last name', 'lastName'],
+  ['Email', 'email'],
+  ['Phone', 'phone'],
+  ['Estimated close date', 'estimatedCloseDate'],
+  ['Country', 'country'],
+  ['Description', 'description'],
+]
 
 /**
- * Submit an opportunity. Sends the form data to the DataMiner automation script,
- * which emails it to the configured recipient.
+ * Open a prefilled opportunity email for the user to review and send.
  * @param {object} opportunity Opportunity form fields.
- * @returns {Promise<object>} Parsed script result (e.g. `{ success: true }`).
  */
-export async function submitOpportunity(opportunity) {
-  return submitForm(SCRIPT_NAME, opportunity, 'opportunity')
+export function submitOpportunity(opportunity) {
+  const company = opportunity.company ? ` (${opportunity.company})` : ''
+  const subject = `[New Opportunity] ${opportunity.topic || 'Untitled'}${company}`
+  const body = buildEmailBody(FIELDS.map(([label, key]) => [label, opportunity[key]]))
+
+  openEmailDraft(RECIPIENT, subject, body)
 }
