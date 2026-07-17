@@ -23,6 +23,7 @@ jobs:
         id: promotion
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           pr_number="$(gh pr list \
             --base release-candidate \
@@ -45,6 +46,7 @@ jobs:
         id: merge
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.promotion.outputs.number }}
         run: |
           merge_state="$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq '.mergeStateStatus')"
@@ -60,6 +62,7 @@ jobs:
         if: steps.merge.outputs.conflicting == 'true' || failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.promotion.outputs.number }}
         run: |
           merge_state="$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq '.mergeStateStatus')"
