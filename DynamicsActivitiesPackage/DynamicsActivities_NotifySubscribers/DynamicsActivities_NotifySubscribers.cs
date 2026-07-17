@@ -132,7 +132,7 @@ namespace DynamicsActivitiesNotifySubscribers
 					var activities = FetchActivities(scopeType, scopeValue, activityTypesJson, since, now);
 					if (activities.Count == 0)
 					{
-						engine.GenerateInformation($"[NotifySubscribers] No new or updated activities for sub {instance.ID.Id} ({scopeType}:{scopeValue}) since {since:o}. LastSentAt={lastSentAt:o}, CreatedAt={(createdAt.HasValue ? createdAt.Value.ToString("o") : "n/a")}.");
+						engine.GenerateInformation($"[NotifySubscribers] No new activities for sub {instance.ID.Id} ({scopeType}:{scopeValue}) since {since:o}. LastSentAt={lastSentAt:o}, CreatedAt={(createdAt.HasValue ? createdAt.Value.ToString("o") : "n/a")}.");
 						continue;
 					}
 
@@ -191,7 +191,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			var requestedTypes = ParseActivityTypes(activityTypesJson);
 			var includeAllTypes = requestedTypes == null || requestedTypes.Count == 0;
 			var activities = new List<ActivityItem>();
-			var fromIso = BuildActivityChangeLowerBound(since);
+			var fromIso = BuildCreatedOnLowerBound(since);
 			var escalationScope = String.Equals((scopeType ?? String.Empty).Trim(), "escalation", StringComparison.OrdinalIgnoreCase);
 
 			if (escalationScope)
@@ -212,8 +212,8 @@ namespace DynamicsActivitiesNotifySubscribers
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
 				.GroupBy(a => a.Id)
-				.Select(g => g.OrderByDescending(GetActivityTimestamp).First())
-				.OrderByDescending(GetActivityTimestamp)
+				.Select(g => g.OrderByDescending(i => i.CreatedOn).First())
+				.OrderByDescending(i => i.CreatedOn)
 				.ToList();
 		}
 
@@ -248,8 +248,8 @@ namespace DynamicsActivitiesNotifySubscribers
 			return activities
 				.Where(a => !string.IsNullOrEmpty(a.Id))
 				.GroupBy(a => a.Id)
-				.Select(g => g.OrderByDescending(GetActivityTimestamp).First())
-				.OrderByDescending(GetActivityTimestamp)
+				.Select(g => g.OrderByDescending(i => i.CreatedOn).First())
+				.OrderByDescending(i => i.CreatedOn)
 				.ToList();
 		}
 
@@ -386,7 +386,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			return "(" + string.Join(" or ", valid.Select(id => $"{fieldName} eq {id}")) + ")";
 		}
 
-		private static string BuildActivityChangeLowerBound(DateTime since)
+		private static string BuildCreatedOnLowerBound(DateTime since)
 		{
 			// Dataverse does not reliably handle DateTime.MinValue in OData filters.
 			// First-run should not enforce a lower bound.
@@ -395,20 +395,15 @@ namespace DynamicsActivitiesNotifySubscribers
 			return since.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
 		}
 
-		private static void AddNewOrUpdatedFilter(List<string> filters, string fromIso)
-		{
-			if (!string.IsNullOrEmpty(fromIso))
-			{
-				filters.Add($"(createdon gt {fromIso} or modifiedon gt {fromIso})");
-			}
-		}
-
 		private List<ActivityItem> FetchStandardActivities(string entitySet, string typeLabel, string lookupField, List<string> accountIds, string fromIso)
 		{
 			var filters = BuildLookupFilters(lookupField, accountIds);
-			AddNewOrUpdatedFilter(filters, fromIso);
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/{entitySet}?$select=activityid,subject,description,createdon,modifiedon,_regardingobjectid_value{filter}&$orderby=modifiedon desc&$top=100");
+			var json = DataverseGet($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc&$top=100");
 
 			return json["value"]?.Select(v => new ActivityItem
 			{
@@ -418,7 +413,6 @@ namespace DynamicsActivitiesNotifySubscribers
 				Subject = v["subject"]?.Value<string>(),
 				Description = v["description"]?.Value<string>(),
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				ModifiedOn = ParseDateTime(v["modifiedon"]?.Value<string>()) ?? DateTime.MinValue,
 				RegardingId = v["_regardingobjectid_value"]?.Value<string>(),
 				Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
@@ -427,10 +421,13 @@ namespace DynamicsActivitiesNotifySubscribers
 		private List<ActivityItem> FetchStandardActivitiesLinkedToEscalations(string entitySet, string typeLabel, List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
 		{
 			var filters = new List<string>();
-			AddNewOrUpdatedFilter(filters, fromIso);
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var values = DataverseGetAllValues($"/{entitySet}?$select=activityid,subject,description,createdon,modifiedon,_regardingobjectid_value{filter}&$orderby=modifiedon desc", 20);
+			var values = DataverseGetAllValues($"/{entitySet}?$select=activityid,subject,description,createdon,_regardingobjectid_value{filter}&$orderby=createdon desc", 20);
 			var result = new List<ActivityItem>();
 
 			foreach (var v in values)
@@ -454,7 +451,6 @@ namespace DynamicsActivitiesNotifySubscribers
 					Subject = v["subject"]?.Value<string>(),
 					Description = description,
 					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-					ModifiedOn = ParseDateTime(v["modifiedon"]?.Value<string>()) ?? DateTime.MinValue,
 					RegardingId = regardingId,
 					Regarding = v["_regardingobjectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 				};
@@ -475,9 +471,12 @@ namespace DynamicsActivitiesNotifySubscribers
 		private List<ActivityItem> FetchEscalations(List<string> accountIds, string fromIso)
 		{
 			var filters = BuildLookupFilters(EscalationAccountLookupField, accountIds);
-			AddNewOrUpdatedFilter(filters, fromIso);
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var json = DataverseGet($"/slc_escalations?$select=slc_escalationid,slc_name,createdon,modifiedon,{EscalationAccountLookupField},slc_startdate,statecode,statuscode{filter}&$orderby=modifiedon desc&$top=100");
+			var json = DataverseGet($"/slc_escalations?$select=slc_escalationid,slc_name,createdon,{EscalationAccountLookupField},slc_startdate,statecode,statuscode{filter}&$orderby=createdon desc&$top=100");
 
 			return json["value"]?.Select(v => new ActivityItem
 			{
@@ -487,7 +486,6 @@ namespace DynamicsActivitiesNotifySubscribers
 				Subject = v["slc_name"]?.Value<string>() ?? "Escalation",
 				Description = String.Empty,
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				ModifiedOn = ParseDateTime(v["modifiedon"]?.Value<string>()) ?? DateTime.MinValue,
 				RegardingId = NormalizeDataverseId(v[EscalationAccountLookupField]?.Value<string>()),
 				Regarding = v[$"{EscalationAccountLookupField}@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
@@ -497,8 +495,8 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			if (accountIds.Count == 0) return new List<ActivityItem>();
 			var parentFilter = "(" + string.Join(" or ", accountIds.Select(id => $"_parentaccountid_value eq {id}")) + ")";
-			var lowerBound = !string.IsNullOrEmpty(fromIso) ? $" and (createdon gt {fromIso} or modifiedon gt {fromIso})" : string.Empty;
-			var json = DataverseGet($"/leads?$select=leadid,subject,description,createdon,modifiedon,_parentaccountid_value&$filter={parentFilter}{lowerBound}&$orderby=modifiedon desc&$top=100");
+			var lowerBound = !string.IsNullOrEmpty(fromIso) ? $" and createdon gt {fromIso}" : string.Empty;
+			var json = DataverseGet($"/leads?$select=leadid,subject,description,createdon,_parentaccountid_value&$filter={parentFilter}{lowerBound}&$orderby=createdon desc&$top=100");
 
 			return json["value"]?.Select(v => new ActivityItem
 			{
@@ -508,7 +506,6 @@ namespace DynamicsActivitiesNotifySubscribers
 				Subject = v["subject"]?.Value<string>(),
 				Description = v["description"]?.Value<string>(),
 				CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-				ModifiedOn = ParseDateTime(v["modifiedon"]?.Value<string>()) ?? DateTime.MinValue,
 				Regarding = v["_parentaccountid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 			}).ToList() ?? new List<ActivityItem>();
 		}
@@ -517,8 +514,8 @@ namespace DynamicsActivitiesNotifySubscribers
 		{
 			if (accountIds.Count == 0) return new List<ActivityItem>();
 			var parentFilter = "(" + string.Join(" or ", accountIds.Select(id => $"_parentaccountid_value eq {id}")) + ")";
-			var lowerBound = !string.IsNullOrEmpty(fromIso) ? $" and (createdon gt {fromIso} or modifiedon gt {fromIso})" : string.Empty;
-			var json = DataverseGet($"/opportunities?$select=opportunityid,name,description,createdon,modifiedon,_parentaccountid_value,slc_opportunitytype&$filter={parentFilter}{lowerBound}&$orderby=modifiedon desc&$top=100");
+			var lowerBound = !string.IsNullOrEmpty(fromIso) ? $" and createdon gt {fromIso}" : string.Empty;
+			var json = DataverseGet($"/opportunities?$select=opportunityid,name,description,createdon,_parentaccountid_value,slc_opportunitytype&$filter={parentFilter}{lowerBound}&$orderby=createdon desc&$top=100");
 			var result = new List<ActivityItem>();
 			foreach (var v in json["value"] ?? new JArray())
 			{
@@ -534,7 +531,6 @@ namespace DynamicsActivitiesNotifySubscribers
 					Subject = v["name"]?.Value<string>(),
 					Description = v["description"]?.Value<string>(),
 					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-					ModifiedOn = ParseDateTime(v["modifiedon"]?.Value<string>()) ?? DateTime.MinValue,
 					Regarding = v["_parentaccountid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 				});
 			}
@@ -557,10 +553,13 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 
 			var filters = new List<string>();
-			AddNewOrUpdatedFilter(filters, fromIso);
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,modifiedon,_objectid_value{filter}&$orderby=modifiedon desc", 20);
+			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc", 20);
 			var result = new List<ActivityItem>();
 			foreach (var v in values)
 			{
@@ -597,7 +596,6 @@ namespace DynamicsActivitiesNotifySubscribers
 					Subject = v["subject"]?.Value<string>(),
 					Description = v["notetext"]?.Value<string>(),
 					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-					ModifiedOn = ParseDateTime(v["modifiedon"]?.Value<string>()) ?? DateTime.MinValue,
 					RegardingId = regardingId,
 					Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 				});
@@ -698,10 +696,13 @@ namespace DynamicsActivitiesNotifySubscribers
 		private List<ActivityItem> FetchAnnotationsLinkedToEscalations(List<string> escalationIds, string fromIso, Dictionary<string, string> escalationAccountById)
 		{
 			var filters = new List<string>();
-			AddNewOrUpdatedFilter(filters, fromIso);
+			if (!string.IsNullOrEmpty(fromIso))
+			{
+				filters.Add($"createdon gt {fromIso}");
+			}
 
 			var filter = filters.Count > 0 ? "&$filter=" + string.Join(" and ", filters) : string.Empty;
-			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,modifiedon,_objectid_value{filter}&$orderby=modifiedon desc", 20);
+			var values = DataverseGetAllValues($"/annotations?$select=annotationid,subject,notetext,createdon,_objectid_value{filter}&$orderby=createdon desc", 20);
 			var result = new List<ActivityItem>();
 
 			foreach (var v in values)
@@ -723,7 +724,6 @@ namespace DynamicsActivitiesNotifySubscribers
 					Subject = v["subject"]?.Value<string>(),
 					Description = v["notetext"]?.Value<string>(),
 					CreatedOn = ParseDateTime(v["createdon"]?.Value<string>()) ?? DateTime.MinValue,
-					ModifiedOn = ParseDateTime(v["modifiedon"]?.Value<string>()) ?? DateTime.MinValue,
 					RegardingId = regardingId,
 					Regarding = v["_objectid_value@OData.Community.Display.V1.FormattedValue"]?.Value<string>(),
 				};
@@ -864,8 +864,6 @@ namespace DynamicsActivitiesNotifySubscribers
 					.Select(activity => new JObject
 					{
 						["createdOnUtc"] = activity.CreatedOn == DateTime.MinValue ? null : activity.CreatedOn.ToString("o", CultureInfo.InvariantCulture),
-						["modifiedOnUtc"] = activity.ModifiedOn == DateTime.MinValue ? null : activity.ModifiedOn.ToString("o", CultureInfo.InvariantCulture),
-						["changedOnUtc"] = GetActivityTimestamp(activity) == DateTime.MinValue ? null : GetActivityTimestamp(activity).ToString("o", CultureInfo.InvariantCulture),
 						["type"] = GetTypeBadgeLabel(activity),
 						["subject"] = String.IsNullOrWhiteSpace(activity.Subject) ? "(No subject)" : activity.Subject.Trim(),
 						["regarding"] = String.IsNullOrWhiteSpace(activity.Regarding) ? "-" : activity.Regarding.Trim(),
@@ -1090,7 +1088,7 @@ namespace DynamicsActivitiesNotifySubscribers
 
 			var latestItems = activities
 				.Take(3)
-				.Select(activity => $"{GetActivityTimestamp(activity):yyyy-MM-dd HH:mm} UTC — {GetTypeBadgeLabel(activity)} — {activity.Subject ?? "(No subject)"}")
+				.Select(activity => $"{activity.CreatedOn:yyyy-MM-dd HH:mm} UTC — {GetTypeBadgeLabel(activity)} — {activity.Subject ?? "(No subject)"}")
 				.ToList();
 
 			var summary = new StringBuilder();
@@ -1132,7 +1130,7 @@ namespace DynamicsActivitiesNotifySubscribers
 			sb.AppendLine("<div style='padding:24px 28px;'>");
 			sb.AppendLine("<div style='background:#eff0f0;border-left:3px solid #2563eb;padding:14px 16px;border-radius:0 8px 8px 0;margin-bottom:18px;color:#44484e;font-size:14px;line-height:1.5;'>");
 			sb.AppendLine($"<div><strong>Scope:</strong> {HtmlEncode(scopeLabel ?? scopeValue)}</div>");
-			sb.AppendLine($"<div><strong>New/updated activities:</strong> {activities.Count} since {since:yyyy-MM-dd HH:mm} UTC</div>");
+			sb.AppendLine($"<div><strong>New activities:</strong> {activities.Count} since {since:yyyy-MM-dd HH:mm} UTC</div>");
 			sb.AppendLine(activityTypes != null && activityTypes.Count > 0
 				? $"<div><strong>Activity types:</strong> {HtmlEncode(string.Join(", ", activityTypes))}</div>"
 				: "<div><strong>Activity types:</strong> All</div>");
@@ -1157,7 +1155,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				sb.AppendLine("<div style='border:1px solid #e1e1e2;border-radius:10px;padding:14px 14px 12px 14px;margin-bottom:12px;background:#fdfdfd;'>");
 				sb.AppendLine("<div style='margin-bottom:8px;'>");
 				sb.AppendLine($"<span style='display:inline-block;background:{typeColor}22;color:{typeColor};padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;'>{HtmlEncode(typeLabel)}</span>");
-				sb.AppendLine($"<span style='color:#727579;font-size:12px;margin-left:10px;'>{GetActivityTimeLabel(item)}</span>");
+				sb.AppendLine($"<span style='color:#727579;font-size:12px;margin-left:10px;'>{item.CreatedOn:yyyy-MM-dd HH:mm} UTC</span>");
 				sb.AppendLine("</div>");
 				sb.AppendLine($"<div style='font-weight:600;color:#151a22;margin-bottom:4px;'>{HtmlEncode(item.Subject ?? "(No subject)")}</div>");
 				sb.AppendLine($"<div style='color:#727579;font-size:13px;margin-bottom:10px;'>Regarding: {HtmlEncode(item.Regarding)}</div>");
@@ -1176,7 +1174,7 @@ namespace DynamicsActivitiesNotifySubscribers
 				sb.AppendLine("</div>");
 			}
 
-			sb.AppendLine("<div style='margin-top:16px;color:#666;font-size:12px;line-height:1.5;'>You only receive entries created or updated since your previous digest for this subscription.</div>");
+			sb.AppendLine("<div style='margin-top:16px;color:#666;font-size:12px;line-height:1.5;'>You only receive entries newer than your previous digest for this subscription.</div>");
 			sb.AppendLine("</div>");
 			sb.AppendLine("<div style='padding:14px 28px;border-top:1px solid #e1e1e2;font-size:11px;color:#727579;text-align:center;'>");
 			sb.AppendLine("You are receiving this because you subscribed to activity notifications in Dynamics Activities.<br/>");
@@ -1398,29 +1396,6 @@ namespace DynamicsActivitiesNotifySubscribers
 			}
 		}
 
-		private static DateTime GetActivityTimestamp(ActivityItem item)
-		{
-			if (item == null) return DateTime.MinValue;
-			if (item.ModifiedOn > DateTime.MinValue && item.ModifiedOn > item.CreatedOn) return item.ModifiedOn;
-			return item.CreatedOn;
-		}
-
-		private static string GetActivityTimeLabel(ActivityItem item)
-		{
-			var timestamp = GetActivityTimestamp(item);
-			if (timestamp <= DateTime.MinValue)
-			{
-				return String.Empty;
-			}
-
-			if (item?.ModifiedOn > DateTime.MinValue && item.ModifiedOn > item.CreatedOn)
-			{
-				return $"Updated {timestamp:yyyy-MM-dd HH:mm} UTC";
-			}
-
-			return $"{timestamp:yyyy-MM-dd HH:mm} UTC";
-		}
-
 		private static string GetDynamicsUrl(string entityType, string activityId)
 		{
 			var etn = "activitypointer";
@@ -1463,7 +1438,6 @@ namespace DynamicsActivitiesNotifySubscribers
 			public string RegardingId { get; set; }
 			public string Regarding { get; set; }
 			public DateTime CreatedOn { get; set; }
-			public DateTime ModifiedOn { get; set; }
 		}
 
 		private sealed class ScopeContext

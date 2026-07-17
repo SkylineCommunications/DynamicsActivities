@@ -116,7 +116,7 @@ Subscriptions are fully **DataMiner-native** in the current implementation.
 Behavior to be aware of:
 
 - The notify script has **no internal cadence gate**; each run processes subscriptions matching the requested frequency
-- Activity detection includes both new and updated activities: a record is included if `createdon > since` OR `modifiedon > since`
+- New activity detection uses `createdon > LastSentAt`
 - Digest emails can include Assistant-generated HTML timeline summaries, with deterministic fallback when Assistant integration is unavailable
 - Sender/from behavior is controlled by DataMiner mail / SMTP configuration
 
@@ -236,7 +236,7 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 | `.github/workflows/deploy-dma-on-pr-merge.yml` | Caller workflow for production-on-merge, manual `production` from `main` only, and manual `dev` deploys |
 | `.github/workflows/deploy-dmapp-reusable.yml` | Reusable build/register/deploy workflow for DMAPP packaging and Catalog deployment |
 | `.github/workflows/copilot-bug-triage.yml` | Auto-comments on `bug`-labeled issues to ask `@copilot` for investigation |
-| `.github/workflows/sync-main-to-release-candidate.yml` | Opens or updates the `main` → `release-candidate` promotion PR after changes reach `main`, enables auto-merge, and asks `@copilot` to resolve conflicts |
+| `.github/workflows/promote-main-to-release-candidate.yml` | Opens or updates the `main` → `release-candidate` promotion PR after changes reach `main`, using a dedicated branch so `@copilot` can resolve conflicts without modifying `main` |
 
 ### Release candidate deployment
 
@@ -246,7 +246,7 @@ and the frontend build base path is set to `/public/DynamicsActivitiesDev/` so s
 https://solutionsdma-skyline.on.dataminer.services/auth/?url=%2Fpublic%2FDynamicsActivitiesRC%2Findex.html
 ```
 
-Choose the PR base according to the intended release path. Features that can go directly to production may target `main`; features that need RC validation or are started from `release-candidate` must target `release-candidate`. A branch based on `origin/release-candidate` should not be rebased onto `main` merely to change the PR base, because that can introduce unrelated history. Approved RC work can later be promoted to `main`.
+Open write-capable PRs with `release-candidate` selected as their base branch. When the candidate is approved, open a promotion PR from `release-candidate` into `main`; production remains deployed only when that PR merges.
 
 The release-candidate deployment uses the repository variable `VITE_REDIRECT_URI_RC`, which must match the redirect URI registered on the deployed Entra application:
 
