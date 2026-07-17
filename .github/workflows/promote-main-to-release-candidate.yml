@@ -3,6 +3,9 @@ name: Promote main to release candidate
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [synchronize]
+    branches: [release-candidate]
   workflow_dispatch:
 
 permissions:
@@ -16,7 +19,11 @@ concurrency:
 
 jobs:
   sync:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.ref == 'automation/main-to-release-candidate')
     runs-on: ubuntu-latest
     steps:
       - name: Create or reuse promotion pull request
@@ -25,19 +32,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          promotion_branch="automation/main-to-release-candidate"
           pr_number="$(gh pr list \
             --base release-candidate \
-            --head main \
+            --head "$promotion_branch" \
             --state open \
             --json number \
             --jq '.[0].number // empty')"
 
           if [[ -z "$pr_number" ]]; then
+            main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f "ref=refs/heads/${promotion_branch}" \
+              -f "sha=${main_sha}"; then
+              gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${promotion_branch}" \
+                -f "sha=${main_sha}" \
+                -F force=true
+            fi
+
             pr_number="$(gh pr create \
               --base release-candidate \
-              --head main \
+              --head "$promotion_branch" \
               --title "Sync main into release-candidate" \
-              --body $'Automated promotion of the latest main branch changes into release-candidate.\n\nThis pull request is maintained by the Promote main to release candidate workflow.')"
+              --body $'Automated promotion of the latest main branch changes into release-candidate.\n\nThis pull request is maintained by the Promote main to release candidate workflow. Its dedicated branch allows Copilot to resolve conflicts without modifying the default branch.')"
           fi
 
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
@@ -79,9 +96,9 @@ jobs:
             --jq '.[].body' | grep -Fq "$marker"; then
             gh pr comment "$PR_NUMBER" --body "$(cat <<'EOF'
           <!-- automated-main-to-rc-conflict-request -->
-          @copilot Please resolve the merge conflicts in this pull request between `main` and `release-candidate`.
+          @copilot Please resolve the merge conflicts in this pull request. The head branch contains the latest `main` changes and the base is `release-candidate`.
 
-          Preserve the intended changes from both branches, run the repository's relevant checks, and push the conflict resolution to this pull request's head branch. Do not merge the pull request yourself; leave it ready for this workflow to auto-merge once it is clean.
+          Preserve the intended changes from both branches, run the repository's relevant checks, and push the conflict resolution to this pull request's dedicated head branch. Do not merge the pull request yourself; leave it ready for this workflow to auto-merge once it is clean.
           EOF
             )"
           fi
