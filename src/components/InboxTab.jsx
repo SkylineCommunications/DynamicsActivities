@@ -995,9 +995,8 @@ function MailAddModal({
             {regardingItem?.accountid && (activeEscalation || escalationLoading) && (
               <div className="escalation-link-banner">
                 <span className="icon">warning</span>
-                <span>This account has an active escalation</span>
+                <span>{escalationLoading ? 'Checking for active escalation…' : 'This account has an active escalation'}</span>
                 <label className="escalation-link-toggle">
-                  <input
                     type="checkbox"
                     checked={linkToEscalation}
                     onChange={(e) => {
