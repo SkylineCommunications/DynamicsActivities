@@ -197,11 +197,70 @@ export async function getUserCanManageLeads(msalInstance, userId) {
   return calType !== null && SALES_CAL_TYPES.has(calType)
 }
 
+// ─── Account entity-image cache ──────────────────────────────────────────────
+// Entity images (base64 logos) are large and rarely change during a session,
+// so cache them per-session keyed by accountid. A cached value of `null` means
+// the account was checked and has no image (avoids re-fetching logo-less
+// accounts). Cleared on page reload since it is an in-memory Map.
+const accountImageCache = new Map()
+
+/** Seed the image cache from account rows that already carry `entityimage`. */
+function cacheAccountImages(accounts) {
+  for (const account of accounts ?? []) {
+    if (account?.accountid && 'entityimage' in account) {
+      accountImageCache.set(account.accountid, account.entityimage ?? null)
+    }
+  }
+}
+
+/**
+ * Resolve entity images for a set of account IDs, using the session cache first
+ * and fetching only the misses from Dataverse (in chunks of 20). Negative
+ * results are cached too, so logo-less accounts are not re-requested.
+ * @param {string[]} accountIds
+ * @returns {Promise<Map<string, string|null>>} accountId → entityimage (or null)
+ */
+async function getAccountImages(msalInstance, accountIds) {
+  const result = new Map()
+  const missing = []
+  for (const id of new Set(accountIds)) {
+    if (!id) continue
+    if (accountImageCache.has(id)) {
+      result.set(id, accountImageCache.get(id))
+    } else {
+      missing.push(id)
+    }
+  }
+
+  for (const chunk of chunkArray(missing, 20)) {
+    const filter = chunk.map((id) => `accountid eq ${id}`).join(' or ')
+    const data = await dvFetch(
+      msalInstance,
+      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,entityimage`,
+    ).catch(() => null)
+    const fetched = new Set()
+    for (const row of data?.value ?? []) {
+      const image = row.entityimage ?? null
+      accountImageCache.set(row.accountid, image)
+      result.set(row.accountid, image)
+      fetched.add(row.accountid)
+    }
+    // Cache a null for any requested id that returned no row (no image / no access).
+    for (const id of chunk) {
+      if (!fetched.has(id)) {
+        accountImageCache.set(id, null)
+        result.set(id, null)
+      }
+    }
+  }
+  return result
+}
+
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
   const q = encodeURIComponent(query.trim().replace(/'/g, "''"))
-  const select = 'accountid,name,address1_country,address1_stateorprovince'
+  const select = 'accountid,name,address1_country,address1_stateorprovince,entityimage'
   // Return startswith matches first, then any contains matches, merged and deduped
   const [startsWith, contains] = await Promise.all([
     dvFetch(msalInstance, `/accounts?$filter=startswith(name,'${q}')&$select=${select}&$orderby=name asc&$top=10`).catch(() => null),
@@ -215,16 +274,15 @@ export async function searchAccounts(msalInstance, query) {
       results.push(item)
     }
   }
+  cacheAccountImages(results)
   return results
 }
-
-
 
 /**
  * Resolve an array of Skyline customers to Dataverse accounts.
  * Strategy: batch exact name matches with acronym exact/starts-with matches.
  * @param {Array<{ name: string, acronym: string }>} customers
- * @returns {Promise<Array<{ accountid: string, name: string }>>}
+ * @returns {Promise<Array<{ accountid: string, name: string, entityimage: string|null }>>}
  */
 export async function resolveAccountsByNames(msalInstance, customers) {
   if (!customers?.length) return []
@@ -246,14 +304,16 @@ export async function resolveAccountsByNames(msalInstance, customers) {
   const filter = encodeURIComponent(clauses.join(' or '))
   const data = await dvFetch(
     msalInstance,
-    `/accounts?$filter=${filter}&$select=accountid,name&$orderby=name asc&$top=100`,
+    `/accounts?$filter=${filter}&$select=accountid,name,entityimage&$orderby=name asc&$top=100`,
   ).catch(() => null)
 
   const resolved = new Map()
   for (const account of data?.value ?? []) {
     if (!resolved.has(account.accountid)) resolved.set(account.accountid, account)
   }
-  return Array.from(resolved.values())
+  const accounts = Array.from(resolved.values())
+  cacheAccountImages(accounts)
+  return accounts
 }
 
 export async function searchCountries(msalInstance, query) {
@@ -846,8 +906,9 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
   const relatedIds = []
   const escalationIds = []
   const leadIds = []
+  const opportunityIds = []
 
-  for (const opp of opportunitiesData?.value ?? []) relatedIds.push(opp.opportunityid)
+  for (const opp of opportunitiesData?.value ?? []) { relatedIds.push(opp.opportunityid); opportunityIds.push(opp.opportunityid) }
   for (const c of contactsData?.value ?? []) relatedIds.push(c.contactid)
   for (const lead of leadsData?.value ?? []) { relatedIds.push(lead.leadid); leadIds.push(lead.leadid) }
   for (const escalation of escalationsData?.value ?? []) {
@@ -855,7 +916,108 @@ async function getAccountRelatedEntityIds(msalInstance, accountId) {
     if (escalationId) escalationIds.push(escalationId)
   }
 
-  return { relatedIds, escalationIds, leadIds }
+  return { relatedIds, escalationIds, leadIds, opportunityIds }
+}
+
+// Maps a "regarding" lookup type (contact/lead/opportunity) to the query needed
+// to find its parent account, so activities filed against a person can still show
+// the account avatar + name while keeping the person's name.
+const REGARDING_PARENT_LOOKUP = {
+  contact: { entity: 'contacts', idField: 'contactid', parentField: '_parentcustomerid_value' },
+  lead: { entity: 'leads', idField: 'leadid', parentField: '_parentaccountid_value' },
+  opportunity: { entity: 'opportunities', idField: 'opportunityid', parentField: '_parentaccountid_value' },
+}
+
+/**
+ * For activities whose "regarding" is a contact/lead/opportunity (not an account),
+ * resolve the parent account and attach `_resolvedAccountId` / `_resolvedAccountName`
+ * / `_resolvedAccountImage` while preserving the original contact/lead/opportunity
+ * name via `_regardingDisplayName`.
+ * Also resolves the display name for account-regarding notes (e.g. annotations)
+ * when Dataverse does not return a formatted name for the lookup.
+ * Mutates the given notes in place.
+ */
+async function resolveRegardingAccounts(msalInstance, notes) {
+  const idsByType = new Map() // lookup type -> Set of regarding ids
+  const accountIdsNeedingName = new Set() // account-regarding notes lacking a display name
+  for (const note of notes) {
+    const type = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+    const id = note._regardingobjectid_value
+    if (!id) continue
+    if (type === 'account') {
+      if (!note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']) accountIdsNeedingName.add(id)
+      continue
+    }
+    if (!REGARDING_PARENT_LOOKUP[type]) continue
+    if (!idsByType.has(type)) idsByType.set(type, new Set())
+    idsByType.get(type).add(id)
+  }
+  if (!idsByType.size && !accountIdsNeedingName.size) return
+
+  const parentById = new Map() // regarding id -> { accountId, accountName }
+  for (const [type, idSet] of idsByType) {
+    const cfg = REGARDING_PARENT_LOOKUP[type]
+    for (const chunk of chunkArray([...idSet], 20)) {
+      const filter = chunk.map((id) => `${cfg.idField} eq ${id}`).join(' or ')
+      const data = await dvFetch(
+        msalInstance,
+        `/${cfg.entity}?$filter=${encodeURIComponent(filter)}&$select=${cfg.idField},${cfg.parentField}`,
+      ).catch(() => null)
+      for (const row of data?.value ?? []) {
+        const parentId = row[cfg.parentField]
+        const parentType = row[`${cfg.parentField}@Microsoft.Dynamics.CRM.lookuplogicalname`]
+        if (!parentId || parentType !== 'account') continue
+        parentById.set(row[cfg.idField], {
+          accountId: parentId,
+          accountName: row[`${cfg.parentField}@OData.Community.Display.V1.FormattedValue`] || '',
+        })
+      }
+    }
+  }
+
+  // Resolve the name (when missing) and logo for every resolved account —
+  // both the parent accounts and the account-regarding notes lacking a name.
+  const accountIdsForLookup = new Set(accountIdsNeedingName)
+  for (const { accountId } of parentById.values()) {
+    if (accountId) accountIdsForLookup.add(accountId)
+  }
+
+  // Names are needed only for account-regarding notes lacking a formatted name.
+  const accountNameById = new Map()
+  for (const chunk of chunkArray([...accountIdsNeedingName], 20)) {
+    const filter = chunk.map((id) => `accountid eq ${id}`).join(' or ')
+    const data = await dvFetch(
+      msalInstance,
+      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,name`,
+    ).catch(() => null)
+    for (const row of data?.value ?? []) {
+      accountNameById.set(row.accountid, row.name || '')
+    }
+  }
+
+  // Images for every resolved account — cache-first, fetching only the misses.
+  const accountImageById = await getAccountImages(msalInstance, [...accountIdsForLookup])
+
+  for (const note of notes) {
+    const type = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+    const id = note._regardingobjectid_value
+    if (!id) continue
+    if (type === 'account') {
+      if (accountImageById.has(id)) note._resolvedAccountImage = accountImageById.get(id)
+      if (!note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] && accountNameById.has(id)) {
+        note._resolvedAccountId = id
+        note._resolvedAccountName = accountNameById.get(id)
+      }
+      continue
+    }
+    if (!REGARDING_PARENT_LOOKUP[type]) continue
+    note._regardingDisplayName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
+    const parent = parentById.get(id)
+    if (!parent) continue
+    note._resolvedAccountId = parent.accountId
+    note._resolvedAccountName = parent.accountName
+    if (accountImageById.has(parent.accountId)) note._resolvedAccountImage = accountImageById.get(parent.accountId)
+  }
 }
 
 // ─── Dynamics deep link ───────────────────────────────────────────────────────
@@ -983,16 +1145,24 @@ async function fetchAnnotations(msalInstance, filterClauses) {
     `/annotations?$select=${ANNOTATION_SELECT}${filterStr}&$orderby=createdon desc`,
   ).catch(() => ({ value: [] }))
 
-  return (data?.value ?? []).map((r) => ({
-    ...r,
-    activityid: r.annotationid,
-    description: r.notetext,
-    _regardingobjectid_value: r._objectid_value,
-    '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': r['_objectid_value@OData.Community.Display.V1.FormattedValue'],
-    _linkedToEscalation: r.objecttypecode === 'slc_escalation',
-    _linkedToLead: r.objecttypecode === 'lead',
-    _entityType: 'annotations',
-  }))
+  return (data?.value ?? []).map((r) => {
+    // Normalise annotation's objectid lookup onto the same shape activities use so
+    // account avatar/name resolution works uniformly. Dataverse does not return a
+    // formatted display name for the polymorphic objectid lookup, so the name is
+    // resolved later in resolveRegardingAccounts.
+    const objectType = r['_objectid_value@Microsoft.Dynamics.CRM.lookuplogicalname'] || r.objecttypecode || null
+    return {
+      ...r,
+      activityid: r.annotationid,
+      description: r.notetext,
+      _regardingobjectid_value: r._objectid_value,
+      '_regardingobjectid_value@OData.Community.Display.V1.FormattedValue': r['_objectid_value@OData.Community.Display.V1.FormattedValue'],
+      ...(objectType ? { '_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname': objectType } : {}),
+      _linkedToEscalation: r.objecttypecode === 'slc_escalation',
+      _linkedToLead: r.objecttypecode === 'lead',
+      _entityType: 'annotations',
+    }
+  })
 }
 
 /**
@@ -1036,6 +1206,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     const escalationBase = []
     let escalationIds = []
     let leadIds = []
+    let opportunityIds = []
     const fetches = []
 
     const needsRelatedIds = wantCalls || wantAppts || wantEmails || wantEscalations || wantAnnotations
@@ -1044,6 +1215,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
       const related = await getAccountRelatedEntityIds(msalInstance, accountId)
       escalationIds = related.escalationIds
       leadIds = related.leadIds
+      opportunityIds = related.opportunityIds
       const directIds = Array.from(new Set([accountId, ...related.relatedIds])).slice(0, 50)
       const allIds = Array.from(new Set([...directIds, ...escalationIds])).slice(0, 50)
       base.push(buildLookupFilter('_regardingobjectid_value', allIds))
@@ -1095,7 +1267,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     }
 
     if (wantAnnotations) {
-      const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds])).slice(0, 50) : []
+      const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds, ...opportunityIds])).slice(0, 50) : []
       const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
       addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
       fetches.push(fetchAnnotations(msalInstance, annotationFilter))
@@ -1116,6 +1288,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     if (id) seen.add(id)
     deduped.push(r)
   }
+  await resolveRegardingAccounts(msalInstance, deduped)
   deduped.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
   return deduped
 }

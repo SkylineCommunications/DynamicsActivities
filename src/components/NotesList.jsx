@@ -150,6 +150,7 @@ function toSummaryActivity(note) {
   const regarding = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
     || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
     || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
+    || note['_objectid_value@OData.Community.Display.V1.FormattedValue']
     || ''
 
   return {
@@ -244,14 +245,49 @@ function RichPreview({ html, clamped }) {
   return <div className="note-text-shadow-host" ref={hostRef} />
 }
 
-function NoteCard({ note, expanded, onToggle }) {
+function accountInitials(accountName) {
+  const words = String(accountName ?? '').trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return (words[0][0] + words.at(-1)[0]).toUpperCase()
+}
+
+function AccountAvatar({ name, image, size = 'sm' }) {
+  return (
+    <span className={`account-avatar account-avatar-${size}`} title={name || undefined}>
+      {image
+        ? <img src={`data:image/jpeg;base64,${image}`} alt="" aria-hidden="true" />
+        : <span className="account-avatar-initials" aria-hidden="true">{accountInitials(name)}</span>}
+    </span>
+  )
+}
+
+function noteAccountId(note) {
+  if (!note) return null
+  if (note._entityType === 'slc_escalations') return note._regardingobjectid_value ?? null
+  if (note._parentaccountid_value) return note._parentaccountid_value
+  const lookupType = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+  if (lookupType === 'account') return note._regardingobjectid_value ?? null
+  if (note._resolvedAccountId) return note._resolvedAccountId
+  return null
+}
+
+function NoteCard({ note, expanded, onToggle, accountImages = {} }) {
   const label = noteTypeLabel(note)
   const date = noteDate(note)
   const attendees = extractAttendees(note)
+  const regardingType = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
+  const regardingName = note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue'] || ''
   const accountName = note['_slc_accountid_value@OData.Community.Display.V1.FormattedValue']
-    || note['_regardingobjectid_value@OData.Community.Display.V1.FormattedValue']
+    || (regardingType === 'account' ? regardingName : '')
+    || note._resolvedAccountName
     || note['_parentaccountid_value@OData.Community.Display.V1.FormattedValue']
     || ''
+  const personName = regardingType === 'contact' ? note._regardingDisplayName : ''
+  const leadName = (regardingType === 'lead') ? note._regardingDisplayName : ''
+  const opportunityName = (regardingType === 'opportunity') ? note._regardingDisplayName : ''
+  const accountId = noteAccountId(note)
+  const accountImage = accountImages[accountId] ?? note._resolvedAccountImage ?? null
   const rawPreview = note.notetext || note.description || ''
   const preview = rawPreview.replace(/^\[Linked to escalation]\n?/, '')
   const previewHtml = formatPreviewHtml(preview)
@@ -282,7 +318,32 @@ function NoteCard({ note, expanded, onToggle }) {
       </div>
 
       {note.subject && note.subject !== label && <div className="note-subject">{note.subject}</div>}
-      {accountName && <div className="note-account"><span className="icon icon-sm">business_center</span> Regarding: {accountName}</div>}
+      {(accountName || personName || leadName || opportunityName) && (
+        <div className="note-account">
+          {accountName && (
+            <span className="note-account-name">
+              {accountId
+                ? <AccountAvatar name={accountName} image={accountImage} size="md" />
+                : <span className="icon icon-sm">business_center</span>} {accountName}
+            </span>
+          )}
+          {personName && (
+            <span className="note-account-regarding">
+              <span className="icon icon-sm">person</span> {personName}
+            </span>
+          )}
+          {leadName && (
+            <span className="note-account-regarding">
+              <span className="icon icon-sm">trending_up</span> {leadName}
+            </span>
+          )}
+          {opportunityName && (
+            <span className="note-account-regarding">
+              <span className="icon icon-sm">work</span> {opportunityName}
+            </span>
+          )}
+        </div>
+      )}
       {note._linkedToEscalation && (
         <div className="note-escalation-link">
           <span className="icon icon-sm">link</span> Linked to escalation
@@ -379,6 +440,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
 
   // Filter state
   const [accounts, setAccounts] = useState(initialAccount ? [initialAccount] : [])
+  const [accountImages, setAccountImages] = useState({})
   const [attendees, setAttendees] = useState([]) // [{ contactid, fullname }]
   const [selectedTypes, setSelectedTypes] = useState(new Set()) // empty = all
   const [dateFrom, setDateFrom] = useState('')
@@ -407,6 +469,11 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
     if (!managedAccounts.length) return
     if (initialAccount) return // don't override when navigated from Create
     setAccounts(managedAccounts)
+    // Seed avatars inline — managed accounts already carry entityimage.
+    setAccountImages((prev) => ({
+      ...prev,
+      ...Object.fromEntries(managedAccounts.filter((a) => a.accountid).map((a) => [a.accountid, a.entityimage || null])),
+    }))
     setTamAutoApplied(true)
   }, [tamLoading, managedAccounts, initialAccount])
 
@@ -518,9 +585,13 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
               searchFn={(q) => searchAccounts(instance, q)}
               getKey={(a) => a.accountid}
               getLabel={(a) => a.name}
+              renderIcon={(a) => <AccountAvatar name={a.name} image={a.entityimage} />}
               value={null}
               onChange={(item) => {
                 if (item && !accounts.some((a) => a.accountid === item.accountid)) {
+                  if (item.accountid && 'entityimage' in item) {
+                    setAccountImages((prev) => ({ ...prev, [item.accountid]: item.entityimage || null }))
+                  }
                   setAccounts((prev) => [...prev, item])
                 }
               }}
@@ -556,6 +627,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
           <div className="filter-chips">
             {accounts.map((a) => (
               <span key={a.accountid} className="filter-chip">
+                <AccountAvatar name={a.name} image={accountImages[a.accountid]} />
                 {a.name}
                 <button
                   type="button"
@@ -583,8 +655,8 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
           </div>
         )}
 
-        <div className="filter-row filter-row-controls">
-          {activeView.typeIds.length > 1 && (
+        {activeView.typeIds.length > 1 && (
+          <div className="filter-row">
             <div className="filter-field">
               <label className="filter-label">Type</label>
               <div className="filter-type-btns">
@@ -614,7 +686,10 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
                 ))}
               </div>
             </div>
-          )}
+          </div>
+        )}
+
+        <div className="filter-row filter-row-controls">
           <div className="filter-field filter-field-date">
             <label className="filter-label">From</label>
             <input
@@ -664,7 +739,11 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
         </div>
       )}
 
-      {loading && <div className="loading-text">Searching…</div>}
+      {loading && (
+        <div className="loading-spinner-wrap">
+          <span className="loading-spinner" aria-label="Searching" role="status" />
+        </div>
+      )}
 
       {notes !== null && notes.length > 0 && (
         <>
@@ -703,6 +782,7 @@ export default function NotesList({ refreshKey, initialAccount, managedAccounts 
                   note={n}
                   expanded={expandedId === recordId}
                   onToggle={() => setExpandedId((prev) => (prev === recordId ? null : recordId))}
+                  accountImages={accountImages}
                 />
               )
             })}
