@@ -34,6 +34,17 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           promotion_branch="automation/main-to-release-candidate"
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/heads/${promotion_branch}" \
+            -f "sha=${main_sha}"; then
+            if ! gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${promotion_branch}" \
+              -f "sha=${main_sha}" \
+              -F force=false; then
+              echo "Promotion branch has diverged from main; leaving it unchanged for conflict resolution."
+            fi
+          fi
+
           pr_number="$(gh pr list \
             --base release-candidate \
             --head "$promotion_branch" \
@@ -42,15 +53,6 @@ jobs:
             --jq '.[0].number // empty')"
 
           if [[ -z "$pr_number" ]]; then
-            main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-            if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f "ref=refs/heads/${promotion_branch}" \
-              -f "sha=${main_sha}"; then
-              gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${promotion_branch}" \
-                -f "sha=${main_sha}" \
-                -F force=true
-            fi
-
             pr_number="$(gh pr create \
               --base release-candidate \
               --head "$promotion_branch" \
