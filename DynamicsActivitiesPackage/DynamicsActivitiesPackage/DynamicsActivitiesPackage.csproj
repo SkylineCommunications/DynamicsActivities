@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.12.4</Version>
-		<VersionComment>Lead/opportunity forms now use the shared account autocomplete (reusing searchAccounts + AutocompletePicker): existing accounts are suggested as you type, while free-text entry of a new company is still allowed. Degrades gracefully to plain text if the search is unavailable.</VersionComment>
+		<Version>1.12.5</Version>
+		<VersionComment>Fix: lead/opportunity forms no longer open multiple email drafts on a fast double-click or Enter+click. Added a synchronous submit guard so the mail draft opens exactly once per submission.</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>

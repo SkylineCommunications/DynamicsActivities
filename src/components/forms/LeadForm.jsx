@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { submitLead } from '../../api/leads'
 import { searchAccounts } from '../../api/dataverse'
@@ -32,6 +32,9 @@ export default function LeadForm({ onDone }) {
   const [values, setValues] = useState(initialState)
   const [error, setError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  // Synchronous guard: prevents a fast double-click (or Enter + click) from opening
+  // the email draft more than once before React re-renders to the success screen.
+  const submittingRef = useRef(false)
   // Bumped to remount the account picker so its internal input resets on "add another".
   const [resetKey, setResetKey] = useState(0)
 
@@ -54,7 +57,9 @@ export default function LeadForm({ onDone }) {
 
   function handleSubmit(e) {
     e.preventDefault()
+    if (submittingRef.current) return
     if (!isValid()) return
+    submittingRef.current = true
     setError(null)
     try {
       const payload = Object.fromEntries(
@@ -63,6 +68,7 @@ export default function LeadForm({ onDone }) {
       submitLead(payload)
       setSubmitted(true)
     } catch (err) {
+      submittingRef.current = false
       setError(err.message || 'Something went wrong while opening the lead email.')
     }
   }
@@ -78,7 +84,7 @@ export default function LeadForm({ onDone }) {
             <button
               type="button"
               className="btn-ghost"
-              onClick={() => { setValues(initialState); setSubmitted(false); setResetKey((k) => k + 1) }}
+              onClick={() => { setValues(initialState); setSubmitted(false); submittingRef.current = false; setResetKey((k) => k + 1) }}
             >
               <span className="icon icon-sm" aria-hidden="true">add</span> Add another lead
             </button>
