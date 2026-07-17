@@ -637,7 +637,12 @@ function MailAddModal({
       setLinkToEscalation(false)
       return
     }
+    const pendingLink = pendingOriginalLinkRef.current
+    const pendingLinkMatchesAccount = pendingLink?.accountId === accountId
     let active = true
+    setLinkToLeadId(pendingLinkMatchesAccount && pendingLink.type === 'lead' ? pendingLink.id : '')
+    setLinkToOpportunityId(pendingLinkMatchesAccount && pendingLink.type === 'opportunity' ? pendingLink.id : '')
+    setLinkToEscalation(false)
     setEscalationLoading(true)
     Promise.all([
       getAccountLeads(instance, accountId),
@@ -649,9 +654,8 @@ function MailAddModal({
         setAccountLeads(leads)
         setAccountOpportunities(opportunities)
         setActiveEscalation(escalation)
-        setLinkToEscalation(!!escalation)
-        const pendingLink = pendingOriginalLinkRef.current
-        if (pendingLink?.accountId === accountId) {
+        setLinkToEscalation(pendingLinkMatchesAccount ? false : !!escalation)
+        if (pendingLinkMatchesAccount) {
           setLinkToLeadId(pendingLink.type === 'lead' ? pendingLink.id : '')
           setLinkToOpportunityId(pendingLink.type === 'opportunity' ? pendingLink.id : '')
           pendingOriginalLinkRef.current = null
@@ -691,6 +695,9 @@ function MailAddModal({
       type: originalSuggestion.regardingType,
       id: originalSuggestion.regardingId,
     }
+    setLinkToLeadId(originalSuggestion.regardingType === 'lead' ? originalSuggestion.regardingId : '')
+    setLinkToOpportunityId(originalSuggestion.regardingType === 'opportunity' ? originalSuggestion.regardingId : '')
+    setLinkToEscalation(false)
     setRegardingType('account')
     setRegardingItem(account)
   }
@@ -753,11 +760,13 @@ function MailAddModal({
   function applyParticipantEdits(message) {
     const removed = participantEdits.removed
     const additions = participantEdits.added
+    const getKey = (participant) => `${participant.role}:${participant.email.toLowerCase()}`
+    const activeAdditions = additions.filter((participant) => !removed.has(getKey(participant)))
     const isRemoved = (role, recipient) => removed.has(`${role}:${recipient.email.toLowerCase()}`)
-    const additionsFor = (role) => additions
+    const additionsFor = (role) => activeAdditions
       .filter((participant) => participant.role === role)
       .map(({ name, email }) => ({ name, email }))
-    const fromAddition = additions.find((participant) => participant.role === 'From')
+    const fromAddition = [...activeAdditions].reverse().find((participant) => participant.role === 'From')
     const originalFrom = message.from?.email && !isRemoved('From', message.from) ? message.from : null
 
     return {
@@ -1094,6 +1103,7 @@ function MailAddModal({
                 <span className="icon">warning</span>
                 <span>{escalationLoading ? 'Checking for active escalation…' : 'This account has an active escalation'}</span>
                 <label className="escalation-link-toggle">
+                  <input
                     type="checkbox"
                     checked={linkToEscalation}
                     onChange={(e) => {

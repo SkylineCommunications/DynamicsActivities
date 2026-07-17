@@ -389,7 +389,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         name: contact.fullname,
         email: contact.emailaddress1,
         contactId: contact.contactid,
-        ...(isEmail ? { role: isInboxAssisted ? 'To' : role } : {}),
+        ...(isEmail ? { role: role || 'To' } : {}),
       },
     ])
   }
@@ -532,6 +532,12 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
         }
         const importedMessage = {
           ...inboxMessage,
+          from: (() => {
+            const sender = attendees.find((attendee) => attendee.role === 'From' && attendee.email)
+            return sender
+              ? { name: sender.name || sender.email, email: sender.email }
+              : null
+          })(),
           subject: subject.trim() || '(No subject)',
           receivedDateTime: date ? new Date(date) : inboxMessage.receivedDateTime,
           description: note,
