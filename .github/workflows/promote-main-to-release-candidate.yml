@@ -27,22 +27,36 @@ jobs:
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
-      - name: Create or reuse promotion pull request
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update the promotion branch and create or reuse its pull request
         id: promotion
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           promotion_branch="automation/main-to-release-candidate"
-          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
-          if ! gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-            -f "ref=refs/heads/${promotion_branch}" \
-            -f "sha=${main_sha}"; then
-            if ! gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${promotion_branch}" \
-              -f "sha=${main_sha}" \
-              -F force=false; then
-              echo "Promotion branch has diverged from main; leaving it unchanged for conflict resolution."
+          conflict=false
+          git fetch origin main release-candidate
+
+          if git ls-remote --exit-code --heads origin "$promotion_branch" >/dev/null; then
+            git fetch origin "$promotion_branch"
+            git switch --force-create "$promotion_branch" "origin/$promotion_branch"
+
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              if git merge --no-edit origin/main; then
+                git push origin "HEAD:refs/heads/${promotion_branch}"
+              else
+                git merge --abort
+                conflict=true
+              fi
             fi
+          else
+            git switch --create "$promotion_branch" origin/main
+            git push origin "HEAD:refs/heads/${promotion_branch}"
           fi
 
           pr_number="$(gh pr list \
@@ -52,7 +66,11 @@ jobs:
             --json number \
             --jq '.[0].number // empty')"
 
-          if [[ -z "$pr_number" ]]; then
+          if [[ -z "$pr_number" && "$conflict" == false ]] &&
+            [[ -z "$(git log --format=%H origin/release-candidate..HEAD)" ]]; then
+            echo "::notice::release-candidate already contains all commits from the promotion branch."
+            echo "no_changes=true" >> "$GITHUB_OUTPUT"
+          elif [[ -z "$pr_number" && "$conflict" == false ]]; then
             pr_url="$(gh pr create \
               --base release-candidate \
               --head "$promotion_branch" \
@@ -62,9 +80,11 @@ jobs:
           fi
 
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "conflicting=$conflict" >> "$GITHUB_OUTPUT"
 
       - name: Try to enable auto-merge
         id: merge
+        if: steps.promotion.outputs.number != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -86,7 +106,7 @@ jobs:
           fi
 
       - name: Ask Copilot to resolve merge conflicts
-        if: steps.merge.outputs.conflicting == 'true' || failure()
+        if: steps.promotion.outputs.number != '' && (steps.promotion.outputs.conflicting == 'true' || steps.merge.outputs.conflicting == 'true')
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
