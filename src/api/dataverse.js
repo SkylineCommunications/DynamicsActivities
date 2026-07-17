@@ -197,6 +197,65 @@ export async function getUserCanManageLeads(msalInstance, userId) {
   return calType !== null && SALES_CAL_TYPES.has(calType)
 }
 
+// ─── Account entity-image cache ──────────────────────────────────────────────
+// Entity images (base64 logos) are large and rarely change during a session,
+// so cache them per-session keyed by accountid. A cached value of `null` means
+// the account was checked and has no image (avoids re-fetching logo-less
+// accounts). Cleared on page reload since it is an in-memory Map.
+const accountImageCache = new Map()
+
+/** Seed the image cache from account rows that already carry `entityimage`. */
+function cacheAccountImages(accounts) {
+  for (const account of accounts ?? []) {
+    if (account?.accountid && 'entityimage' in account) {
+      accountImageCache.set(account.accountid, account.entityimage ?? null)
+    }
+  }
+}
+
+/**
+ * Resolve entity images for a set of account IDs, using the session cache first
+ * and fetching only the misses from Dataverse (in chunks of 20). Negative
+ * results are cached too, so logo-less accounts are not re-requested.
+ * @param {string[]} accountIds
+ * @returns {Promise<Map<string, string|null>>} accountId → entityimage (or null)
+ */
+async function getAccountImages(msalInstance, accountIds) {
+  const result = new Map()
+  const missing = []
+  for (const id of new Set(accountIds)) {
+    if (!id) continue
+    if (accountImageCache.has(id)) {
+      result.set(id, accountImageCache.get(id))
+    } else {
+      missing.push(id)
+    }
+  }
+
+  for (const chunk of chunkArray(missing, 20)) {
+    const filter = chunk.map((id) => `accountid eq ${id}`).join(' or ')
+    const data = await dvFetch(
+      msalInstance,
+      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,entityimage`,
+    ).catch(() => null)
+    const fetched = new Set()
+    for (const row of data?.value ?? []) {
+      const image = row.entityimage ?? null
+      accountImageCache.set(row.accountid, image)
+      result.set(row.accountid, image)
+      fetched.add(row.accountid)
+    }
+    // Cache a null for any requested id that returned no row (no image / no access).
+    for (const id of chunk) {
+      if (!fetched.has(id)) {
+        accountImageCache.set(id, null)
+        result.set(id, null)
+      }
+    }
+  }
+  return result
+}
+
 // ─── Accounts ────────────────────────────────────────────────────────────────
 export async function searchAccounts(msalInstance, query) {
   if (!query || query.trim().length < 2) return []
@@ -215,6 +274,7 @@ export async function searchAccounts(msalInstance, query) {
       results.push(item)
     }
   }
+  cacheAccountImages(results)
   return results
 }
 
@@ -251,7 +311,9 @@ export async function resolveAccountsByNames(msalInstance, customers) {
   for (const account of data?.value ?? []) {
     if (!resolved.has(account.accountid)) resolved.set(account.accountid, account)
   }
-  return Array.from(resolved.values())
+  const accounts = Array.from(resolved.values())
+  cacheAccountImages(accounts)
+  return accounts
 }
 
 export async function searchCountries(msalInstance, query) {
@@ -913,26 +975,28 @@ async function resolveRegardingAccounts(msalInstance, notes) {
     }
   }
 
-  // Batch-fetch the name (when missing) and logo for every resolved account —
+  // Resolve the name (when missing) and logo for every resolved account —
   // both the parent accounts and the account-regarding notes lacking a name.
   const accountIdsForLookup = new Set(accountIdsNeedingName)
   for (const { accountId } of parentById.values()) {
     if (accountId) accountIdsForLookup.add(accountId)
   }
 
+  // Names are needed only for account-regarding notes lacking a formatted name.
   const accountNameById = new Map()
-  const accountImageById = new Map()
-  for (const chunk of chunkArray([...accountIdsForLookup], 20)) {
+  for (const chunk of chunkArray([...accountIdsNeedingName], 20)) {
     const filter = chunk.map((id) => `accountid eq ${id}`).join(' or ')
     const data = await dvFetch(
       msalInstance,
-      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,name,entityimage`,
+      `/accounts?$filter=${encodeURIComponent(filter)}&$select=accountid,name`,
     ).catch(() => null)
     for (const row of data?.value ?? []) {
       accountNameById.set(row.accountid, row.name || '')
-      accountImageById.set(row.accountid, row.entityimage ?? null)
     }
   }
+
+  // Images for every resolved account — cache-first, fetching only the misses.
+  const accountImageById = await getAccountImages(msalInstance, [...accountIdsForLookup])
 
   for (const note of notes) {
     const type = note['_regardingobjectid_value@Microsoft.Dynamics.CRM.lookuplogicalname']
