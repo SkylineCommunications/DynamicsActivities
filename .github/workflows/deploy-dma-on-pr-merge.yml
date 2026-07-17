@@ -9,20 +9,66 @@
 #   DATAMINER_TOKEN, VITE_CLIENT_ID, VITE_TENANT_ID, VITE_DATAVERSE_URL
 # Required vars:
 #   VITE_REDIRECT_URI
+# Optional vars:
+#   VITE_REDIRECT_URI_DEV — Manual development deploy target
+#   VITE_REDIRECT_URI_RC  — Release candidate deploy target
 
-name: Build, Register and Deploy DMAPP to DMA on PR Merge
+name: Deploy DynamicsActivities DMAPP
 
 on:
   pull_request:
     types: [closed]
-    branches: [main]
+    branches:
+      - main
+      - release-candidate
   workflow_dispatch:
+    inputs:
+      deployment_target:
+        description: "Deployment target"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dynamicsactivities-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+  deploy_production:
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'production' && github.ref == 'refs/heads/main')
     uses: ./.github/workflows/deploy-dmapp-reusable.yml
     with:
       catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
       agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI }}
+      vite_app_base_path:   "/public/DynamicsActivities/"
+      webapp_public_folder: "DynamicsActivities"
+    secrets: inherit
+
+  deploy_release_candidate:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'release-candidate'
+    uses: ./.github/workflows/deploy-dmapp-reusable.yml
+    with:
+      catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
+      agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI_RC }}
+      vite_app_base_path:   "/public/DynamicsActivitiesRC/"
+      webapp_public_folder: "DynamicsActivitiesRC"
+    secrets: inherit
+
+  deploy_dev:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.deployment_target == 'dev'
+    uses: ./.github/workflows/deploy-dmapp-reusable.yml
+    with:
+      catalog_id:           "b6dc92d4-401e-42fd-b7bd-87d1ff562420"
+      agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
+      vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI_DEV }}
+      vite_app_base_path:   "/public/DynamicsActivitiesDev/"
+      webapp_public_folder: "DynamicsActivitiesDev"
     secrets: inherit
