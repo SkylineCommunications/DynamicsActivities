@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { useMsal } from '@azure/msal-react'
 import { submitOpportunity } from '../../api/opportunities'
+import { searchAccounts } from '../../api/dataverse'
+import AutocompletePicker from '../AutocompletePicker'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -26,12 +29,19 @@ const initialState = {
  * @param {{ onDone?: () => void }} props
  */
 export default function OpportunityForm({ onDone }) {
+  const { instance } = useMsal()
   const [values, setValues] = useState(initialState)
   const [error, setError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  // Bumped to remount the account picker so its internal input resets on "add another".
+  const [resetKey, setResetKey] = useState(0)
 
   function update(field) {
     return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value.slice(0, MAX_FIELD_LENGTH) }))
+  }
+
+  function setCompany(name) {
+    setValues((prev) => ({ ...prev, company: (name || '').slice(0, MAX_FIELD_LENGTH) }))
   }
 
   function isValid() {
@@ -69,7 +79,7 @@ export default function OpportunityForm({ onDone }) {
             <button
               type="button"
               className="btn-ghost"
-              onClick={() => { setValues(initialState); setSubmitted(false) }}
+              onClick={() => { setValues(initialState); setSubmitted(false); setResetKey((k) => k + 1) }}
             >
               <span className="icon icon-sm" aria-hidden="true">add</span> Add another opportunity
             </button>
@@ -99,7 +109,18 @@ export default function OpportunityForm({ onDone }) {
         <div className="lead-form-grid">
           <div className="field">
             <label className="field-label" htmlFor="opp-company">Company / Account <span className="required">*</span></label>
-            <input id="opp-company" className="input" type="text" value={values.company} onChange={update('company')} autoComplete="organization" required />
+            <AutocompletePicker
+              key={resetKey}
+              searchFn={(q) => searchAccounts(instance, q)}
+              getKey={(a) => a.accountid}
+              getLabel={(a) => a.name}
+              getSublabel={(a) => a.address1_country}
+              value={null}
+              onChange={(item) => { if (item) setCompany(item.name) }}
+              onQueryChange={setCompany}
+              placeholder="Search or type a company / account…"
+              minChars={2}
+            />
           </div>
           <div className="field">
             <label className="field-label" htmlFor="opp-value">Estimated value <span className="optional">(optional)</span></label>

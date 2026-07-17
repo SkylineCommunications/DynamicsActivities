@@ -30,9 +30,9 @@ const FIELDS = [
  * @param {object} lead Lead form fields.
  */
 export function submitLead(lead) {
-  const name = [lead.firstName, lead.lastName].filter((v) => v && v.trim()).join(' ').trim()
-  const who = name || 'Unknown contact'
-  const subject = lead.company ? `[New Lead] ${who} (${lead.company})` : `[New Lead] ${who}`
+  const topic = lead.topic && lead.topic.trim() ? lead.topic.trim() : 'Untitled'
+  const company = lead.company ? ` (${lead.company})` : ''
+  const subject = `[New Lead] ${topic}${company}`
   const rows = FIELDS.map(([label, key]) => [label, lead[key]])
 
   const dmaUser = getDmaUser()

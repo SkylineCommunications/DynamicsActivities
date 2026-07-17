@@ -10,6 +10,8 @@ import { useState, useEffect, useRef } from 'react'
  *   getSublabel(item) → string|null      — secondary display text (optional)
  *   value           — currently selected item or null
  *   onChange(item)  — called when item is selected (or null when cleared)
+ *   onQueryChange(text) — optional; called on every raw input change (enables
+ *                         free-text entry alongside suggestions)
  *   placeholder     — input placeholder text
  *   clearOnPick     — if true, clears input after selection (for multi-add flows)
  *   minChars        — minimum chars before searching (default 2)
@@ -23,6 +25,7 @@ export default function AutocompletePicker({
   value,
   onChange,
   onEnter,
+  onQueryChange,
   placeholder = 'Search…',
   clearOnPick = false,
   autoSelectSingle = false,
@@ -48,6 +51,7 @@ export default function AutocompletePicker({
   function handleInput(e) {
     const q = e.target.value
     setQuery(q)
+    onQueryChange?.(q)
     if (!q) {
       onChange(null)
       clearTimeout(timer.current)

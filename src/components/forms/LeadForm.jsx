@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { useMsal } from '@azure/msal-react'
 import { submitLead } from '../../api/leads'
+import { searchAccounts } from '../../api/dataverse'
+import AutocompletePicker from '../AutocompletePicker'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -25,21 +28,27 @@ const initialState = {
  * @param {{ onDone?: () => void }} props
  */
 export default function LeadForm({ onDone }) {
+  const { instance } = useMsal()
   const [values, setValues] = useState(initialState)
   const [error, setError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  // Bumped to remount the account picker so its internal input resets on "add another".
+  const [resetKey, setResetKey] = useState(0)
 
   function update(field) {
     return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value.slice(0, MAX_FIELD_LENGTH) }))
   }
 
+  function setCompany(name) {
+    setValues((prev) => ({ ...prev, company: (name || '').slice(0, MAX_FIELD_LENGTH) }))
+  }
+
   function isValid() {
+    const email = values.email.trim()
     return (
       values.topic.trim()
-      && values.firstName.trim()
-      && values.lastName.trim()
       && values.company.trim()
-      && EMAIL_RE.test(values.email.trim())
+      && (!email || EMAIL_RE.test(email))
     )
   }
 
@@ -69,7 +78,7 @@ export default function LeadForm({ onDone }) {
             <button
               type="button"
               className="btn-ghost"
-              onClick={() => { setValues(initialState); setSubmitted(false) }}
+              onClick={() => { setValues(initialState); setSubmitted(false); setResetKey((k) => k + 1) }}
             >
               <span className="icon icon-sm" aria-hidden="true">add</span> Add another lead
             </button>
@@ -98,24 +107,35 @@ export default function LeadForm({ onDone }) {
 
         <div className="lead-form-grid">
           <div className="field">
-            <label className="field-label" htmlFor="lead-first">First name <span className="required">*</span></label>
-            <input id="lead-first" className="input" type="text" value={values.firstName} onChange={update('firstName')} autoComplete="given-name" required />
+            <label className="field-label" htmlFor="lead-first">First name <span className="optional">(optional)</span></label>
+            <input id="lead-first" className="input" type="text" value={values.firstName} onChange={update('firstName')} autoComplete="given-name" />
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="lead-last">Last name <span className="required">*</span></label>
-            <input id="lead-last" className="input" type="text" value={values.lastName} onChange={update('lastName')} autoComplete="family-name" required />
+            <label className="field-label" htmlFor="lead-last">Last name <span className="optional">(optional)</span></label>
+            <input id="lead-last" className="input" type="text" value={values.lastName} onChange={update('lastName')} autoComplete="family-name" />
           </div>
           <div className="field">
             <label className="field-label" htmlFor="lead-company">Company / Account <span className="required">*</span></label>
-            <input id="lead-company" className="input" type="text" value={values.company} onChange={update('company')} autoComplete="organization" required />
+            <AutocompletePicker
+              key={resetKey}
+              searchFn={(q) => searchAccounts(instance, q)}
+              getKey={(a) => a.accountid}
+              getLabel={(a) => a.name}
+              getSublabel={(a) => a.address1_country}
+              value={null}
+              onChange={(item) => { if (item) setCompany(item.name) }}
+              onQueryChange={setCompany}
+              placeholder="Search or type a company / account…"
+              minChars={2}
+            />
           </div>
           <div className="field">
             <label className="field-label" htmlFor="lead-job">Job title <span className="optional">(optional)</span></label>
             <input id="lead-job" className="input" type="text" value={values.jobTitle} onChange={update('jobTitle')} autoComplete="organization-title" />
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="lead-email">Email <span className="required">*</span></label>
-            <input id="lead-email" className="input" type="email" value={values.email} onChange={update('email')} autoComplete="email" required />
+            <label className="field-label" htmlFor="lead-email">Email <span className="optional">(optional)</span></label>
+            <input id="lead-email" className="input" type="email" value={values.email} onChange={update('email')} autoComplete="email" />
           </div>
           <div className="field">
             <label className="field-label" htmlFor="lead-phone">Phone <span className="optional">(optional)</span></label>
