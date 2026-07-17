@@ -24,13 +24,17 @@ on:
   workflow_dispatch:
     inputs:
       deployment_target:
-        description: "Deployment target"
+        description: >
+          Target environment for a manual deploy. 'dev' installs to the
+          /public/DynamicsActivitiesDev/ folder and leaves production
+          untouched. 'production' installs to /public/DynamicsActivities/.
+          PR merges to main always deploy to production.
         required: true
-        default: "production"
         type: choice
         options:
           - production
           - dev
+        default: dev
 
 permissions:
   contents: read
@@ -48,7 +52,9 @@ jobs:
       agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
       vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI }}
       vite_app_base_path:   "/public/DynamicsActivities/"
+      app_base_path:        "/public/DynamicsActivities/"
       webapp_public_folder: "DynamicsActivities"
+      version_suffix:       ""
     secrets: inherit
 
   deploy_release_candidate:
@@ -70,5 +76,7 @@ jobs:
       agent_destination_id: "e21dbc3e-7592-48f8-867b-d81d4ff06bee"
       vite_redirect_uri:    ${{ vars.VITE_REDIRECT_URI_DEV }}
       vite_app_base_path:   "/public/DynamicsActivitiesDev/"
+      app_base_path:        "/public/DynamicsActivitiesDev/"
       webapp_public_folder: "DynamicsActivitiesDev"
+      version_suffix:       "-dev"
     secrets: inherit

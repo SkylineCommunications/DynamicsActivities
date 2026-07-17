@@ -153,11 +153,19 @@ App-specific behavior:
 | `src/api/graph.js` | Graph calendar fetch for attendee prefill |
 | `src/api/skyline.js` | Skyline Collaboration API — proxied via DMA automation script to avoid CORS |
 | `src/api/subscriptions.js` | Subscription CRUD via DataMiner Automation (DOM-backed) |
+| `src/api/mailto.js` | Helpers to open a prefilled email (`mailto:`) for the standalone forms |
+| `src/api/leads.js` | Opens a prefilled lead email in the user's mail client for manual sending |
+| `src/api/opportunities.js` | Opens a prefilled opportunity email in the user's mail client for manual sending |
 | `src/authConfig.js` | MSAL config, scopes for Dataverse/Graph/Skyline |
 | `src/components/AuthGuard.jsx` | Triple-auth gate: DMA session → MSAL ssoSilent/popup → WhoAmI |
 | `src/components/ActivityForm.jsx` | Activity creation (4 types, account/attendee pickers, calendar) |
 | `src/components/NotesList.jsx` | Browse view — lazy server-side OData filters |
 | `src/components/SubscriptionsPanel.jsx` | Email notification subscription management |
+| `src/components/forms/FormPage.jsx` | Generic shell for standalone forms (header + back button); renders forms from the registry |
+| `src/components/forms/LeadForm.jsx` | "Add lead" form shown to users without Dynamics/Dataverse access |
+| `src/components/forms/OpportunityForm.jsx` | "Add opportunity" form shown to users without Dynamics/Dataverse access |
+| `src/forms/registry.js` | Registry of standalone forms — add new forms here (future-proof) |
+| `src/hooks/useHashRoute.js` | Minimal hash-based router (`#/forms/<id>`) for standalone form pages |
 | `src/components/AutocompletePicker.jsx` | Debounced autocomplete with clearOnPick support |
 | `src/components/CalendarPicker.jsx` | Graph calendar modal (60d past + 30d future) |
 | `src/hooks/useTamContext.js` | TAM account context — loads managed accounts from Skyline API |

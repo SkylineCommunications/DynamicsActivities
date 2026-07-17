@@ -2,9 +2,14 @@ import { useState, useEffect } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { InteractionStatus } from '@azure/msal-browser'
 import { appBasePath, loginRequest, redirectPathname } from '../authConfig'
-import { assertDataverseAppAccess, whoAmI } from '../api/dataverse'
+import { assertDataverseAppAccess, whoAmI, getUserCalType } from '../api/dataverse'
 import { getUserHasDynamicsLicense } from '../api/graph'
 import { bootstrapSession, isDataMinerHost } from '../api/dataminer'
+import { useLicenseTest } from '../context/LicenseTestContext'
+
+// Synthetic user id used only when a tester forces a full-access view without
+// actually having Dataverse access, so the app layout can still render.
+const TEST_USER_ID = '00000000-0000-0000-0000-000000000000'
 
 const LICENSE_REQUEST_TO = 'IT@skyline.be'
 const LICENSE_REQUEST_CC = 'squad.maximize-amplify@skyline.be'
@@ -42,6 +47,7 @@ function looksLikeDynamicsAccessDenied(err) {
 export default function AuthGuard({ children, onDmaConnection }) {
   const { instance, inProgress } = useMsal()
   const isAuthenticated = useIsAuthenticated()
+  const { override, setDetected } = useLicenseTest()
   const [currentUserId, setCurrentUserId] = useState(null)
   const [licenseChecked, setLicenseChecked] = useState(false)
   const [hasLicense, setHasLicense] = useState(false)
@@ -126,6 +132,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
         setHasLicense(licensed)
         setLicenseChecked(true)
         setDataverseAccessDenied(false)
+        setDetected({ hasLicense: licensed, dataverseAccessDenied: false, caltype: null })
 
         // Only attempt Dataverse sign-in for users that have a Dynamics license.
         if (!licensed) return
@@ -133,12 +140,17 @@ export default function AuthGuard({ children, onDmaConnection }) {
         return whoAmI(instance)
           .then((whoAmIResult) => {
             setCurrentUserId(whoAmIResult.UserId)
+            // Report the detected CAL type (Sales vs Team Member) for display.
+            getUserCalType(instance, whoAmIResult.UserId)
+              .then((caltype) => setDetected({ caltype }))
+              .catch(() => {})
             return assertDataverseAppAccess(instance)
           })
           .catch((e) => {
             if (looksLikeDynamicsAccessDenied(e)) {
               setCurrentUserId(null)
               setDataverseAccessDenied(true)
+              setDetected({ dataverseAccessDenied: true })
               return
             }
             throw e
@@ -156,6 +168,14 @@ export default function AuthGuard({ children, onDmaConnection }) {
       setNeedsManualLogin(true)
     })
   }
+
+  // Testing override: force the effective license/access state so a tester can
+  // preview each view. When no override is set, real detection is used.
+  const forceFull = override === 'team-member' || override === 'sales'
+  const effLicenseChecked = override ? true : licenseChecked
+  const effHasLicense = override ? override !== 'none' : hasLicense
+  const effDataverseAccessDenied = override ? override === 'no-dataverse' : dataverseAccessDenied
+  const effCurrentUserId = forceFull ? (currentUserId || TEST_USER_ID) : currentUserId
 
   // Waiting for DataMiner session verification
   if (!dmaReady) {
@@ -199,7 +219,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
     )
   }
 
-  if (!isAuthenticated || !licenseChecked) {
+  if (!isAuthenticated || !effLicenseChecked) {
     return (
       <div className="auth-screen">
         <div className="auth-card">
@@ -210,7 +230,7 @@ export default function AuthGuard({ children, onDmaConnection }) {
     )
   }
 
-  if (!hasLicense) {
+  if (!effHasLicense) {
     const mailtoHref = buildLicenseRequestMailto()
     return (
       <div className="auth-screen">
@@ -220,15 +240,17 @@ export default function AuthGuard({ children, onDmaConnection }) {
           <p>
             You need Dynamics access for this environment to use this app.
           </p>
-          <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
-            Request license for access
-          </a>
+          <div className="auth-actions">
+            <a className="btn-primary" href={mailtoHref}>
+              Request license for access
+            </a>
+          </div>
         </div>
       </div>
     )
   }
 
-  if (dataverseAccessDenied) {
+  if (effDataverseAccessDenied) {
     const mailtoHref = buildLicenseRequestMailto()
     return (
       <div className="auth-screen">
@@ -238,15 +260,17 @@ export default function AuthGuard({ children, onDmaConnection }) {
           <p>
             You have a Dynamics license, but your account is not currently authorized for this Dataverse environment.
           </p>
-          <a className="btn-primary" href={mailtoHref} style={{ alignSelf: 'center' }}>
-            Request access
-          </a>
+          <div className="auth-actions">
+            <a className="btn-primary" href={mailtoHref}>
+              Request access
+            </a>
+          </div>
         </div>
       </div>
     )
   }
 
-  if (!currentUserId) {
+  if (!effCurrentUserId) {
     return (
       <div className="auth-screen">
         <div className="auth-card">
@@ -257,5 +281,5 @@ export default function AuthGuard({ children, onDmaConnection }) {
     )
   }
 
-  return children(currentUserId)
+  return children(effCurrentUserId)
 }

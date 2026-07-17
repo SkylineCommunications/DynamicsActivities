@@ -14,6 +14,7 @@ import AutocompletePicker from './AutocompletePicker'
 import CalendarPicker from './CalendarPicker'
 import CalendarImportTab from './CalendarImportTab'
 import InboxTab from './InboxTab'
+import { useLicenseTest, resolveCanManageLeads } from '../context/LicenseTestContext'
 
 const NOTE_LIMIT = 500
 
@@ -33,6 +34,7 @@ function AttendeeChip({ attendee, onRemove }) {
 
 export default function ActivityForm({ currentUserId, onNoteCreated, managedAccounts = [], tamLoading = false }) {
   const { instance } = useMsal()
+  const { override } = useLicenseTest()
 
   const [type, setType] = useState('phonecall')
   const [emailMode, setEmailMode] = useState('create')
@@ -56,6 +58,10 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
   const [accountLeads, setAccountLeads] = useState([])
   const [linkToLeadId, setLinkToLeadId] = useState('')
   const [canManageLeads, setCanManageLeads] = useState(false)
+
+  // Honor the license test override so testers can preview the Sales vs
+  // Team Member view without changing their real license.
+  const effectiveCanManageLeads = resolveCanManageLeads(override, canManageLeads)
 
   // Check if user has a sales license (can manage leads in Dynamics)
   useEffect(() => {
@@ -351,7 +357,7 @@ export default function ActivityForm({ currentUserId, onNoteCreated, managedAcco
                 ))}
               </select>
             </label>
-            {canManageLeads && (
+            {effectiveCanManageLeads && (
               <span className="lead-hint">
                 <a href={`${import.meta.env.VITE_DATAVERSE_URL}main.aspx?pagetype=entitylist&etn=lead`} target="_blank" rel="noreferrer">
                   Manage leads <span className="icon icon-sm">open_in_new</span>

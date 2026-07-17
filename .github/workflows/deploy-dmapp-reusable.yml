@@ -92,6 +92,16 @@ on:
         type: string
         default: ""
 
+      app_base_path:
+        description: >
+          Public base path the SPA is served from (e.g. /public/MyApp/).
+          Passed to the frontend build as VITE_APP_BASE_PATH so asset URLs
+          and MSAL redirect paths resolve correctly. Leave empty to use the
+          app's built-in default.
+        required: false
+        type: string
+        default: ""
+
       webapp_public_folder:
         description: >
           Folder name under C:\Skyline DataMiner\Webpages\public where the
@@ -114,6 +124,23 @@ on:
         required: false
         type: string
         default: "/public/DynamicsActivities/"
+
+      dotnet_build_properties:
+        description: >
+          Extra MSBuild -p: properties appended to the DataMiner package build
+          (e.g. -p:WebAppPublicFolder=MyAppDev). Space-separated.
+        required: false
+        type: string
+        default: ""
+
+      version_suffix:
+        description: >
+          Optional suffix appended to the package/catalog version (e.g. -dev)
+          so non-production builds don't overwrite the production catalog
+          artifact.
+        required: false
+        type: string
+        default: ""
 
     secrets:
       DATAMINER_TOKEN:
@@ -237,6 +264,7 @@ jobs:
             Write-Error "Add <Version>X.Y.Z</Version> to the .csproj PropertyGroup."
             exit 1
           }
+          $version = "$version" + "${{ inputs.version_suffix }}"
           "number=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Package version: $version"
 
@@ -244,7 +272,7 @@ jobs:
       # 7. Build DataMiner package (.dmapp)
       # --------------------------------------------------------
       - name: Build DataMiner package
-        run: dotnet build "${{ steps.csproj.outputs.path }}" -c Release -p:WebAppPublicFolder="${{ inputs.webapp_public_folder }}"
+        run: dotnet build "${{ steps.csproj.outputs.path }}" -c Release -p:WebAppPublicFolder="${{ inputs.webapp_public_folder }}" ${{ inputs.dotnet_build_properties }}
 
       # --------------------------------------------------------
       # 8. Locate generated .dmapp

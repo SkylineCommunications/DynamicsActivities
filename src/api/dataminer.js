@@ -70,8 +70,32 @@ export function isConnectionAliveResult(result) {
   return result === true || result === 'true' || result === 1 || result === '1'
 }
 
+/**
+ * Error carrying a DataMiner server-side (HTTP 500) exception message.
+ * Thrown by jsonPost when called with `surfaceServerError: true` and the
+ * failure is not a session/connection problem — lets callers show the real
+ * cause instead of a generic "connection unavailable" message.
+ */
+export class DataMinerServerError extends Error {
+  constructor(message, raw) {
+    super(message)
+    this.name = 'DataMinerServerError'
+    this.raw = raw
+  }
+}
+
+function extractServerErrorMessage(json) {
+  const message = json?.Message || json?.ExceptionMessage
+  if (message && typeof message === 'string') {
+    // DataMiner ExitFail messages are often prefixed like "Run|...".
+    const cleaned = message.split('|').pop().trim()
+    return cleaned || message
+  }
+  return 'The server rejected the request.'
+}
+
 export async function jsonPost(method, body, options = {}) {
-  const { redirectOnAuthFailure = true } = options
+  const { redirectOnAuthFailure = true, surfaceServerError = false } = options
   const r = await fetch(`${JSON_API}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -86,6 +110,9 @@ export async function jsonPost(method, body, options = {}) {
   if (r.status === 500 && json?.ExceptionType?.includes('NoConnectionWebApiException')) {
     if (redirectOnAuthFailure) redirectToAuth()
     return null
+  }
+  if (r.status >= 500 && surfaceServerError) {
+    throw new DataMinerServerError(extractServerErrorMessage(json), json)
   }
   return json.d
 }
@@ -141,4 +168,12 @@ export async function bootstrapSession(options = {}) {
  */
 export function isDataMinerHost() {
   return !['localhost', '127.0.0.1'].includes(location.hostname)
+}
+
+// True on localhost or the DataMiner "dev" deployment (/public/DynamicsActivitiesDev/),
+// but false on production (/public/DynamicsActivities/) and RC. Used to gate
+// testing-only UI so it never appears in production.
+export function isTestEnvironment() {
+  if (!isDataMinerHost()) return true
+  return /\/DynamicsActivitiesDev\//i.test(location.pathname)
 }
