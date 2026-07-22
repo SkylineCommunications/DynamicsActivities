@@ -3,6 +3,9 @@ name: Promote main to release candidate
 on:
   push:
     branches: [main]
+  pull_request_target:
+    types: [synchronize]
+    branches: [release-candidate]
   workflow_dispatch:
 
 permissions:
@@ -16,35 +19,82 @@ concurrency:
 
 jobs:
   sync:
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') }}
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.head.ref == 'automation/main-to-release-candidate' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
-      - name: Create or reuse promotion pull request
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update the promotion branch and create or reuse its pull request
         id: promotion
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          promotion_branch="automation/main-to-release-candidate"
+          conflict=false
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          if git ls-remote --exit-code --heads origin "$promotion_branch" >/dev/null; then
+            git fetch origin "$promotion_branch"
+            git switch --force-create "$promotion_branch" "origin/$promotion_branch"
+
+            if ! git merge-base --is-ancestor origin/main HEAD; then
+              if git merge --no-edit origin/main; then
+                git push origin "HEAD:refs/heads/${promotion_branch}"
+              else
+                if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+                  git merge --abort
+                fi
+                conflict=true
+                echo "::warning::Merge conflict detected between main and the promotion branch."
+              fi
+            fi
+          else
+            git switch --create "$promotion_branch" origin/main
+            git push origin "HEAD:refs/heads/${promotion_branch}"
+          fi
+
           pr_number="$(gh pr list \
             --base release-candidate \
-            --head main \
+            --head "$promotion_branch" \
             --state open \
             --json number \
             --jq '.[0].number // empty')"
 
-          if [[ -z "$pr_number" ]]; then
-            pr_number="$(gh pr create \
-              --base release-candidate \
-              --head main \
-              --title "Sync main into release-candidate" \
-              --body $'Automated promotion of the latest main branch changes into release-candidate.\n\nThis pull request is maintained by the Promote main to release candidate workflow.')"
+          if [[ -z "$pr_number" && "$conflict" == false ]]; then
+            git fetch origin release-candidate
+            if [[ -z "$(git log --format=%H origin/release-candidate..HEAD)" ]]; then
+              echo "::notice::release-candidate already contains all commits from the promotion branch."
+              echo "no_changes=true" >> "$GITHUB_OUTPUT"
+            else
+              pr_url="$(gh pr create \
+                --base release-candidate \
+                --head "$promotion_branch" \
+                --title "Sync main into release-candidate" \
+                --body $'Automated promotion of the latest main branch changes into release-candidate.\n\nThis pull request is maintained by the Promote main to release candidate workflow. Its dedicated branch allows Copilot to resolve conflicts without modifying the default branch.')"
+              pr_number="${pr_url##*/}"
+            fi
           fi
 
           echo "number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "conflicting=$conflict" >> "$GITHUB_OUTPUT"
 
       - name: Try to enable auto-merge
         id: merge
+        if: steps.promotion.outputs.number != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.promotion.outputs.number }}
         run: |
           merge_state="$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq '.mergeStateStatus')"
@@ -54,17 +104,25 @@ jobs:
             exit 0
           fi
 
-          gh pr merge "$PR_NUMBER" --auto --merge
+          if ! gh pr merge "$PR_NUMBER" --auto --merge 2>/dev/null; then
+            # Auto-merge requires branch protection rules; fall back to direct merge
+            if ! gh pr merge "$PR_NUMBER" --merge; then
+              # Direct merge failed (likely due to conflicts); trigger conflict resolution
+              echo "conflicting=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
 
       - name: Ask Copilot to resolve merge conflicts
-        if: steps.merge.outputs.conflicting == 'true' || failure()
+        if: steps.promotion.outputs.number != '' && (steps.promotion.outputs.conflicting == 'true' || steps.merge.outputs.conflicting == 'true')
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.promotion.outputs.number }}
         run: |
           merge_state="$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq '.mergeStateStatus')"
           if [[ "$merge_state" != "CONFLICTING" ]]; then
-            exit 1
+            echo "::notice::PR merge state is '$merge_state', not CONFLICTING; conflict comment already posted or state is pending."
+            exit 0
           fi
 
           marker="<!-- automated-main-to-rc-conflict-request -->"
@@ -73,9 +131,9 @@ jobs:
             --jq '.[].body' | grep -Fq "$marker"; then
             gh pr comment "$PR_NUMBER" --body "$(cat <<'EOF'
           <!-- automated-main-to-rc-conflict-request -->
-          @copilot Please resolve the merge conflicts in this pull request between `main` and `release-candidate`.
+          @copilot Please resolve the merge conflicts in this pull request. The head branch contains the latest `main` changes and the base is `release-candidate`.
 
-          Preserve the intended changes from both branches, run the repository's relevant checks, and push the conflict resolution to this pull request's head branch. Do not merge the pull request yourself; leave it ready for this workflow to auto-merge once it is clean.
+          Preserve the intended changes from both branches, run the repository's relevant checks, and push the conflict resolution to this pull request's dedicated head branch. Do not merge the pull request yourself; leave it ready for this workflow to auto-merge once it is clean.
           EOF
             )"
           fi
