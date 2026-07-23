@@ -8,8 +8,8 @@
 		<GenerateDataMinerPackage>True</GenerateDataMinerPackage>
 		<MinimumRequiredDmVersion>10.3.0.0 - 12752</MinimumRequiredDmVersion>
 		<!-- <MinimumRequiredDmWebVersion>10.6.2 (CU0)</MinimumRequiredDmWebVersion> -->
-		<Version>1.12.5</Version>
-		<VersionComment>Fix: lead/opportunity forms no longer open multiple email drafts on a fast double-click or Enter+click. Added a synchronous submit guard so the mail draft opens exactly once per submission.</VersionComment>
+		<Version>1.12.6</Version>
+		<VersionComment>Fix: URL-safe base64 encoding for review links prevents data corruption when passed through mailto: links. Lead and opportunity review pages now properly decode form data from email links.</VersionComment>
 		<!-- Do NOT fill in the Organization Token here. This points to either an Environment Variable skyline__sdk__dataminertoken holding the organization token or a Visual Studio User Secret holding the token. -->
 		<CatalogPublishKeyName>skyline:sdk:dataminertoken</CatalogPublishKeyName>
 		<CatalogDefaultDownloadKeyName>skyline:sdk:dataminertoken</CatalogDefaultDownloadKeyName>
