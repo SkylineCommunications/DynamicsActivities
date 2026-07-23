@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { navigate } from '../../hooks/useHashRoute'
 import Modal from '../Modal'
+import { decodeReviewData } from '../../api/mailto'
 
 /**
  * Review page for lead submissions from Team members.
@@ -24,7 +25,7 @@ export default function LeadReview() {
         setError('Missing lead data in URL')
         return
       }
-      const decoded = JSON.parse(atob(encoded))
+      const decoded = decodeReviewData(encoded)
       setLeadData(decoded)
     } catch (err) {
       setError('Invalid or corrupted lead data')

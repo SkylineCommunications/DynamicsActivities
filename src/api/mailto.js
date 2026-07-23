@@ -97,12 +97,36 @@ export function formatSubmitter(name, email) {
 /**
  * Generate a shareable review link for a lead or opportunity submission.
  * The link encodes the form data in the URL so full-license users can save it to Dynamics.
+ * Uses URL-safe base64 encoding to prevent corruption when passed through mailto: links.
  * @param {string} type 'lead' or 'opportunity'
  * @param {object} data Form data object
  * @returns {string} Full URL to the review page
  */
 export function generateReviewLink(type, data) {
   const baseUrl = window.location.origin + window.location.pathname
+  // Use URL-safe base64: replace + with -, / with _, and remove padding =
   const encoded = btoa(JSON.stringify(data))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
   return `${baseUrl}#/review/${type}?data=${encoded}`
+}
+
+/**
+ * Decode URL-safe base64 data from a review link.
+ * Reverses the URL-safe encoding applied by generateReviewLink.
+ * @param {string} encoded URL-safe base64 string
+ * @returns {object} Decoded data object
+ * @throws {Error} If decoding fails
+ */
+export function decodeReviewData(encoded) {
+  // Convert URL-safe base64 back to standard base64
+  let base64 = encoded
+    .replace(/-/g, '+')
+    .replace(/_/g, '/')
+  // Add back padding if needed
+  while (base64.length % 4) {
+    base64 += '='
+  }
+  return JSON.parse(atob(base64))
 }

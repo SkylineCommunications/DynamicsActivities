@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { navigate } from '../../hooks/useHashRoute'
 import Modal from '../Modal'
+import { decodeReviewData } from '../../api/mailto'
 
 /**
  * Review page for opportunity submissions from Team members.
@@ -24,7 +25,7 @@ export default function OpportunityReview() {
         setError('Missing opportunity data in URL')
         return
       }
-      const decoded = JSON.parse(atob(encoded))
+      const decoded = decodeReviewData(encoded)
       setOpportunityData(decoded)
     } catch (err) {
       setError('Invalid or corrupted opportunity data')
