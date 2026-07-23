@@ -12,6 +12,7 @@ import {
   ESCALATION_STATUSES,
 } from '../api/dataverse'
 import { summarizeActivities } from '../api/activitySummary'
+import {  fmtDate, fmtIsoDate, todayInputDate } from '../utils/dateFormat'
 import AutocompletePicker from './AutocompletePicker'
 
 // Derive icon and CSS class maps from ACTIVITY_TYPES
@@ -114,26 +115,6 @@ const BROWSE_VIEWS = [
     requiresAccount: true,
   },
 ]
-
-function fmtDate(d) {
-  if (!d) return ''
-  return new Date(d).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
-
-function fmtIsoDate(d) {
-  if (!d) return ''
-  const parsed = new Date(d)
-  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString()
-}
-
-function todayInputDate() {
-  const now = new Date()
-  const offsetMs = now.getTimezoneOffset() * 60 * 1000
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10)
-}
 
 function stripHtmlTags(value) {
   const raw = String(value ?? '')

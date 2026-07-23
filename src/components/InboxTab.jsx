@@ -16,6 +16,7 @@ import {
 } from '../api/dataverse'
 import AutocompletePicker from './AutocompletePicker'
 import { buildBrowseAccountFromRegarding } from '../services/postCreateBrowseAccount'
+import { fmtDate, fmtDateShort } from '../utils/dateFormat'
 
 const REGARDING_TYPES = [
   { id: 'account', label: 'Account' },
@@ -24,25 +25,7 @@ const REGARDING_TYPES = [
 ]
 const INTERNAL_DOMAINS = ['@skyline.be', '@dataminer.services']
 
-function fmtDate(d) {
-  if (!d) return ''
-  return d.toLocaleString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
-function fmtDateShort(d) {
-  if (!d) return ''
-  const now = new Date()
-  if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-  }
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
 
 function splitRecipients(message) {
   const participants = []
