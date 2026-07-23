@@ -5,6 +5,7 @@ import NotesList from './components/NotesList'
 import useTamContext from './hooks/useTamContext'
 import SubscriptionsPanel from './components/SubscriptionsPanel'
 import FormPage from './components/forms/FormPage'
+import ReviewPage from './components/forms/ReviewPage'
 import useHashRoute, { navigate } from './hooks/useHashRoute'
 import { signOut as dmaSignOut, isDataMinerHost, getDmaUser, redirectToAuth } from './api/dataminer'
 
@@ -101,6 +102,13 @@ function cycleTheme() {
   function openBugReport() {
     const url = buildBugReportUrl({ activeTab, reporter: reporterName })
     window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  // Review pages (e.g. "Review lead") require Dynamics authentication
+  // and allow full-license users to save Team member submissions.
+  if (route.startsWith('review/')) {
+    const reviewId = route.slice('review/'.length).split('?')[0]
+    return <ReviewPage reviewId={reviewId} />
   }
 
   // Standalone form pages (e.g. "Add lead") render outside the Dynamics/Dataverse

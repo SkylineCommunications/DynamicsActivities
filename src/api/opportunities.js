@@ -5,7 +5,7 @@
  * details prefilled so they can review and send it to the sales team manually.
  */
 
-import { openEmailDraft, buildEmailBody, formatSubmitter } from './mailto'
+import { openEmailDraft, buildFormattedEmailBody, formatSubmitter, generateReviewLink } from './mailto'
 import { getDmaUser } from './dataminer'
 
 // Where opportunity submissions are sent. Change this to route them elsewhere.
@@ -38,7 +38,17 @@ export function submitOpportunity(opportunity) {
   const submittedBy = formatSubmitter(dmaUser?.FullName, dmaUser?.EmailAddress)
   if (submittedBy) rows.push(['Submitted by', submittedBy])
 
-  const body = buildEmailBody(rows)
+  // Add submittedBy to the data payload for the review link
+  const opportunityDataWithSubmitter = { ...opportunity, submittedBy }
+  const reviewLink = generateReviewLink('opportunity', opportunityDataWithSubmitter)
+
+  const title = `💡 NEW OPPORTUNITY SUBMISSION`
+  const body = buildFormattedEmailBody(
+    title,
+    rows,
+    reviewLink,
+    '✅ Save this opportunity to Dynamics'
+  )
 
   openEmailDraft(RECIPIENT, subject, body)
 }

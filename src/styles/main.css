@@ -350,6 +350,55 @@ body {
   .lead-form-grid { grid-template-columns: 1fr; }
 }
 
+/* ─── Review pages ────────────────────────────────────────────────────────────── */
+.review-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.review-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color12);
+}
+
+.review-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.review-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: var(--color2);
+  border-radius: var(--radius-sm);
+}
+
+.review-field-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--color10);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.review-field-value {
+  font-size: var(--fs-sm);
+  color: var(--color12);
+  line-height: 20px;
+}
+
+.review-field-multiline {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ─── Form card ──────────────────────────────────────────────────────────────── */
 .form-card {
   background: var(--color1);

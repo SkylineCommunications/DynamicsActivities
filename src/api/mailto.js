@@ -40,6 +40,48 @@ export function buildEmailBody(rows) {
 }
 
 /**
+ * Build a formatted email body with header, details section, and call-to-action link.
+ * @param {string} title Email title/header (e.g., "New Lead Submission")
+ * @param {Array<[string, string]>} rows Field rows [label, value]
+ * @param {string} reviewLink URL to review and save
+ * @param {string} ctaText Call-to-action text (e.g., "Save this lead to Dynamics")
+ * @returns {string} Formatted plain-text email body
+ */
+export function buildFormattedEmailBody(title, rows, reviewLink, ctaText) {
+  const divider = '━━━━━━━━━━━━━━━━━━━━━━━━━━'
+  
+  const details = rows
+    .filter(([, value]) => value && String(value).trim())
+    .map(([label, value]) => {
+      const labelPadded = label.toUpperCase()
+      return `${labelPadded}\n${String(value).trim()}`
+    })
+    .join('\n\n')
+
+  return [
+    title,
+    divider,
+    '',
+    details,
+    '',
+    '',
+    '🔗 QUICK ACTION',
+    divider,
+    '',
+    ctaText + ':',
+    '',
+    reviewLink,
+    '',
+    'Click the link above to review the details and save directly to Dynamics 365.',
+    'This link is pre-filled and ready to save — just authenticate and click "Save to Dynamics".',
+    '',
+    '',
+    'This is an automated submission from the DynamicsActivities app.',
+    'If you have questions, please contact the submitter listed above.',
+  ].join('\n')
+}
+
+/**
  * Format the submitter's name/email into a "Name <email>" string. Guards against
  * missing values: returns whichever part is present, or '' when neither is.
  * @param {string} [name]  Submitter full name.
@@ -51,4 +93,17 @@ export function formatSubmitter(name, email) {
   const cleanEmail = typeof email === 'string' ? email.trim() : ''
   if (cleanName && cleanEmail) return `${cleanName} <${cleanEmail}>`
   return cleanName || cleanEmail || ''
+}
+
+/**
+ * Generate a shareable review link for a lead or opportunity submission.
+ * The link encodes the form data in the URL so full-license users can save it to Dynamics.
+ * @param {string} type 'lead' or 'opportunity'
+ * @param {object} data Form data object
+ * @returns {string} Full URL to the review page
+ */
+export function generateReviewLink(type, data) {
+  const baseUrl = window.location.origin + window.location.pathname
+  const encoded = btoa(JSON.stringify(data))
+  return `${baseUrl}#/review/${type}?data=${encoded}`
 }

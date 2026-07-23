@@ -6,7 +6,7 @@
  * DMA's server-side SMTP configuration.
  */
 
-import { openEmailDraft, buildEmailBody, formatSubmitter } from './mailto'
+import { openEmailDraft, buildFormattedEmailBody, formatSubmitter, generateReviewLink } from './mailto'
 import { getDmaUser } from './dataminer'
 
 // Where lead submissions are sent. Change this to route leads elsewhere.
@@ -39,7 +39,17 @@ export function submitLead(lead) {
   const submittedBy = formatSubmitter(dmaUser?.FullName, dmaUser?.EmailAddress)
   if (submittedBy) rows.push(['Submitted by', submittedBy])
 
-  const body = buildEmailBody(rows)
+  // Add submittedBy to the data payload for the review link
+  const leadDataWithSubmitter = { ...lead, submittedBy }
+  const reviewLink = generateReviewLink('lead', leadDataWithSubmitter)
+
+  const title = `📋 NEW LEAD SUBMISSION`
+  const body = buildFormattedEmailBody(
+    title,
+    rows,
+    reviewLink,
+    '✅ Save this lead to Dynamics'
+  )
 
   openEmailDraft(RECIPIENT, subject, body)
 }
