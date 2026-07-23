@@ -4,21 +4,15 @@ import { submitOpportunity } from '../../api/opportunities'
 import { searchAccounts } from '../../api/dataverse'
 import AutocompletePicker from '../AutocompletePicker'
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
 // Guard against oversized submissions producing oversized emails.
 const MAX_FIELD_LENGTH = 2000
 
 const initialState = {
   topic: '',
   company: '',
-  firstName: '',
-  lastName: '',
-  email: '',
-  phone: '',
+  accountId: '',
   estimatedValue: '',
   estimatedCloseDate: '',
-  country: '',
   description: '',
 }
 
@@ -43,16 +37,14 @@ export default function OpportunityForm({ onDone }) {
     return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value.slice(0, MAX_FIELD_LENGTH) }))
   }
 
-  function setCompany(name) {
-    setValues((prev) => ({ ...prev, company: (name || '').slice(0, MAX_FIELD_LENGTH) }))
+  function setCompany(name, accountId = '') {
+    setValues((prev) => ({ ...prev, company: (name || '').slice(0, MAX_FIELD_LENGTH), accountId }))
   }
 
   function isValid() {
-    const email = values.email.trim()
     return (
       values.topic.trim()
       && values.company.trim()
-      && (!email || EMAIL_RE.test(email))
     )
   }
 
@@ -122,8 +114,8 @@ export default function OpportunityForm({ onDone }) {
               getLabel={(a) => a.name}
               getSublabel={(a) => a.address1_country}
               value={null}
-              onChange={(item) => { if (item) setCompany(item.name) }}
-              onQueryChange={setCompany}
+              onChange={(item) => { if (item) setCompany(item.name, item.accountid) }}
+              onQueryChange={(name) => setCompany(name, '')}
               placeholder="Search or type a company / account…"
               minChars={2}
             />
@@ -133,28 +125,8 @@ export default function OpportunityForm({ onDone }) {
             <input id="opp-value" className="input" type="text" value={values.estimatedValue} onChange={update('estimatedValue')} placeholder="e.g. € 50,000" />
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="opp-first">Contact first name <span className="optional">(optional)</span></label>
-            <input id="opp-first" className="input" type="text" value={values.firstName} onChange={update('firstName')} autoComplete="given-name" />
-          </div>
-          <div className="field">
-            <label className="field-label" htmlFor="opp-last">Contact last name <span className="optional">(optional)</span></label>
-            <input id="opp-last" className="input" type="text" value={values.lastName} onChange={update('lastName')} autoComplete="family-name" />
-          </div>
-          <div className="field">
-            <label className="field-label" htmlFor="opp-email">Email <span className="optional">(optional)</span></label>
-            <input id="opp-email" className="input" type="email" value={values.email} onChange={update('email')} autoComplete="email" />
-          </div>
-          <div className="field">
-            <label className="field-label" htmlFor="opp-phone">Phone <span className="optional">(optional)</span></label>
-            <input id="opp-phone" className="input" type="tel" value={values.phone} onChange={update('phone')} autoComplete="tel" />
-          </div>
-          <div className="field">
             <label className="field-label" htmlFor="opp-close">Estimated close date <span className="optional">(optional)</span></label>
             <input id="opp-close" className="input" type="date" value={values.estimatedCloseDate} onChange={update('estimatedCloseDate')} />
-          </div>
-          <div className="field">
-            <label className="field-label" htmlFor="opp-country">Country <span className="optional">(optional)</span></label>
-            <input id="opp-country" className="input" type="text" value={values.country} onChange={update('country')} autoComplete="country-name" />
           </div>
         </div>
 

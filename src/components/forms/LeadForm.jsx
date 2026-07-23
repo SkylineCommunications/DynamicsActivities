@@ -14,6 +14,7 @@ const initialState = {
   firstName: '',
   lastName: '',
   company: '',
+  accountId: '',
   jobTitle: '',
   email: '',
   phone: '',
@@ -42,8 +43,8 @@ export default function LeadForm({ onDone }) {
     return (e) => setValues((prev) => ({ ...prev, [field]: e.target.value.slice(0, MAX_FIELD_LENGTH) }))
   }
 
-  function setCompany(name) {
-    setValues((prev) => ({ ...prev, company: (name || '').slice(0, MAX_FIELD_LENGTH) }))
+  function setCompany(name, accountId = '') {
+    setValues((prev) => ({ ...prev, company: (name || '').slice(0, MAX_FIELD_LENGTH), accountId }))
   }
 
   function isValid() {
@@ -129,8 +130,8 @@ export default function LeadForm({ onDone }) {
               getLabel={(a) => a.name}
               getSublabel={(a) => a.address1_country}
               value={null}
-              onChange={(item) => { if (item) setCompany(item.name) }}
-              onQueryChange={setCompany}
+              onChange={(item) => { if (item) setCompany(item.name, item.accountid) }}
+              onQueryChange={(name) => setCompany(name, '')}
               placeholder="Search or type a company / account…"
               minChars={2}
             />

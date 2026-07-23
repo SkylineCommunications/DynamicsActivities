@@ -38,6 +38,13 @@ export function submitLead(lead) {
   const dmaUser = getDmaUser()
   const submittedBy = formatSubmitter(dmaUser?.FullName, dmaUser?.EmailAddress)
   if (submittedBy) rows.push(['Submitted by', submittedBy])
+  
+  // Show account link status for transparency
+  if (lead.accountId) {
+    rows.push(['Account GUID', `${lead.accountId} ✓ (linked)`])
+  } else if (lead.company) {
+    rows.push(['Account GUID', 'Not linked (manual account lookup needed)'])
+  }
 
   // Add submittedBy to the data payload for the review link
   const leadDataWithSubmitter = { ...lead, submittedBy }

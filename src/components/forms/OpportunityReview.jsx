@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { navigate } from '../../hooks/useHashRoute'
+import Modal from '../Modal'
 
 /**
  * Review page for opportunity submissions from Team members.
@@ -12,6 +13,8 @@ export default function OpportunityReview() {
   const [opportunityData, setOpportunityData] = useState(null)
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [showAccountPreview, setShowAccountPreview] = useState(false)
 
   useEffect(() => {
     try {
@@ -29,19 +32,89 @@ export default function OpportunityReview() {
     }
   }, [])
 
+  function buildApiCall() {
+    const BASE_URL = import.meta.env.VITE_DATAVERSE_URL?.replace(/\/$/, '') || 'https://yourorg.crm.dynamics.com'
+    const API = `${BASE_URL}/api/data/v9.2`
+
+    // Build the opportunity payload according to Dynamics schema
+    const payload = {
+      name: opportunityData.topic || 'Untitled Opportunity',
+      description: opportunityData.description || '',
+      estimatedvalue: opportunityData.estimatedValue ? parseFloat(opportunityData.estimatedValue) : null,
+      estimatedclosedate: opportunityData.estimatedCloseDate || null,
+      
+      // Opportunity defaults
+      opportunityratingcode: 2, // Hot (1=Cold, 2=Warm, 3=Hot)
+      salesstage: 0, // Qualify
+    }
+
+    // Add account link if we have the GUID
+    if (opportunityData.accountId) {
+      payload['parentaccountid@odata.bind'] = `/accounts(${opportunityData.accountId})`
+    }
+
+    // Remove null/empty values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === null || payload[key] === '') delete payload[key]
+    })
+
+    return {
+      url: `${API}/opportunities`,
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer <TOKEN>',
+        'Prefer': 'return=representation'
+      },
+      body: payload,
+      hasAccountGuid: Boolean(opportunityData.accountId),
+    }
+  }
+
+  function buildAccountApiCall() {
+    const BASE_URL = import.meta.env.VITE_DATAVERSE_URL?.replace(/\/$/, '') || 'https://yourorg.crm.dynamics.com'
+    const API = `${BASE_URL}/api/data/v9.2`
+
+    const payload = {
+      name: opportunityData.company || 'Untitled Account',
+    }
+
+    // Remove null values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === null || payload[key] === '') delete payload[key]
+    })
+
+    return {
+      url: `${API}/accounts`,
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer <TOKEN>',
+        'Prefer': 'return=representation'
+      },
+      body: payload
+    }
+  }
+
   async function handleSave() {
     setSaving(true)
     setError(null)
     
     try {
-      // TODO: Replace this with actual API call to save to Dynamics
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      alert('TEST: Opportunity would be saved to Dynamics here!\n\nData:\n' + JSON.stringify(opportunityData, null, 2))
+      await new Promise(resolve => setTimeout(resolve, 300))
+      setShowPreview(true)
       
-      // On success, navigate back to main app
-      navigate('')
+      // TODO: Uncomment when ready to execute
+      // const token = await getDvToken(instance)
+      // 1. Search for account
+      // 2. Create/find contact if contact data provided
+      // 3. Create opportunity with links
+      
     } catch (err) {
       setError(err.message || 'Failed to save opportunity')
+    } finally {
       setSaving(false)
     }
   }
@@ -79,7 +152,9 @@ export default function OpportunityReview() {
       <div className="review-header">
         <h2>Review opportunity submission</h2>
         <p className="hint-text">
-          Review the opportunity details below. Click "Save to Dynamics" to create this opportunity in your CRM.
+          {opportunityData.accountId 
+            ? 'Review the opportunity details below. Click "Save to Dynamics" to create this opportunity in your CRM.'
+            : 'Review the opportunity details below. Create the company/account first, then you can save the opportunity.'}
         </p>
       </div>
 
@@ -105,40 +180,10 @@ export default function OpportunityReview() {
           </div>
         )}
 
-        {(opportunityData.firstName || opportunityData.lastName) && (
-          <div className="review-field">
-            <label className="review-field-label">Contact name</label>
-            <div className="review-field-value">
-              {[opportunityData.firstName, opportunityData.lastName].filter(Boolean).join(' ')}
-            </div>
-          </div>
-        )}
-
-        {opportunityData.email && (
-          <div className="review-field">
-            <label className="review-field-label">Email</label>
-            <div className="review-field-value">{opportunityData.email}</div>
-          </div>
-        )}
-
-        {opportunityData.phone && (
-          <div className="review-field">
-            <label className="review-field-label">Phone</label>
-            <div className="review-field-value">{opportunityData.phone}</div>
-          </div>
-        )}
-
         {opportunityData.estimatedCloseDate && (
           <div className="review-field">
             <label className="review-field-label">Estimated close date</label>
             <div className="review-field-value">{opportunityData.estimatedCloseDate}</div>
-          </div>
-        )}
-
-        {opportunityData.country && (
-          <div className="review-field">
-            <label className="review-field-label">Country</label>
-            <div className="review-field-value">{opportunityData.country}</div>
           </div>
         )}
 
@@ -168,15 +213,153 @@ export default function OpportunityReview() {
         >
           Cancel
         </button>
+        {!opportunityData.accountId && opportunityData.company && (
+          <button 
+            type="button" 
+            className="btn btn-ghost" 
+            onClick={() => setShowAccountPreview(true)}
+          >
+            <span className="icon icon-sm" aria-hidden="true">add_business</span>
+            Create Company/Account
+          </button>
+        )}
         <button 
           type="button" 
           className="btn-primary" 
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !opportunityData.accountId}
         >
           <span className="icon icon-sm" aria-hidden="true">save</span>
           {saving ? 'Saving...' : 'Save to Dynamics'}
         </button>
+      </div>
+
+      <Modal 
+        isOpen={showPreview} 
+        onClose={() => setShowPreview(false)}
+        title="🔍 API Call Preview"
+        maxWidth="900px"
+      >
+        <ApiPreview apiCall={buildApiCall()} opportunityData={opportunityData} />
+      </Modal>
+
+      <Modal 
+        isOpen={showAccountPreview} 
+        onClose={() => setShowAccountPreview(false)}
+        title="🏢 Create Account API Preview"
+        maxWidth="900px"
+      >
+        <AccountApiPreview apiCall={buildAccountApiCall()} companyName={opportunityData?.company} />
+      </Modal>
+    </div>
+  )
+}
+
+function AccountApiPreview({ apiCall, companyName }) {
+  return (
+    <div className="api-preview">
+      <div className="api-preview-status ready">
+        <strong>✅ READY TO CREATE ACCOUNT</strong>
+        <div>
+          ✓ Account name: "{companyName}"<br />
+          ✓ Ready to create new account in Dynamics
+        </div>
+      </div>
+
+      <div className="api-preview-section">
+        <div className="api-preview-header">
+          <span className="api-preview-method">{apiCall.method}</span>
+          <span className="api-preview-url">{apiCall.url}</span>
+        </div>
+      </div>
+
+      <div className="api-preview-section">
+        <strong>Headers:</strong>
+        <pre className="api-preview-code">{JSON.stringify(apiCall.headers, null, 2)}</pre>
+      </div>
+
+      <div className="api-preview-section">
+        <strong>Body (Payload):</strong>
+        <pre className="api-preview-code">{JSON.stringify(apiCall.body, null, 2)}</pre>
+      </div>
+
+      <div className="api-preview-divider">━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+
+      <div className="api-preview-section">
+        <strong>💡 Next Steps:</strong>
+        <ul className="api-preview-steps">
+          <li>Get authentication token</li>
+          <li>Execute POST request to create account</li>
+          <li>Get the new account GUID from response (accountid field)</li>
+          <li>Use the account GUID to link the opportunity</li>
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function ApiPreview({ apiCall, opportunityData }) {
+  return (
+    <div className="api-preview">
+      <div className={`api-preview-status ${apiCall.hasAccountGuid ? 'ready' : 'missing'}`}>
+        <strong>
+          {apiCall.hasAccountGuid ? '✅ READY TO SAVE' : '⚠️ MISSING DATA'}
+        </strong>
+        <div>
+          {apiCall.hasAccountGuid ? (
+            <>
+              ✓ Account GUID available: {opportunityData.accountId}<br />
+              ✓ All required data present<br />
+              ✓ Ready to execute API call
+            </>
+          ) : opportunityData.company ? (
+            <>
+              ✗ Company name provided: "{opportunityData.company}"<br />
+              → But account GUID is missing (user typed company name)<br />
+              → Would need to search Dynamics for account by name
+            </>
+          ) : (
+            '✗ No company/account provided'
+          )}
+        </div>
+      </div>
+
+      <div className="api-preview-section">
+        <div className="api-preview-header">
+          <span className="api-preview-method">{apiCall.method}</span>
+          <span className="api-preview-url">{apiCall.url}</span>
+        </div>
+      </div>
+
+      <div className="api-preview-section">
+        <strong>Headers:</strong>
+        <pre className="api-preview-code">{JSON.stringify(apiCall.headers, null, 2)}</pre>
+      </div>
+
+      <div className="api-preview-section">
+        <strong>Body (Payload):</strong>
+        <pre className="api-preview-code">{JSON.stringify(apiCall.body, null, 2)}</pre>
+      </div>
+
+      <div className="api-preview-divider">━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+
+      <div className="api-preview-section">
+        <strong>💡 Next Steps:</strong>
+        <ul className="api-preview-steps">
+          {apiCall.hasAccountGuid ? (
+            <>
+              <li>Get authentication token</li>
+              <li>Execute POST request to create opportunity</li>
+              <li>Handle response and show success message</li>
+            </>
+          ) : (
+            <>
+              <li>Search Dynamics for account by company name</li>
+              <li>Add parentaccountid@odata.bind with account GUID</li>
+              <li>Execute POST request to create opportunity</li>
+            </>
+          )}
+        </ul>
       </div>
     </div>
   )

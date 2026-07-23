@@ -16,12 +16,7 @@ const FIELDS = [
   ['Opportunity name', 'topic'],
   ['Company / Account', 'company'],
   ['Estimated value', 'estimatedValue'],
-  ['Contact first name', 'firstName'],
-  ['Contact last name', 'lastName'],
-  ['Email', 'email'],
-  ['Phone', 'phone'],
   ['Estimated close date', 'estimatedCloseDate'],
-  ['Country', 'country'],
   ['Description', 'description'],
 ]
 
@@ -37,6 +32,13 @@ export function submitOpportunity(opportunity) {
   const dmaUser = getDmaUser()
   const submittedBy = formatSubmitter(dmaUser?.FullName, dmaUser?.EmailAddress)
   if (submittedBy) rows.push(['Submitted by', submittedBy])
+  
+  // Show account link status for transparency
+  if (opportunity.accountId) {
+    rows.push(['Account GUID', `${opportunity.accountId} ✓ (linked)`])
+  } else if (opportunity.company) {
+    rows.push(['Account GUID', 'Not linked (manual account lookup needed)'])
+  }
 
   // Add submittedBy to the data payload for the review link
   const opportunityDataWithSubmitter = { ...opportunity, submittedBy }
