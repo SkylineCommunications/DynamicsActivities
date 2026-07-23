@@ -29,6 +29,7 @@ export default function AutocompletePicker({
   minChars = 2,
   debounce = 300,
   showOnFocus = false,
+  invalid = false,
 }) {
   const [query, setQuery] = useState(value ? getLabel(value) : '')
   const [results, setResults] = useState([])
@@ -125,7 +126,7 @@ export default function AutocompletePicker({
   return (
     <div className="search-wrap">
       <input
-        className="input"
+        className={`input${invalid ? ' input-invalid' : ''}`}
         placeholder={placeholder}
         value={query}
         onChange={handleInput}

@@ -1,5 +1,6 @@
 import { InteractionRequiredAuthError } from '@azure/msal-browser'
 import { dataverseRequest } from '../authConfig'
+import { fmtDate } from '../utils/dateFormat'
 
 const BASE_URL = (import.meta.env.VITE_DATAVERSE_URL || '').replace(/\/$/, '')
 const API = `${BASE_URL}/api/data/v9.2`
@@ -895,13 +896,42 @@ function buildLookupFilter(fieldName, ids) {
   return ids.length > 1 ? `(${filter})` : filter
 }
 
-function addCreatedOnDateFilters(filterClauses, dateFrom, dateTo) {
-  if (dateFrom) filterClauses.push(`createdon ge ${new Date(dateFrom).toISOString()}`)
+function addNoteDateFilters(filterClauses, fields, dateFrom, dateTo) {
+  if (dateFrom) {
+    filterClauses.push(coalesceDateFilter(fields, 'ge', new Date(dateFrom).toISOString()))
+  }
   if (dateTo) {
     const d = new Date(dateTo)
     d.setDate(d.getDate() + 1)
-    filterClauses.push(`createdon lt ${d.toISOString()}`)
+    filterClauses.push(coalesceDateFilter(fields, 'lt', d.toISOString()))
   }
+}
+
+const ACTIVITY_NOTEDATE_FIELDS = ['scheduledstart', 'scheduledend', 'actualend', 'createdon']
+const ESCALATION_NOTEDATE_FIELDS = ['slc_startdate', 'createdon']
+const CREATEDON_NOTEDATE_FIELDS = ['createdon']
+
+function coalesceDateFilter(fields, op, iso) {
+  const clauses = fields.map((field, i) => {
+    const parts = fields.slice(0, i).map((f) => `${f} eq null`)
+    if (i < fields.length - 1) parts.push(`${field} ne null`)
+    parts.push(`${field} ${op} ${iso}`)
+    return `(${parts.join(' and ')})`
+  })
+  return `(${clauses.join(' or ')})`
+}
+
+function isNoteWithinDateRange(value, dateFrom, dateTo) {
+  if (!value) return true
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return true
+  if (dateFrom && d < new Date(dateFrom)) return false
+  if (dateTo) {
+    const end = new Date(dateTo)
+    end.setDate(end.getDate() + 1)
+    if (d >= end) return false
+  }
+  return true
 }
 
 async function fetchEscalations(msalInstance, filterClauses) {
@@ -1053,8 +1083,8 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
       escalationBase.push(`${ESCALATION_ACCOUNT_LOOKUP_FIELD} eq ${accountId}`)
     }
 
-    addCreatedOnDateFilters(base, dateFrom, dateTo)
-    addCreatedOnDateFilters(escalationBase, dateFrom, dateTo)
+    addNoteDateFilters(base, ACTIVITY_NOTEDATE_FIELDS, dateFrom, dateTo)
+    addNoteDateFilters(escalationBase, ESCALATION_NOTEDATE_FIELDS, dateFrom, dateTo)
 
     if (wantCalls) {
       const clauses = [...base]
@@ -1081,13 +1111,13 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
 
     if (wantLeads && accountId) {
       const leadClauses = [`_parentaccountid_value eq ${accountId}`]
-      addCreatedOnDateFilters(leadClauses, dateFrom, dateTo)
+      addNoteDateFilters(leadClauses, CREATEDON_NOTEDATE_FIELDS, dateFrom, dateTo)
       fetches.push(fetchLeads(msalInstance, leadClauses))
     }
 
     if ((wantOpportunities || wantSupport) && accountId) {
       const oppClauses = [`_parentaccountid_value eq ${accountId}`]
-      addCreatedOnDateFilters(oppClauses, dateFrom, dateTo)
+      addNoteDateFilters(oppClauses, CREATEDON_NOTEDATE_FIELDS, dateFrom, dateTo)
       const typeFilter = wantOpportunities && !wantSupport ? 'opportunity'
         : !wantOpportunities && wantSupport ? 'support'
         : undefined
@@ -1097,7 +1127,7 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     if (wantAnnotations) {
       const annotationIds = accountId ? Array.from(new Set([accountId, ...escalationIds, ...leadIds])).slice(0, 50) : []
       const annotationFilter = annotationIds.length ? [buildLookupFilter('_regardingobjectid_value', annotationIds)] : []
-      addCreatedOnDateFilters(annotationFilter, dateFrom, dateTo)
+      addNoteDateFilters(annotationFilter, CREATEDON_NOTEDATE_FIELDS, dateFrom, dateTo)
       fetches.push(fetchAnnotations(msalInstance, annotationFilter))
     }
 
@@ -1116,8 +1146,11 @@ export async function searchActivities(msalInstance, { accountIds, contactId, co
     if (id) seen.add(id)
     deduped.push(r)
   }
-  deduped.sort((a, b) => new Date(b.createdon) - new Date(a.createdon))
-  return deduped
+  const dateFiltered = (dateFrom || dateTo)
+    ? deduped.filter((r) => isNoteWithinDateRange(noteDate(r), dateFrom, dateTo))
+    : deduped
+  dateFiltered.sort((a, b) => new Date(noteDate(b)) - new Date(noteDate(a)))
+  return dateFiltered
 }
 
 // Normalise activity party records into a flat attendee list
@@ -1171,7 +1204,6 @@ export function noteTypeLabel(note) {
 
 export function noteDate(note) {
   if (note._entityType === 'slc_escalations') return note.slc_startdate || note.createdon
-  if (note._entityType === 'leads') return note.createdon
-  if (note._entityType === 'opportunities' || note._entityType === 'support') return note.createdon
+  if (note._entityType === 'annotations' || note._entityType === 'leads' || note._entityType === 'opportunities' || note._entityType === 'support') return note.createdon
   return note.scheduledstart || note.scheduledend || note.actualend || note.createdon
 }

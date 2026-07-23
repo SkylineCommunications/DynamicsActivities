@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useMsal } from '@azure/msal-react'
 import { getSubscriptions, deleteSubscription, updateSubscription } from '../api/subscriptions'
 import SubscriptionForm from './SubscriptionForm'
+import { fmtDate as fmtDateBase } from '../utils/dateFormat'
 
 const FREQ_LABELS = {
   instant: 'Instant',
@@ -32,13 +33,7 @@ const TYPE_ICONS = {
   annotations: 'edit_note',
 }
 
-function fmtDate(d) {
-  if (!d) return 'Never'
-  return new Date(d).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
+const fmtDate = (d) => fmtDateBase(d, { fallback: 'Never' })
 
 function SubscriptionCard({ sub, onEdit, onDelete, onToggle }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
