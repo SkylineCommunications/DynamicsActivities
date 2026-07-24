@@ -48,35 +48,33 @@ export function buildEmailBody(rows) {
  * @returns {string} Formatted plain-text email body
  */
 export function buildFormattedEmailBody(title, rows, reviewLink, ctaText) {
-  const divider = '━━━━━━━━━━━━━━━━━━━━━━━━━━'
-  
   const details = rows
     .filter(([, value]) => value && String(value).trim())
-    .map(([label, value]) => {
-      const labelPadded = label.toUpperCase()
-      return `${labelPadded}\n${String(value).trim()}`
-    })
-    .join('\n\n')
+    .map(([label, value]) => `${label}: ${String(value).trim()}`)
+    .join('\n')
 
   return [
     title,
-    divider,
+    '═'.repeat(60),
     '',
     details,
     '',
-    '',
-    '🔗 QUICK ACTION',
-    divider,
+    '─'.repeat(60),
     '',
     ctaText + ':',
     '',
     reviewLink,
     '',
-    'Click the link above to review and save. The details are pre-filled, just authenticate and click "Save to Dynamics".',
+    'Click the link above to review and save to Dynamics.',
+    'The details are pre-filled — just authenticate and confirm.',
+    '',
+    '─'.repeat(60),
+    '',
+    'Automated submission from DynamicsActivities',
+    'Questions? Contact the submitter listed above.',
     '',
     '',
-    'This is an automated submission from the DynamicsActivities app.',
-    'If you have questions, please contact the submitter listed above.',
+    '',
   ].join('\n')
 }
 
